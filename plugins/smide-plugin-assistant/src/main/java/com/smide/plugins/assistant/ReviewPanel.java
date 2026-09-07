@@ -14,8 +14,11 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TitledPane;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
@@ -51,9 +54,17 @@ final class ReviewPanel extends BorderPane {
     private final CheckBox wholeProject = new CheckBox("Look at related files");
     private final TextArea sources = new TextArea();
     private final TitledPane sourcesPane = new TitledPane("Sources", sources);
+    private final TextArea question = new TextArea();
+    private final Button ask = new Button("Ask");
+    private final VBox askBar;
 
-    /** What was found, per file, so a review survives switching tabs. */
-    private final Map<Path, String> found = new LinkedHashMap<>();
+    /**
+     * Everything about one file, kept so that switching tabs and coming back does not
+     * throw away a review that cost a minute of a model's time - or the conversation
+     * about it, which by then is worth more than the review was.
+     */
+    private final Map<Path, String> transcripts = new LinkedHashMap<>();
+    private final Map<Path, Discussion> discussions = new LinkedHashMap<>();
     private final Map<Path, String> sourceLists = new LinkedHashMap<>();
 
     private Path current;
@@ -80,7 +91,9 @@ final class ReviewPanel extends BorderPane {
         review.setOnAction(e -> start());
         stop.setOnAction(e -> cancel());
         copy.setOnAction(e -> {
-            String text = current == null ? null : found.get(current);
+            // The whole conversation, not just the review: by the third question that is
+            // what somebody wants to paste into a ticket.
+            String text = current == null ? null : transcripts.get(current);
             if (text != null) {
                 ClipboardContent content = new ClipboardContent();
                 content.putString(text);
@@ -109,13 +122,36 @@ final class ReviewPanel extends BorderPane {
         sourcesPane.setExpanded(false);
         sourcesPane.setAnimated(false);
 
+        /* Asking about the review, which is where most of the value is: the first answer
+           is a list of claims, and the conversation after it is where they are tested. */
+        question.setPromptText("Ask about this review - why a finding holds, what to do"
+                + " about one, or whether it applies here. Ctrl+Enter sends.");
+        question.setWrapText(true);
+        question.setPrefRowCount(2);
+        question.getStyleClass().add("assistant-question");
+        question.setDisable(true);
+        question.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (event.getCode() == KeyCode.ENTER && event.isShortcutDown()) {
+                event.consume();
+                askQuestion();
+            }
+        });
+        ask.setMinWidth(Region.USE_PREF_SIZE);
+        ask.setDisable(true);
+        ask.setOnAction(e -> askQuestion());
+        HBox.setHgrow(question, Priority.ALWAYS);
+        HBox askRow = new HBox(6, question, ask);
+        askRow.setAlignment(Pos.BOTTOM_RIGHT);
+        askBar = new VBox(askRow);
+        askBar.setPadding(new Insets(6, 8, 0, 8));
+
         HBox footer = new HBox(8, status);
         footer.setAlignment(Pos.CENTER_LEFT);
         footer.setPadding(new Insets(4, 8, 4, 8));
 
         setTop(header);
         setCenter(view);
-        setBottom(new VBox(sourcesPane, footer));
+        setBottom(new VBox(askBar, sourcesPane, footer));
 
         ide.editors().addActiveListener(editor -> onActiveEditor());
         onActiveEditor();
@@ -147,17 +183,38 @@ final class ReviewPanel extends BorderPane {
             copy.setDisable(true);
             view.show(placeholder("Open a file and press Review."));
             sources.clear();
+            setAskable(false);
+            status.setText("");
             return;
         }
         review.setDisable(false);
         fileLabel.setText(path.getFileName().toString());
-        String previous = found.get(path);
+        String previous = transcripts.get(path);
         copy.setDisable(previous == null);
         view.show(previous != null ? previous
                 : placeholder("Press Review to read **" + path.getFileName() + "** for code"
                         + " smells, security problems and technical debt."));
         sources.setText(sourceLists.getOrDefault(path, ""));
-        status.setText(previous == null ? "" : "Reviewed earlier in this session.");
+        setAskable(previous != null);
+        if (previous == null) {
+            status.setText("");
+        } else {
+            int asked = discussion(path).exchanges();
+            status.setText("Reviewed earlier in this session."
+                    + (asked == 0 ? "" : "  " + asked + " question" + (asked == 1 ? "" : "s")
+                            + " since."));
+        }
+    }
+
+    /** The conversation about a file, created on first use. */
+    private Discussion discussion(Path file) {
+        return discussions.computeIfAbsent(file, f -> new Discussion());
+    }
+
+    /** Whether there is a review to ask about. */
+    private void setAskable(boolean askable) {
+        question.setDisable(!askable);
+        ask.setDisable(!askable);
     }
 
     // ------------------------------------------------------------- the review
@@ -221,12 +278,16 @@ final class ReviewPanel extends BorderPane {
                     }
                 },
                 whole -> {
-                    found.put(file, whole);
+                    transcripts.put(file, whole);
+                    // A fresh review starts a fresh conversation: the questions about the
+                    // last one were about findings that may no longer be there.
+                    discussion(file).start(context.prompt(), whole);
                     view.show(whole);
                     setBusy(false);
                     copy.setDisable(false);
+                    setAskable(true);
                     status.setText("Reviewed " + file.getFileName() + " - findings are the"
-                            + " model's reading, not a compiler's.");
+                            + " model's reading, not a compiler's. Ask about any of them.");
                     turn = null;
                 },
                 error -> {
@@ -237,11 +298,91 @@ final class ReviewPanel extends BorderPane {
                 });
     }
 
+    // --------------------------------------------------------- the conversation
+
+    /**
+     * Asks about the review, carrying the code, the findings and the earlier questions.
+     *
+     * <p>The transcript is one Markdown document that grows: the review, then each question
+     * and what it got. That is what is shown, what Copy copies, and what comes back when
+     * the file is opened again.
+     */
+    private void askQuestion() {
+        Path file = current;
+        if (file == null || turn != null) {
+            return;
+        }
+        Discussion discussion = discussion(file);
+        if (!discussion.isStarted()) {
+            status.setText("Review the file first; the questions are about the review.");
+            return;
+        }
+        String asked = question.getText().strip();
+        if (asked.isEmpty()) {
+            return;
+        }
+        if (!assistant.config().ready()) {
+            status.setText(assistant.config().whyNotReady());
+            return;
+        }
+        question.clear();
+        String before = transcripts.getOrDefault(file, "")
+                + "\n\n---\n\n#### You asked\n\n" + asked + "\n\n#### Answer\n\n";
+        transcripts.put(file, before);
+        streaming = new StringBuilder();
+        lastRender = 0;
+        setBusy(true);
+        setAskable(false);
+        status.setText("Thinking...");
+        view.setFollow(true);
+        view.show(before + "*thinking...*");
+
+        int window = assistant.config().intValue("context.windowChars", 120000);
+        turn = assistant.ask(
+                discussion.request(Prompts.discussSystem(), asked, window),
+                fragment -> {
+                    streaming.append(fragment);
+                    long now = System.currentTimeMillis();
+                    if (now - lastRender > 180) {
+                        lastRender = now;
+                        view.show(before + streaming);
+                    }
+                },
+                whole -> {
+                    turn = null;
+                    discussion.record(asked, whole);
+                    String full = before + whole;
+                    transcripts.put(file, full);
+                    view.show(full);
+                    setBusy(false);
+                    setAskable(true);
+                    int dropped = discussion.dropped();
+                    status.setText(discussion.exchanges() + " question"
+                            + (discussion.exchanges() == 1 ? "" : "s") + " about this review."
+                            + (dropped == 0 ? ""
+                                    : "  " + dropped + " earlier one" + (dropped == 1 ? "" : "s")
+                                            + " no longer fit the context window."));
+                },
+                error -> {
+                    turn = null;
+                    // The question goes back in the box: retyping it is not the developer's
+                    // job when the endpoint was the thing that failed.
+                    question.setText(asked);
+                    transcripts.put(file, before.substring(0,
+                            before.length() - "#### Answer\n\n".length()) + "*" + error + "*");
+                    view.show(transcripts.get(file));
+                    setBusy(false);
+                    setAskable(true);
+                    status.setText("");
+                });
+    }
+
     private void cancel() {
         if (turn != null) {
             turn.cancel();
             turn = null;
             setBusy(false);
+            setAskable(current != null && discussion(current).isStarted());
             status.setText("Stopped.");
         }
     }

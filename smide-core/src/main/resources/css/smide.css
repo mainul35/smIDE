@@ -1245,3 +1245,13 @@
 .primary-button:pressed {
     -fx-background-color: derive(-smide-accent, -10%);
 }
+
+/* The box for asking about a review. Prose, so not the monospace of the
+   sources listing beside it. */
+.assistant-question {
+    -fx-font-size: 12px;
+}
+
+.assistant-question .content {
+    -fx-background-color: -smide-surface;
+}
