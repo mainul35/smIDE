@@ -9,14 +9,14 @@
 #   ./install.sh --no-desktop         no launcher, no menu entry
 #   ./install.sh --check              report what is missing and stop
 #
-# It installs nothing outside your home directory and asks before using a package
-# manager. Language servers are not installed here - smIDE offers each one when you
-# first open a file of that language, which is the only point at which it knows which
-# ones you actually want.
+# Nothing is installed outside your home directory without asking first. Language
+# servers are not installed here at all - smIDE offers each one when you first open a
+# file of that language, which is the only point at which it knows which ones you
+# actually want.
 
 set -euo pipefail
 
-MDVIEWER_REPO="https://github.com/mainul35/MDViewer.git"
+MDVIEWER_REPO="https://github.com/mainul35/markdown-viewer.git"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="$PREFIX/bin"
 DESKTOP_DIR="$PREFIX/share/applications"
@@ -87,19 +87,13 @@ find_jdk() {
 }
 
 missing=()
+needs_jdk_source=false
 
 step "Checking what is needed"
 
 if jdk=$(find_jdk); then
     green "JDK 21+        $jdk"
-    if [ ! -f "$jdk/lib/src.zip" ]; then
-        red "  no lib/src.zip - Ctrl+click into the JDK's own classes will have no source"
-        if command -v apt-get >/dev/null 2>&1; then
-            echo "  Fix:  sudo apt-get install openjdk-21-source"
-        else
-            echo "  Fix:  install your distribution's JDK sources package, or use a Temurin build"
-        fi
-    fi
+    [ -f "$jdk/lib/src.zip" ] || needs_jdk_source=true
 else
     red "JDK 21+        not found"
     missing+=("a JDK 21 or newer (openjdk-21-jdk, java-21-openjdk-devel, or Temurin)")
@@ -153,6 +147,68 @@ fi
 
 export JAVA_HOME="$jdk"
 export PATH="$JAVA_HOME/bin:$PATH"
+
+# ------------------------------------------------------------- JDK sources
+
+# The JDK's own source, which is what Ctrl+click into java.util.List needs. Debian and
+# Fedora ship it in a separate package, so a distribution JDK arrives without it and the
+# feature quietly does nothing. Offered rather than assumed: it is the one thing here
+# that installs outside the home directory, and it wants sudo.
+install_jdk_source() {
+    local manager="" package="" install_cmd="" query_cmd=""
+    if command -v apt-get >/dev/null 2>&1; then
+        manager="apt"; package="openjdk-21-source"
+        query_cmd="apt-cache show $package"
+        install_cmd="sudo apt-get install -y $package"
+    elif command -v dnf >/dev/null 2>&1; then
+        manager="dnf"; package="java-21-openjdk-src"
+        query_cmd="dnf --quiet list --available $package"
+        install_cmd="sudo dnf install -y $package"
+    elif command -v pacman >/dev/null 2>&1; then
+        manager="pacman"; package="openjdk21-src"
+        query_cmd="pacman -Si $package"
+        install_cmd="sudo pacman -S --noconfirm $package"
+    elif command -v zypper >/dev/null 2>&1; then
+        manager="zypper"; package="java-21-openjdk-src"
+        query_cmd="zypper --quiet info $package"
+        install_cmd="sudo zypper install -y $package"
+    fi
+
+    if [ -z "$manager" ]; then
+        echo "  No package manager I know. Install your distribution's JDK sources package,"
+        echo "  or use a Temurin build, which ships src.zip."
+        return 0
+    fi
+    # Asked for by name before it is offered: the names differ between distributions and
+    # a guess that is wrong should print advice, not run a failing install.
+    if ! $query_cmd >/dev/null 2>&1; then
+        echo "  Your $manager does not have $package. Install your distribution's JDK"
+        echo "  sources package by hand, or use a Temurin build, which ships src.zip."
+        return 0
+    fi
+
+    echo "  $package provides it. Install it now with sudo? [y/N]"
+    read -r answer
+    case "$answer" in
+        [yY]*) ;;
+        *) echo "  Left alone. smIDE works without it; only Ctrl+click into JDK classes suffers."
+           return 0 ;;
+    esac
+    $install_cmd || { red "  $package failed to install."; return 0; }
+    if [ -f "$jdk/lib/src.zip" ]; then
+        green "  Installed. $jdk/lib/src.zip"
+    else
+        red "  Installed, but $jdk/lib/src.zip is still not there."
+        echo "  The sources may have gone to another JDK. Check JAVA_HOME."
+    fi
+}
+
+if $needs_jdk_source; then
+    step "The JDK has no lib/src.zip"
+    echo "Ctrl+click into the JDK's own classes - java.util.List and the rest - shows source"
+    echo "only when the JDK ships lib/src.zip. $jdk does not have it."
+    install_jdk_source
+fi
 
 if $check_only; then
     printf '\n'

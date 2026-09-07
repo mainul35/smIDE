@@ -21,9 +21,11 @@ a menu entry under `~/.local`:
 ./install.sh             # do all of it
 ```
 
-It touches nothing outside your home directory, and it asks before cloning anything. It
-does **not** install language servers: smIDE offers each one when you first open a file of
-that language, which is the only point at which it knows which ones you want.
+Nothing is installed outside your home directory without asking first — the one thing that
+would is your distribution's JDK sources package, which the script offers when the JDK it
+found has no `lib/src.zip`. It does **not** install language servers: smIDE offers each one
+when you first open a file of that language, which is the only point at which it knows
+which ones you want.
 
 `--mdviewer <path>` uses an MDViewer checkout you already have, `--skip-mdviewer` if it is
 already installed, `--no-desktop` for no launcher. The rest of this document is what the
@@ -50,8 +52,10 @@ java -version && mvn -v && git --version
 
 **Use a full JDK, and let `JAVA_HOME` point at it.** Two things depend on this. The Java
 language server compiles your code with the JDK it is told about, and Ctrl+click into
-`java.util.List` only shows you source if that JDK ships `lib/src.zip` — some bundled
-runtimes (Android Studio's JBR among them) do not. smIDE ranks the JDKs it can find and
+`java.util.List` only shows you source if that JDK ships `lib/src.zip`. Distribution JDKs
+ship it separately — `openjdk-21-source` on Debian and Ubuntu — and some bundled runtimes
+(Android Studio's JBR among them) have no equivalent at all. `install.sh` offers to install
+the package for you. smIDE ranks the JDKs it can find and
 prefers one with sources, but it can only pick from what is there. Temurin, Zulu, Corretto
 and Oracle's builds all include `src.zip`.
 
@@ -79,7 +83,7 @@ Nothing of MDViewer runs as a separate program. It is a compile-time dependency,
 has to be in your local Maven repository before smIDE will build.
 
 ```bash
-git clone <your MDViewer remote> MDViewer
+git clone https://github.com/mainul35/markdown-viewer.git MDViewer
 cd MDViewer
 mvn install -DskipTests
 ```
