@@ -44,6 +44,10 @@ public final class EditorManager implements Editors {
             "Cargo.toml", "go.mod", "pyproject.toml", "setup.py", "requirements.txt", ".git", ".smide", "CMakeLists.txt",
             "Makefile", ".sln", "composer.json", "Gemfile", "mix.exs", "build.sbt");
 
+    /** Where the IDE writes the read-only sources it pulls out of library jars. */
+    private static final Path LIBRARY_SOURCES = Path.of(
+            System.getProperty("smide.userHome", System.getProperty("user.home")), ".smide", "libraries");
+
     private final WorkspaceManager workspaces;
     private final ExtensionRegistry registry;
     private final LanguageRegistry languages;
@@ -179,7 +183,12 @@ public final class EditorManager implements Editors {
             notifications.warn("File not found", target.toString());
             return null;
         }
+        /* A file the IDE itself produced - the read-only source pulled out of a library
+           jar - belongs to the project the reader came from, not to a project of its own.
+           Left to the rule below it would open the IDE's own home directory as a
+           workspace, which is not a project and is full of everything else the user owns. */
         WorkspaceImpl workspace = workspaces.containingImpl(target)
+                .or(() -> target.startsWith(LIBRARY_SOURCES) ? workspaces.activeImpl() : Optional.empty())
                 .orElseGet(() -> workspaces.openImpl(projectRootFor(target)));
         workspaces.select(workspace);
 

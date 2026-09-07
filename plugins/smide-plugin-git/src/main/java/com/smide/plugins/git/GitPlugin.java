@@ -85,7 +85,13 @@ public final class GitPlugin implements Plugin {
         context.registerAction(Action.of("vcs.history", "Show File History").menu("VCS")
                 .contextMenu("explorer").contextMenu("editor").icon("fth-clock").order(51)
                 .enabledWhen(ctx -> inRepository(ctx) && file(ctx).isPresent())
-                .perform(ctx -> file(ctx).ifPresent(toolWindow::showHistory)));
+                .perform(ctx -> file(ctx).ifPresent(f -> {
+                    /* Opened through the manager first: a tool window that has never been
+                       created has no handle to show itself with, so the history would be
+                       loaded into a panel that is not on screen. */
+                    ide.toolWindows().show(GitToolWindow.ID);
+                    toolWindow.showHistory(f);
+                })));
         context.registerAction(Action.of("vcs.compare", "Compare with Branch or Revision...").menu("VCS")
                 .contextMenu("explorer").contextMenu("editor").order(52)
                 .enabledWhen(ctx -> inRepository(ctx) && file(ctx).isPresent())

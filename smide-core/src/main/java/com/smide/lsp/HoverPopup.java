@@ -61,6 +61,11 @@ public final class HoverPopup {
         return popup.isShowing();
     }
 
+    /** True while the pointer is over the popup itself, which is not a reason to close it. */
+    public boolean isPointerOver() {
+        return popup.isShowing() && !popup.getContent().isEmpty() && popup.getContent().get(0).isHover();
+    }
+
     /** Shows documentation for the caret, as Quick Documentation does. */
     public void showAtCaret() {
         showAt(editor.caretOffset());

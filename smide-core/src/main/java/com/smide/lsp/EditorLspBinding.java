@@ -32,6 +32,10 @@ public final class EditorLspBinding {
     private final javafx.event.EventHandler<KeyEvent> keyHandler;
     private final javafx.event.EventHandler<KeyEvent> keyTyped;
     private final javafx.event.EventHandler<MouseEvent> mouseMoved;
+    private final javafx.event.EventHandler<MouseEvent> exited;
+    private final javafx.event.EventHandler<MouseEvent> entered;
+    /** A moment's grace on the way out, so the pointer can reach the popup. */
+    private final PauseTransition hoverLeave = new PauseTransition(Duration.millis(250));
     private final javafx.event.EventHandler<MouseEvent> mousePressed;
     private boolean opened;
     private String lastTyped = "";
@@ -59,6 +63,17 @@ public final class EditorLspBinding {
         this.keyHandler = this::onKeyPressed;
         this.keyTyped = this::onKeyTyped;
         this.mouseMoved = this::onMouseMoved;
+        hoverLeave.setOnFinished(e -> {
+            if (!hover.isPointerOver()) {
+                hover.hide();
+            }
+        });
+        this.exited = e -> {
+            hoverDelay.stop();
+            hoverOffset = -1;
+            hoverLeave.playFromStart();
+        };
+        this.entered = e -> hoverLeave.stop();
         this.mousePressed = this::onMousePressed;
     }
 
@@ -84,6 +99,12 @@ public final class EditorLspBinding {
         area.addEventFilter(KeyEvent.KEY_PRESSED, keyHandler);
         area.addEventHandler(KeyEvent.KEY_TYPED, keyTyped);
         area.addEventHandler(MouseEvent.MOUSE_MOVED, mouseMoved);
+        /* The popup appears under the pointer, so the next mouse move goes to the popup
+           and never to the editor: without this the documentation stayed on screen,
+           covering the code, until something else closed it. Leaving is what closes it -
+           unless the pointer has landed on the popup, which is someone reading it. */
+        area.addEventHandler(MouseEvent.MOUSE_EXITED, exited);
+        area.addEventHandler(MouseEvent.MOUSE_ENTERED, entered);
         area.addEventFilter(MouseEvent.MOUSE_PRESSED, mousePressed);
         if (session.isReady()) {
             serverReady();
@@ -111,6 +132,8 @@ public final class EditorLspBinding {
         area.removeEventFilter(KeyEvent.KEY_PRESSED, keyHandler);
         area.removeEventHandler(KeyEvent.KEY_TYPED, keyTyped);
         area.removeEventHandler(MouseEvent.MOUSE_MOVED, mouseMoved);
+        area.removeEventHandler(MouseEvent.MOUSE_EXITED, exited);
+        area.removeEventHandler(MouseEvent.MOUSE_ENTERED, entered);
         area.removeEventFilter(MouseEvent.MOUSE_PRESSED, mousePressed);
         completion.hide();
         hover.hide();

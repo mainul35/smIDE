@@ -116,6 +116,35 @@ public final class LspActions {
                 }));
     }
 
+    /**
+     * Opens a file pulled out of a sources jar, on the type's own declaration.
+     *
+     * <p>The line the server reported belongs to a class file it could not read, so it is
+     * no guide at all; the declaration is found in the text instead.
+     */
+    private static void openLibraryFile(Ide ide, Path file, Target t) {
+        int line = 0;
+        try {
+            String name = shortName(t.uri());
+            int dot = name.lastIndexOf('.');
+            line = LibrarySources.declarationLine(java.nio.file.Files.readString(file),
+                    dot < 0 ? name : name.substring(0, dot));
+        } catch (java.io.IOException ignored) {
+            // Open it at the top.
+        }
+        com.smide.api.editor.Editor opened = ide.editors().open(file, line, 0);
+        /* Again on the next pulse: the tab was created this instant, and a scroll asked
+           for before the area has been laid out goes nowhere - which left the reader
+           looking at the licence header instead of the class. */
+        int declaration = line;
+        if (opened != null && declaration > 0) {
+            ide.window().runLater(() -> opened.asText().ifPresent(text -> {
+                int offset = text.offsetOf(declaration, 0);
+                text.select(offset, offset);
+            }));
+        }
+    }
+
     /** The class a jdt: URI names, for a message that says what could not be opened. */
     private static String shortName(String uri) {
         int slash = uri.lastIndexOf('/');
@@ -224,8 +253,8 @@ public final class LspActions {
                     if (!(contents instanceof String source) || source.isBlank()) {
                         /* No source in the jar. The URI names the artifact, so rather than
                            stopping at "not attached", offer to fetch it and come back. */
-                        if (mayFetchSources && LibrarySources.offer(ide, session, t.uri(), fileInProject,
-                                () -> openFromServer(ide, session, t, fileInProject, false))) {
+                        if (mayFetchSources && LibrarySources.show(ide, session, t.uri(), fileInProject,
+                                file -> openLibraryFile(ide, file, t))) {
                             return;
                         }
                         ide.statusBar().message("The declaration is in a library with no source attached: "
