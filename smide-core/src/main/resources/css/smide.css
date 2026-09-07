@@ -1228,3 +1228,20 @@
 .assistant-sources .content {
     -fx-background-color: -smide-surface;
 }
+
+/* The one action on the screen at that moment: the assistant's "I have read
+   this", and anything else that earns being the obvious thing to press. */
+.primary-button {
+    -fx-background-color: -smide-accent;
+    -fx-text-fill: -smide-row-selected-text;
+    -fx-background-radius: 5;
+    -fx-padding: 5 12 5 12;
+}
+
+.primary-button:hover {
+    -fx-background-color: derive(-smide-accent, 12%);
+}
+
+.primary-button:pressed {
+    -fx-background-color: derive(-smide-accent, -10%);
+}

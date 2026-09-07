@@ -93,6 +93,65 @@ final class Prompts {
     /** The delimiter the question and the marking come back in. */
     static final String FIELD_PREFIX = "=== ";
 
+    /**
+     * Teaching, which comes before testing.
+     *
+     * <p>The one place the assistant may show worked code, and it is still teaching rather
+     * than doing: an example here illustrates a mechanism on a case of its own choosing.
+     * The questions that follow are told what was taught, so the exercise cannot turn out
+     * to be copying the example back.
+     */
+    static String tutorialSystem() {
+        return BUDDY + """
+
+            THIS TURN: teach one topic, for someone who is about to be tested on it.
+
+            Short enough to be read. Aim at 500 to 800 words, and spend them on the parts
+            that decide whether working code is right, not on history or on the syntax of
+            the language in general.
+
+            Write it in Markdown under these headings:
+
+            ## What it is
+            One paragraph. What problem it solves, and what the code looked like before it
+            existed. Somebody who has never used it should be able to say what it is for
+            after reading this alone.
+
+            ## Where you actually meet it
+            Two or three cases from real work - a repository returning rows, a request DTO,
+            a config loader, a retry, a stylesheet for a component - each with a small
+            example in a fenced block tagged with the language. Real shapes, not `Foo` and
+            `Bar`: the point is that the reader recognises the situation when they next meet
+            it. Keep each example under about twelve lines.
+
+            ## The rules worth knowing
+            The small set of facts that actually decide whether code compiles or behaves.
+            Say plainly which are language rules and which are conventions. If a rule
+            depends on a version, say which version.
+
+            ## Where it goes wrong
+            Two or three mistakes people really make, each written as the symptom first -
+            the error message, the wrong output, the thing that silently does nothing - and
+            then the cause. Symptom first, because that is the order in which somebody will
+            meet it.
+
+            ## Before you practise
+            Three things the reader should now be able to say in their own words. State
+            them as prompts, not as answers - they are about to be asked.
+
+            Examples here teach a mechanism. They are never the answer to a task the
+            developer has been set, and they must not add up to a finished piece of work
+            that someone could lift whole.
+            """;
+    }
+
+    static String tutorialRequest(String topic, String difficulty) {
+        return "Topic: " + topic + "\n"
+                + "The practice that follows will be at " + difficulty + " difficulty, so"
+                + " pitch the tutorial at somebody about to attempt that.\n\n"
+                + "Write the tutorial now, in Markdown, under the headings given.";
+    }
+
     static String questionSystem() {
         return BUDDY + """
 
@@ -190,8 +249,16 @@ final class Prompts {
             """;
     }
 
-    /** The user turn that asks for a question, given the session so far. */
-    static String questionRequest(String topic, String difficulty, java.util.List<String> asked) {
+    /** How much of the tutorial rides along with each question. */
+    private static final int TAUGHT_CHARS = 6000;
+
+    /**
+     * The user turn that asks for a question, given the session so far.
+     *
+     * @param taught the tutorial the developer has just read, or empty if they skipped it
+     */
+    static String questionRequest(String topic, String difficulty, java.util.List<String> asked,
+                                  String taught) {
         StringBuilder request = new StringBuilder();
         request.append("Topic: ").append(topic).append('\n');
         request.append("Difficulty: ").append(difficulty).append('\n');
@@ -203,6 +270,20 @@ final class Prompts {
             for (String title : asked) {
                 request.append("- ").append(title).append('\n');
             }
+        }
+        if (taught != null && !taught.isBlank()) {
+            /* What was taught, so the exercise is not copying the example back. A question
+               answered word for word by something the developer read ten seconds ago tests
+               their scrollback. */
+            String text = taught.strip();
+            if (text.length() > TAUGHT_CHARS) {
+                text = text.substring(0, TAUGHT_CHARS) + "\n(tutorial truncated here)";
+            }
+            request.append("\nThe developer has just read the tutorial below. Ask them to")
+                    .append(" apply it to a case it did not work through. Do not ask for")
+                    .append(" anything one of its examples already answers word for word,")
+                    .append(" and do not assume anything it did not cover.\n")
+                    .append("=== TUTORIAL ===\n").append(text).append('\n');
         }
         request.append("\nSet the next question now, in the field format.");
         return request.toString();
