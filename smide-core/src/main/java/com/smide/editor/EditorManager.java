@@ -273,7 +273,11 @@ public final class EditorManager implements Editors {
             // Open it anyway.
         }
         LanguageSupport language = languages.forFileOrPlain(target);
-        return new CodeEditor(workspace, target, language, settings, breakpoints);
+        CodeEditor editor = new CodeEditor(workspace, target, language, settings, breakpoints);
+        if (target.startsWith(LIBRARY_SOURCES)) {
+            editor.markExternalSource();
+        }
+        return editor;
     }
 
     /** The nearest ancestor that looks like a project root, or the file's own folder. */

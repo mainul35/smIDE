@@ -581,6 +581,22 @@ public final class CodeEditor implements TextEditor {
         }
     }
 
+    /**
+     * Marks this as source read out of a library rather than code from the project.
+     *
+     * <p>It gets a yellow paper colour and is read-only, so a tab full of Spring's source
+     * is not mistaken at a glance for a file you can edit and keep.
+     */
+    public void markExternalSource() {
+        if (!area.getStyleClass().contains("external-source")) {
+            area.getStyleClass().add("external-source");
+            root.getStyleClass().add("external-source");
+        }
+        /* Read-only, because it is: the copy is written fresh out of the jar every time
+           the declaration is opened, so an edit here would be thrown away without a word. */
+        area.setEditable(false);
+    }
+
     /** Right-click menu for the text itself; the actions decide what is in it. */
     public void setContextMenu(javafx.scene.control.ContextMenu menu) {
         area.setContextMenu(menu);

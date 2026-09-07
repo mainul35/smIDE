@@ -160,7 +160,9 @@ public final class EditorLspBinding {
         }
         if (e.getCode() == KeyCode.SPACE && e.isControlDown()) {
             e.consume();
-            completion.request(true);
+            if (editor.area().isEditable()) {
+                completion.request(true);
+            }
         } else if (e.getCode() == KeyCode.ESCAPE) {
             hover.hide();
         }
@@ -169,6 +171,10 @@ public final class EditorLspBinding {
     private void onKeyTyped(KeyEvent e) {
         String ch = e.getCharacter();
         if (ch == null || ch.isEmpty() || e.isControlDown() || e.isAltDown()) {
+            return;
+        }
+        if (!editor.area().isEditable()) {
+            // Library source: nothing can be typed here, so nothing should be suggested.
             return;
         }
         char c = ch.charAt(0);

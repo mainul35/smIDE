@@ -145,11 +145,21 @@ public final class LspActions {
         }
     }
 
-    /** The class a jdt: URI names, for a message that says what could not be opened. */
+    /**
+     * The class a jdt: URI names, for a message that says what could not be opened.
+     *
+     * <p>The query is cut off first. It carries the classpath entry, encoded, and that
+     * contains slashes of its own - so looking for the last slash in the whole URI found
+     * one deep inside the query and returned a fragment of a Windows path.
+     */
     private static String shortName(String uri) {
-        int slash = uri.lastIndexOf('/');
-        int question = uri.indexOf('?');
-        String tail = uri.substring(slash + 1, question > slash ? question : uri.length());
+        String path = uri;
+        int question = path.indexOf('?');
+        if (question >= 0) {
+            path = path.substring(0, question);
+        }
+        int slash = path.lastIndexOf('/');
+        String tail = slash < 0 ? path : path.substring(slash + 1);
         return tail.isBlank() ? uri : tail;
     }
 

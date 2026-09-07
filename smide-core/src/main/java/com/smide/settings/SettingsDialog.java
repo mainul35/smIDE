@@ -221,7 +221,7 @@ public final class SettingsDialog {
                 CheckBox lineHighlight = new CheckBox("Highlight the caret line");
                 lineHighlight.setSelected(editor.staged().getBoolean("editor.highlightLine", true));
                 lineHighlight.selectedProperty().addListener((o, a, b) -> editor.staged().setBoolean("editor.highlightLine", b));
-                Label note = new Label("Font changes apply to editors opened after Apply.");
+                Label note = new Label("Applies to every open editor as soon as you press Apply.");
                 note.getStyleClass().add("settings-note");
                 HBox fontRow = new HBox(8, new Label("Font"), font, new Label("Size"), size);
                 fontRow.setStyle("-fx-alignment: center-left;");

@@ -20,6 +20,7 @@
     -smide-row-selected: #0b6e7f;
     -smide-row-selected-text: #ffffff;
     -smide-current-line: #eef3f7;
+    -smide-external-paper: #fbf3d5;
     -smide-danger: #C0392B;
     -smide-warning: #B7791F;
     -smide-success: #2F855A;
@@ -67,6 +68,7 @@
     -smide-row-selected: #1d5462;
     -smide-row-selected-text: #eaf4f7;
     -smide-current-line: #141e29;
+    -smide-external-paper: #2b2617;
     -smide-danger: #E06C5B;
     -smide-warning: #D6A24A;
     -smide-success: #5FBF8A;
@@ -580,6 +582,19 @@
 .line-annotation:hover {
     -fx-background-color: -smide-accent-soft;
     -fx-text-fill: -smide-accent;
+}
+
+/* Source the IDE pulled out of a library jar. A yellow cast, in both themes, so that
+   at a glance this is somebody else's code - read-only and disposable, not a file that
+   belongs to the project. */
+.code-area.external-source {
+    -fx-background-color: -smide-external-paper;
+}
+
+.code-area.external-source .lineno,
+.code-area.external-source .gutter,
+.code-area.external-source .breakpoint-column {
+    -fx-background-color: -smide-external-paper;
 }
 
 .gutter {
