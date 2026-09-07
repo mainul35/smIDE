@@ -290,8 +290,11 @@ Passwords are asked for when a connection opens and held in memory for that run 
 
 ## 10. When something does not work
 
-**`com.mdviewer:mdviewer:jar:1.1.0 was not found`**
-Section 2. MDViewer has to be installed into your local Maven repository first.
+**`com.mdviewer:mdviewer:jar:... was not found`, or a 401 from maven.pkg.github.com**
+Section 2: GitHub's Maven registry authenticates reads, so this is a missing or wrong
+`github-mdviewer` server in `~/.m2/settings.xml`. A 401 means the token is absent, expired
+or has no `read:packages`; a "not found" with credentials present usually means the id in
+`settings.xml` does not match the id in the repository declaration.
 
 **The window opens but the Java editor has no completion**
 The JDT server is not installed yet. Open a `.java` file and take the Install button, or
