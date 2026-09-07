@@ -99,6 +99,11 @@ public final class CsharpPlugin implements Plugin {
     /** csharp-ls, a dotnet global tool. */
     private static final class CsharpLs implements LanguageServerLauncher {
 
+        /* Pinned. The newest package on nuget.org is missing its DotnetToolSettings.xml,
+           so "dotnet tool install csharp-ls" fails outright with a message about the
+           tool's author; this version installs and runs. */
+        private static final String VERSION = "0.17.0";
+
         @Override
         public String serverId() {
             return "csharp-ls";
@@ -137,15 +142,16 @@ public final class CsharpPlugin implements Plugin {
             return Optional.of(new InstallRecipe() {
                 @Override
                 public String description() {
-                    return "Runs dotnet tool install --global csharp-ls. The .NET SDK must be installed.";
+                    return "Runs dotnet tool install --global csharp-ls " + VERSION
+                            + ". The .NET SDK must be installed.";
                 }
 
                 @Override
                 public void run(Ide ide, ProgressReporter progress) throws IOException {
                     String dotnet = WINDOWS ? "dotnet.exe" : "dotnet";
-                    progress.progress("dotnet tool install --global csharp-ls", -1);
-                    ide.downloads().runTool(List.of(dotnet, "tool", "install", "--global", "csharp-ls"),
-                            ide.downloads().toolsDir(), progress);
+                    progress.progress("dotnet tool install --global csharp-ls " + VERSION, -1);
+                    ide.downloads().runTool(List.of(dotnet, "tool", "install", "--global", "csharp-ls",
+                            "--version", VERSION), ide.downloads().toolsDir(), progress);
                 }
             });
         }
@@ -154,6 +160,56 @@ public final class CsharpPlugin implements Plugin {
         public List<String> command(Ide ide, Workspace workspace) {
             return List.of(locate()
                     .orElseThrow(() -> new IllegalStateException("csharp-ls is not installed")).toString());
+        }
+
+        /**
+         * Points the server at the .NET SDK.
+         *
+         * <p>csharp-ls loads MSBuild, which finds the SDK through DOTNET_ROOT or PATH and
+         * refuses to initialise without it - "Path to dotnet executable is not set". The
+         * IDE's own PATH is whatever it was started with, and on a machine where .NET was
+         * installed afterwards that is not enough, so the location is passed explicitly.
+         */
+        @Override
+        public java.util.Map<String, String> environment(Ide ide, Workspace workspace) {
+            Optional<Path> dotnet = dotnetHome();
+            if (dotnet.isEmpty()) {
+                return java.util.Map.of();
+            }
+            String home = dotnet.get().toString();
+            String path = System.getenv("PATH");
+            return java.util.Map.of(
+                    "DOTNET_ROOT", home,
+                    "DOTNET_HOST_PATH", dotnet.get().resolve(WINDOWS ? "dotnet.exe" : "dotnet").toString(),
+                    "PATH", path == null || path.isBlank() ? home : home + File.pathSeparator + path);
+        }
+
+        /** Where the SDK is: the environment, then PATH, then where the installer puts it. */
+        private static Optional<Path> dotnetHome() {
+            String root = System.getenv("DOTNET_ROOT");
+            if (root != null && !root.isBlank() && Files.isDirectory(Path.of(root))) {
+                return Optional.of(Path.of(root));
+            }
+            String exe = WINDOWS ? "dotnet.exe" : "dotnet";
+            String path = System.getenv("PATH");
+            if (path != null) {
+                for (String dir : path.split(File.pathSeparator)) {
+                    Path candidate = Path.of(dir.isBlank() ? "." : dir, exe);
+                    if (Files.isRegularFile(candidate)) {
+                        return Optional.of(candidate.getParent());
+                    }
+                }
+            }
+            for (Path candidate : List.of(
+                    Path.of("C:", "Program Files", "dotnet"),
+                    Path.of(System.getProperty("user.home", "."), ".dotnet"),
+                    Path.of("/usr/share/dotnet"),
+                    Path.of("/usr/local/share/dotnet"))) {
+                if (Files.isRegularFile(candidate.resolve(exe))) {
+                    return Optional.of(candidate);
+                }
+            }
+            return Optional.empty();
         }
     }
 }
