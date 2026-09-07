@@ -10,6 +10,27 @@ database drivers.
 
 ---
 
+## 0. Linux, the short way
+
+There is a script that does sections 1 to 4 for you — checks the prerequisites, builds
+MDViewer into your local Maven repository, builds smIDE, and writes a `smide` launcher and
+a menu entry under `~/.local`:
+
+```bash
+./install.sh --check     # report what is missing and stop
+./install.sh             # do all of it
+```
+
+It touches nothing outside your home directory, and it asks before cloning anything. It
+does **not** install language servers: smIDE offers each one when you first open a file of
+that language, which is the only point at which it knows which ones you want.
+
+`--mdviewer <path>` uses an MDViewer checkout you already have, `--skip-mdviewer` if it is
+already installed, `--no-desktop` for no launcher. The rest of this document is what the
+script does, and what to do on Windows and macOS where there is no script yet.
+
+---
+
 ## 1. What you need
 
 | | Version | Why |
