@@ -7,6 +7,7 @@ import com.smide.api.workspace.Workspace;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -35,6 +36,33 @@ record NodeServer(String serverId, String displayName, String executable, List<S
     @Override
     public boolean isInstalled(Ide ide) {
         return NpmTools.locate(ide, executable).isPresent();
+    }
+
+    /**
+     * Tells typescript-language-server where TypeScript itself is.
+     *
+     * <p>It looks for tsserver in the project being edited and refuses to start without
+     * it - "Could not find a valid TypeScript installation" - which is right for a
+     * TypeScript project and wrong for the loose .ts file someone opens to read. The copy
+     * installed alongside the server is named explicitly, and a project with its own
+     * TypeScript still wins, because the server prefers the workspace's.
+     */
+    @Override
+    public Object initializationOptions(Ide ide, Workspace workspace) {
+        if (!"typescript-language-server".equals(serverId)) {
+            return null;
+        }
+        Path modules = NpmTools.prefix(ide).resolve("node_modules");
+        // The copy installed for the server, or the one another server brought with it.
+        for (Path candidate : List.of(
+                modules.resolve("typescript").resolve("lib").resolve("tsserver.js"),
+                modules.resolve("vscode-langservers-extracted").resolve("node_modules")
+                        .resolve("typescript").resolve("lib").resolve("tsserver.js"))) {
+            if (java.nio.file.Files.isRegularFile(candidate)) {
+                return Map.of("tsserver", Map.of("path", candidate.toString()));
+            }
+        }
+        return null;
     }
 
     @Override

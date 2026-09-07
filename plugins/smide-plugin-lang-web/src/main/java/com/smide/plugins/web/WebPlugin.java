@@ -16,7 +16,11 @@ public final class WebPlugin implements Plugin {
     @Override
     public void start(PluginContext context) {
         NodeServer typescript = new NodeServer("typescript-language-server", "TypeScript Language Server",
-                "typescript-language-server", List.of("typescript-language-server", "typescript"), List.of("--stdio"));
+                /* typescript@5, not latest. TypeScript 7 is the native rewrite and ships no
+                   tsserver.js at all, so the language server refuses to start against it:
+                   "Could not find a valid TypeScript installation". */
+                "typescript-language-server", List.of("typescript-language-server", "typescript@5"),
+                List.of("--stdio"));
         NodeServer html = new NodeServer("vscode-html-language-server", "HTML Language Server",
                 "vscode-html-language-server", List.of("vscode-langservers-extracted"), List.of("--stdio"));
         NodeServer css = new NodeServer("vscode-css-language-server", "CSS Language Server",
