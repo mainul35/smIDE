@@ -14,6 +14,7 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -63,6 +64,8 @@ final class PracticePanel extends BorderPane {
 
     /** Titles already set this session, so the next question is a different one. */
     private final List<String> asked = new ArrayList<>();
+    /** The topic the session is actually on, which the box is not allowed to contradict. */
+    private String chosenTopic;
     private PracticeQuestion question;
     private Assistant.Turn turn;
     private StringBuilder streaming;
@@ -81,6 +84,29 @@ final class PracticePanel extends BorderPane {
         topic.setValue("SQL queries");
         topic.setPrefWidth(210);
         topic.setTooltip(new Tooltip("Anything you want to practise. Type your own."));
+        chosenTopic = topic.getValue();
+        topic.valueProperty().addListener((o, was, now) -> {
+            if (now != null && !now.isBlank()) {
+                chosenTopic = now.strip();
+            }
+        });
+        /* Escape closes the list and does nothing else.
+           Left to the skin it cancels the edit, and cancelling an editable ComboBox rolls
+           its value back to an earlier one - so pressing Escape over an open list, which
+           is the ordinary way to change your mind about opening it, silently changed the
+           subject of the session. The next question came back on SQL in the middle of a
+           session on generics, with the box quietly reading SQL again and nothing to say
+           it had. A filter, so the skin never sees the key at all. */
+        topic.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (event.getCode() != KeyCode.ESCAPE) {
+                return;
+            }
+            if (topic.isShowing()) {
+                topic.hide();
+            }
+            event.consume();
+            restoreTopic();
+        });
         difficulty.getItems().setAll("easy", "medium", "hard", "mixed");
         difficulty.setValue("medium");
         score.getStyleClass().add("muted-small");
@@ -152,6 +178,36 @@ final class PracticePanel extends BorderPane {
         return region;
     }
 
+    /**
+     * What to practise: whatever is in the box, typed or chosen.
+     *
+     * <p>An editable ComboBox does not commit typed text to its value until Enter or a
+     * focus change, so reading {@code getValue()} loses a topic somebody typed and then
+     * pressed the button beside - which is most of how a box with a free-text field gets
+     * used.
+     */
+    private String topicText() {
+        String typed = topic.getEditor() == null ? null : topic.getEditor().getText();
+        if (typed != null && !typed.isBlank()) {
+            return typed.strip();
+        }
+        String value = topic.getValue();
+        return value == null ? "" : value.strip();
+    }
+
+    /** Puts the topic in use back in the box, value and editor together. */
+    private void restoreTopic() {
+        if (chosenTopic == null || chosenTopic.isBlank()) {
+            return;
+        }
+        if (!chosenTopic.equals(topic.getValue())) {
+            topic.setValue(chosenTopic);
+        }
+        if (topic.getEditor() != null && !chosenTopic.equals(topic.getEditor().getText())) {
+            topic.getEditor().setText(chosenTopic);
+        }
+    }
+
     private String welcome() {
         return """
                 ### Practice
@@ -186,11 +242,14 @@ final class PracticePanel extends BorderPane {
             view.show("> " + assistant.config().whyNotReady());
             return;
         }
-        String subject = topic.getValue() == null ? "" : topic.getValue().strip();
+        String subject = topicText();
         if (subject.isEmpty()) {
             status.setText("Name something to practise first.");
             return;
         }
+        // Committed at the moment it is used, so a typed topic that was never entered
+        // with Enter is still the one the session is on.
+        chosenTopic = subject;
         question = null;
         submit.setDisable(true);
         answer.reset("text", "");
