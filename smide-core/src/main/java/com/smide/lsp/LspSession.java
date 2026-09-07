@@ -370,6 +370,33 @@ public final class LspSession {
                 && capabilities.getTextDocumentSync().getRight().getChange() == TextDocumentSyncKind.Incremental));
     }
 
+    /**
+     * Sends a request behind whatever notifications are already queued.
+     *
+     * <p>Notifications go through a single thread so they keep their order; a request
+     * sent straight from the caller does not, and can reach the server before the edit
+     * it depends on. Completion after a keystroke is where that shows: the server
+     * answers for the text as it was, so typing a dot offered everything in scope
+     * instead of the members of what precedes it.
+     */
+    public <T> CompletableFuture<T> ordered(java.util.function.Supplier<CompletableFuture<T>> request) {
+        CompletableFuture<T> out = new CompletableFuture<>();
+        executor.execute(() -> {
+            try {
+                request.get().whenComplete((value, error) -> {
+                    if (error != null) {
+                        out.completeExceptionally(error);
+                    } else {
+                        out.complete(value);
+                    }
+                });
+            } catch (RuntimeException e) {
+                out.completeExceptionally(e);
+            }
+        });
+        return out;
+    }
+
     private void run(Runnable r) {
         executor.execute(() -> {
             try {

@@ -40,6 +40,8 @@ public final class EditorLspBinding {
     private boolean opened;
     private String lastTyped = "";
     private int hoverOffset = -1;
+    /** The character that asked for the next completion, when one did. */
+    private String pendingTrigger;
 
     EditorLspBinding(Ide ide, LspManager manager, CodeEditor editor, LspSession session) {
         this.ide = ide;
@@ -54,7 +56,10 @@ public final class EditorLspBinding {
                 session.didChange(editor.path(), editor.text());
             }
         });
-        completionDelay.setOnFinished(e -> completion.request(false));
+        completionDelay.setOnFinished(e -> {
+            completion.request(false, pendingTrigger);
+            pendingTrigger = null;
+        });
         hoverDelay.setOnFinished(e -> {
             if (hoverOffset >= 0) {
                 hover.showAt(hoverOffset);
@@ -190,6 +195,7 @@ public final class EditorLspBinding {
             lastTyped = "";
             if (isTriggerCharacter(c)) {
                 completion.hide();
+                pendingTrigger = String.valueOf(c);
                 completionDelay.playFromStart();
             } else if (completion.isShowing()) {
                 completion.hide();

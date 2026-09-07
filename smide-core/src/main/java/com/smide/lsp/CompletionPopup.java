@@ -89,6 +89,17 @@ public final class CompletionPopup {
 
     /** Asks the server; shows the list if anything comes back. */
     public void request(boolean explicit) {
+        request(explicit, null);
+    }
+
+    /**
+     * @param triggerCharacter the character that opened this, or null when the user asked
+     *                         for completion outright. The protocol says a
+     *                         TriggerCharacter request carries it, and a server that is
+     *                         not told which character it was answers with everything in
+     *                         scope instead of the members of what precedes the dot.
+     */
+    public void request(boolean explicit, String triggerCharacter) {
         if (!session.isReady() || session.capabilities() == null
                 || session.capabilities().getCompletionProvider() == null) {
             if (explicit) {
@@ -103,8 +114,14 @@ public final class CompletionPopup {
         anchor = wordStart(caret);
         CompletionParams params = new CompletionParams(new TextDocumentIdentifier(Positions.uri(editor.path())),
                 Positions.caret(editor));
-        params.setContext(new CompletionContext(explicit ? CompletionTriggerKind.Invoked : CompletionTriggerKind.TriggerCharacter));
-        session.server().getTextDocumentService().completion(params)
+        CompletionContext context = new CompletionContext(explicit || triggerCharacter == null
+                ? CompletionTriggerKind.Invoked : CompletionTriggerKind.TriggerCharacter);
+        if (context.getTriggerKind() == CompletionTriggerKind.TriggerCharacter) {
+            context.setTriggerCharacter(triggerCharacter);
+        }
+        params.setContext(context);
+        // Behind the pending edits, or the server answers for the text as it was.
+        session.ordered(() -> session.server().getTextDocumentService().completion(params))
                 .orTimeout(8, TimeUnit.SECONDS)
                 .whenComplete((result, error) -> Platform.runLater(() -> {
                     if (gen != generation) {
@@ -279,9 +296,9 @@ public final class CompletionPopup {
         if (item.getInsertTextFormat() == InsertTextFormat.Snippet) {
             insert = stripSnippet(insert);
         }
-        int cursorOffset = insert.indexOf(' ');
+        int cursorOffset = insert.indexOf('\0');
         if (cursorOffset >= 0) {
-            insert = insert.replace(" ", "");
+            insert = insert.replace("\0", "");
         }
         editor.replace(start, end, insert);
         int newCaret = start + (cursorOffset >= 0 ? cursorOffset : insert.length());
@@ -330,7 +347,7 @@ public final class CompletionPopup {
                         String choices = body.substring(pipe + 1, body.lastIndexOf('|'));
                         out.append(choices.split(",")[0]);
                     } else if (body.equals("0") && !cursorSet) {
-                        out.append(' ');
+                        out.append('\0');
                         cursorSet = true;
                     }
                     i = close + 1;
@@ -342,7 +359,7 @@ public final class CompletionPopup {
                 }
                 if (j > i + 1) {
                     if (snippet.substring(i + 1, j).equals("0") && !cursorSet) {
-                        out.append(' ');
+                        out.append('\0');
                         cursorSet = true;
                     }
                     i = j;

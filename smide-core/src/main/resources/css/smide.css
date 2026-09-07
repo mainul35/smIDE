@@ -52,7 +52,12 @@
     -fx-faint-focus-color: #0b6e7f22;
 }
 
-.root.dark-theme {
+/* Both selectors, because a popup is not a scene root. A Popup carries its own scene,
+   so the dark class goes on the panel inside it rather than on the root that .root
+   matches - and with only .root.dark-theme here the panel kept the light tokens and
+   came up white in a dark window. */
+.root.dark-theme,
+.dark-theme {
     -smide-paper: #0f1620;
     -smide-surface: #131c26;
     -smide-surface-alt: #16212d;
