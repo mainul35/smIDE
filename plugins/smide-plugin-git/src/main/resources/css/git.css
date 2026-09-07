@@ -1,0 +1,51 @@
+/*
+ * Diff colours. Only the tokens are named here; their values come from the application
+ * stylesheet, so a diff follows the light and dark themes with the rest of the window.
+ */
+.diff-area {
+    -fx-font-family: "Consolas", "Cascadia Mono", "Cascadia Code", monospace;
+    -fx-font-size: 12.5px;
+    -fx-background-color: -smide-paper;
+}
+
+.diff-area .text {
+    -fx-fill: -smide-text;
+}
+
+.diff-area .diff-add {
+    -fx-fill: -smide-success;
+}
+
+.diff-area .diff-remove {
+    -fx-fill: -smide-danger;
+}
+
+.diff-area .diff-hunk {
+    -fx-fill: -smide-accent;
+    -fx-font-weight: bold;
+}
+
+.diff-area .diff-meta {
+    -fx-fill: -smide-text-muted;
+}
+
+.diff-area .diff-context {
+    -fx-fill: -smide-text;
+}
+
+.git-commit-message {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12.5px;
+}
+
+.git-status-letter {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-weight: bold;
+    -fx-min-width: 14;
+}
+
+.git-area-header {
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -smide-text-muted;
+}

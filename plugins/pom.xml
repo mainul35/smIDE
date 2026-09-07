@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.smide</groupId>
+        <artifactId>smide-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>smide-plugins</artifactId>
+    <packaging>pom</packaging>
+    <name>smIDE Plugins</name>
+
+    <modules>
+        <module>smide-plugin-java</module>
+        <module>smide-plugin-markdown</module>
+        <module>smide-plugin-git</module>
+        <module>smide-plugin-terminal</module>
+        <module>smide-plugin-lang-kotlin</module>
+        <module>smide-plugin-lang-python</module>
+        <module>smide-plugin-lang-web</module>
+        <module>smide-plugin-lang-config</module>
+        <module>smide-plugin-lang-shell</module>
+        <module>smide-plugin-lang-sql</module>
+        <module>smide-plugin-lang-go</module>
+        <module>smide-plugin-lang-rust</module>
+        <module>smide-plugin-lang-cpp</module>
+        <module>smide-plugin-lang-csharp</module>
+        <module>smide-plugin-lang-docker</module>
+    </modules>
+
+    <!-- Every plugin compiles against the API and, for now, nothing else from the IDE. -->
+    <dependencies>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.kordamp.ikonli</groupId>
+            <artifactId>ikonli-javafx</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

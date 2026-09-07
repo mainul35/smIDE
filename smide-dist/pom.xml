@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.smide</groupId>
+        <artifactId>smide-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>smide-dist</artifactId>
+    <packaging>pom</packaging>
+    <name>smIDE Distribution</name>
+    <description>Runs the IDE from source with every bundled plugin on the class path, and assembles app/</description>
+
+    <properties>
+        <smide.debugLayout>false</smide.debugLayout>
+        <smide.open></smide.open>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-java</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-markdown</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-git</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-terminal</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-kotlin</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-python</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-web</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-config</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-shell</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-sql</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-go</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-rust</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-cpp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-csharp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-docker</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                mvn -pl smide-dist exec:exec
+
+                A separate JVM rather than exec:java: JavaFX wants to own the process it
+                starts in, and Maven's own class loader in the same JVM confuses it.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <configuration>
+                    <executable>java</executable>
+                    <arguments>
+                        <argument>-Dsmide.dev=true</argument>
+                        <argument>-Dsmide.debugLayout=${smide.debugLayout}</argument>
+                        <argument>-cp</argument>
+                        <classpath/>
+                        <argument>com.smide.Launcher</argument>
+                        <argument>${smide.open}</argument>
+                    </arguments>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

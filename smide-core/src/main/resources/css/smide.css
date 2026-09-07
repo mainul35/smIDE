@@ -1,0 +1,1086 @@
+/*
+ * smIDE stylesheet - the "drafting plate" palette from MDViewer, carried over so the two
+ * products read as one family. Colours are declared once as looked-up colours on .root
+ * and overridden wholesale by .dark-theme; every rule below names only those tokens.
+ */
+.root {
+    -fx-font-family: "Segoe UI Variable Text", "Segoe UI", "Inter", Arial, sans-serif;
+    -fx-font-size: 12.5px;
+
+    -smide-paper: #f6f8fa;
+    -smide-surface: #ffffff;
+    -smide-surface-alt: #eef2f6;
+    -smide-border: #dfe5ec;
+    -smide-text: #16202b;
+    -smide-text-muted: #5a6875;
+    -smide-accent: #0b6e7f;
+    -smide-accent-soft: #dceef1;
+    -smide-scroll-thumb: #aebbc9;
+    -smide-selection: #d5e5f2;
+    -smide-current-line: #eef3f7;
+    -smide-danger: #C0392B;
+    -smide-warning: #B7791F;
+    -smide-success: #2F855A;
+    -smide-search-hit: #FFC24B;
+
+    /* Editor tokens, light. */
+    -tok-keyword: #0b4f8a;
+    -tok-type: #1f6f8b;
+    -tok-string: #2a7a3b;
+    -tok-number: #b35c00;
+    -tok-comment: #7a8794;
+    -tok-doc: #5f7a68;
+    -tok-annotation: #8a5a00;
+    -tok-operator: #4a5560;
+    -tok-punct: #4a5560;
+    -tok-function: #6b3fa0;
+    -tok-variable: #16202b;
+    -tok-constant: #8a2a5a;
+    -tok-tag: #0b4f8a;
+    -tok-attribute: #8a5a00;
+    -tok-preproc: #7a4a9a;
+    -tok-escape: #b35c00;
+    -tok-regex: #2a7a3b;
+    -tok-heading: #0b4f8a;
+    -tok-link: #0b6e7f;
+    -tok-invalid: #C0392B;
+
+    -fx-focus-color: -smide-accent;
+    -fx-faint-focus-color: #0b6e7f22;
+}
+
+.root.dark-theme {
+    -smide-paper: #0f1620;
+    -smide-surface: #131c26;
+    -smide-surface-alt: #16212d;
+    -smide-border: #22303f;
+    -smide-text: #d7dee6;
+    -smide-text-muted: #8a9aaa;
+    -smide-accent: #3fb8cc;
+    -smide-accent-soft: #16323c;
+    -smide-scroll-thumb: #3d4f63;
+    -smide-selection: #243b52;
+    -smide-current-line: #141e29;
+    -smide-danger: #E06C5B;
+    -smide-warning: #D6A24A;
+    -smide-success: #5FBF8A;
+    -smide-search-hit: #C98A28;
+
+    -tok-keyword: #6fb3e0;
+    -tok-type: #7fd4e8;
+    -tok-string: #9ad08a;
+    -tok-number: #e8a860;
+    -tok-comment: #6f7f8f;
+    -tok-doc: #7f9c8a;
+    -tok-annotation: #d9b56a;
+    -tok-operator: #b8c4d0;
+    -tok-punct: #9aa8b6;
+    -tok-function: #c9a3ff;
+    -tok-variable: #d7dee6;
+    -tok-constant: #e59ac0;
+    -tok-tag: #6fb3e0;
+    -tok-attribute: #d9b56a;
+    -tok-preproc: #b58fd6;
+    -tok-escape: #e8a860;
+    -tok-regex: #9ad08a;
+    -tok-heading: #6fb3e0;
+    -tok-link: #3fb8cc;
+    -tok-invalid: #E06C5B;
+
+    -fx-base: #1b2632;
+    -fx-background: #0f1620;
+    -fx-control-inner-background: #131c26;
+    -fx-control-inner-background-alt: #16212d;
+    -fx-text-background-color: #d7dee6;
+    -fx-text-fill: #d7dee6;
+    -fx-accent: #14505c;
+    -fx-focus-color: #3fb8cc;
+    -fx-faint-focus-color: #3fb8cc22;
+}
+
+/* ------------------------------------------------------------------ chrome */
+
+.menu-bar {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 0 4 0 4;
+}
+
+.menu-bar > .container > .menu-button {
+    -fx-padding: 4 8 4 8;
+}
+
+.main-toolbar {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 3 8 3 8;
+    -fx-spacing: 2;
+}
+
+.main-toolbar .button,
+.main-toolbar .menu-button,
+.main-toolbar .toggle-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5;
+    -fx-padding: 4 7 4 7;
+    -fx-cursor: hand;
+}
+
+.main-toolbar .button:hover,
+.main-toolbar .menu-button:hover,
+.main-toolbar .toggle-button:hover {
+    -fx-background-color: -smide-accent-soft;
+}
+
+.main-toolbar .button:disabled {
+    -fx-opacity: 0.35;
+}
+
+.main-toolbar .separator:vertical .line {
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 0 0 1;
+}
+
+.run-config-chooser {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+    -fx-padding: 3 8 3 8;
+    -fx-min-width: 160;
+}
+
+.run-config-chooser .label {
+    -fx-text-fill: -smide-text;
+}
+
+.status-bar {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 3 10 3 10;
+    -fx-spacing: 14;
+}
+
+.status-bar .label,
+.status-bar .hyperlink {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11.5px;
+}
+
+.status-bar .hyperlink {
+    -fx-padding: 0 2 0 2;
+    -fx-border-width: 0;
+    -fx-underline: false;
+}
+
+.status-bar .hyperlink:hover {
+    -fx-text-fill: -smide-accent;
+}
+
+.status-widget {
+    -fx-padding: 0 4 0 4;
+    -fx-cursor: hand;
+    -fx-background-radius: 4;
+}
+
+.status-widget:hover {
+    -fx-background-color: -smide-accent-soft;
+}
+
+.status-progress .progress-bar {
+    -fx-pref-width: 120;
+    -fx-pref-height: 8;
+}
+
+.status-progress .progress-bar > .bar {
+    -fx-background-color: -smide-accent;
+    -fx-background-radius: 2;
+    -fx-padding: 0;
+}
+
+.status-progress .progress-bar > .track {
+    -fx-background-color: -smide-surface;
+    -fx-background-radius: 2;
+}
+
+.split-pane {
+    -fx-background-color: -smide-paper;
+    -fx-padding: 0;
+}
+
+.split-pane > .split-pane-divider {
+    -fx-background-color: -smide-border;
+    -fx-padding: 0 1 0 1;
+}
+
+.split-pane:vertical > .split-pane-divider {
+    -fx-padding: 1 0 1 0;
+}
+
+.ikonli-font-icon {
+    -fx-icon-color: -smide-text-muted;
+}
+
+.button .ikonli-font-icon,
+.menu-item .ikonli-font-icon {
+    -fx-icon-color: -smide-text;
+}
+
+/* ---------------------------------------------------------------- stripes */
+
+.tool-stripe {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-color: -smide-border;
+    -fx-min-width: 32;
+    -fx-pref-width: 32;
+    -fx-padding: 4 0 4 0;
+    -fx-spacing: 2;
+    -fx-alignment: top-center;
+}
+
+.tool-stripe-left {
+    -fx-border-width: 0 1 0 0;
+}
+
+.tool-stripe-right {
+    -fx-border-width: 0 0 0 1;
+}
+
+.stripe-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5;
+    -fx-padding: 5;
+    -fx-cursor: hand;
+    -fx-min-width: 26;
+    -fx-min-height: 26;
+}
+
+.stripe-button .ikonli-font-icon {
+    -fx-icon-color: -smide-text-muted;
+    -fx-icon-size: 16;
+}
+
+.stripe-button:hover {
+    -fx-background-color: -smide-surface;
+}
+
+.stripe-button:selected {
+    -fx-background-color: -smide-accent-soft;
+}
+
+.stripe-button:selected .ikonli-font-icon {
+    -fx-icon-color: -smide-accent;
+}
+
+/* ----------------------------------------------------------- tool windows */
+
+.tool-window {
+    -fx-background-color: -smide-surface-alt;
+}
+
+.tool-window-header {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 4 4 4 10;
+    -fx-min-height: 30;
+    -fx-spacing: 6;
+    -fx-alignment: center-left;
+}
+
+.tool-window-title {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -smide-text-muted;
+}
+
+.tool-window-header .button,
+.icon-button {
+    -fx-background-color: transparent;
+    -fx-padding: 3 5 3 5;
+    -fx-background-radius: 4;
+    -fx-cursor: hand;
+}
+
+.tool-window-header .button:hover,
+.icon-button:hover {
+    -fx-background-color: -smide-accent-soft;
+}
+
+.icon-button .ikonli-font-icon {
+    -fx-icon-size: 14;
+}
+
+.icon-button:hover .ikonli-font-icon {
+    -fx-icon-color: -smide-accent;
+}
+
+.tool-window-content {
+    -fx-background-color: -smide-surface-alt;
+}
+
+/* ------------------------------------------------------------------ trees */
+
+.tree-view,
+.list-view,
+.table-view {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-width: 0;
+    -fx-padding: 2 0 2 0;
+}
+
+.tree-view .tree-cell,
+.list-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -smide-text;
+    -fx-padding: 3 4 3 4;
+}
+
+.tree-view .tree-cell:hover,
+.list-view .list-cell:filled:hover {
+    -fx-background-color: -smide-accent-soft;
+}
+
+.tree-view .tree-cell:selected,
+.list-view .list-cell:filled:selected {
+    -fx-background-color: -smide-selection;
+    -fx-text-fill: -smide-text;
+}
+
+.tree-view:focused .tree-cell:selected,
+.list-view:focused .list-cell:filled:selected {
+    -fx-background-color: -smide-accent;
+    -fx-text-fill: white;
+}
+
+.tree-view:focused .tree-cell:selected .ikonli-font-icon,
+.list-view:focused .list-cell:filled:selected .ikonli-font-icon {
+    -fx-icon-color: white;
+}
+
+.tree-cell > .tree-disclosure-node > .arrow {
+    -fx-background-color: -smide-text-muted;
+}
+
+.tree-cell.workspace-root {
+    -fx-font-weight: bold;
+}
+
+.tree-cell.dimmed {
+    -fx-opacity: 0.55;
+}
+
+.tree-cell .ikonli-font-icon {
+    -fx-icon-size: 14;
+}
+
+.file-icon-folder {
+    -fx-icon-color: -smide-warning;
+}
+
+.file-icon-source {
+    -fx-icon-color: -smide-accent;
+}
+
+/* ------------------------------------------------ workspace / document tabs */
+
+.tab-pane {
+    -fx-tab-min-height: 26;
+    -fx-tab-max-height: 26;
+}
+
+.tab-pane > .tab-header-area {
+    -fx-padding: 0;
+}
+
+.tab-pane > .tab-header-area > .tab-header-background {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 0 1 0;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab {
+    -fx-background-color: transparent;
+    -fx-background-radius: 0;
+    -fx-background-insets: 0;
+    -fx-padding: 4 10 4 10;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab .tab-label {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 12px;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:selected .tab-label {
+    -fx-text-fill: -smide-text;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:selected .focus-indicator {
+    -fx-border-width: 0;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab .tab-close-button {
+    -fx-background-color: -smide-text-muted;
+    -fx-shape: "M 0,0 H1 L 4,3 7,0 H8 V1 L 5,4 8,7 V8 H7 L 4,5 1,8 H0 V7 L 3,4 0,1 Z";
+    -fx-scale-shape: false;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab .tab-close-button:hover {
+    -fx-background-color: -smide-danger;
+}
+
+/* Workspace tabs: an accent rule on top marks the selected workspace. */
+.workspace-tabs > .tab-header-area > .headers-region > .tab {
+    -fx-padding: 5 14 5 14;
+}
+
+.workspace-tabs > .tab-header-area > .headers-region > .tab:selected {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-accent transparent transparent transparent;
+    -fx-border-width: 2 0 0 0;
+}
+
+.workspace-tabs > .tab-header-area > .headers-region > .tab:selected .tab-label {
+    -fx-font-weight: bold;
+}
+
+/* Document tabs: an accent rule underneath, like an editor tab strip. */
+.document-tabs > .tab-header-area > .tab-header-background {
+    -fx-background-color: -smide-surface;
+}
+
+.document-tabs > .tab-header-area > .headers-region > .tab {
+    -fx-padding: 3 10 3 10;
+}
+
+.document-tabs > .tab-header-area > .headers-region > .tab:selected {
+    -fx-background-color: -smide-paper;
+    -fx-border-color: transparent transparent -smide-accent transparent;
+    -fx-border-width: 0 0 2 0;
+}
+
+.document-tabs > .tab-header-area > .headers-region > .tab .tab-label {
+    -fx-font-size: 11.5px;
+}
+
+.document-tabs .tab-label .ikonli-font-icon {
+    -fx-icon-size: 13;
+}
+
+.tab-modified .tab-label {
+    -fx-font-style: italic;
+}
+
+/* ------------------------------------------------------------------ editor */
+
+.code-editor {
+    -fx-background-color: -smide-paper;
+}
+
+.code-area {
+    -fx-font-family: "Consolas", "Cascadia Mono", "Cascadia Code", "JetBrains Mono", monospace;
+    -fx-font-size: 13.5px;
+    -fx-background-color: -smide-paper;
+}
+
+.code-area .text {
+    -fx-fill: -smide-text;
+}
+
+.code-area .caret {
+    -fx-stroke: -smide-text;
+    -fx-stroke-width: 1.5;
+}
+
+.code-area .selection {
+    -fx-fill: -smide-selection;
+}
+
+.code-area .lineno {
+    -fx-background-color: -smide-paper;
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-family: "Consolas", "Cascadia Mono", "Cascadia Code", monospace;
+    -fx-font-size: 12px;
+    -fx-padding: 0 10 0 10;
+    -fx-opacity: 0.8;
+}
+
+.gutter {
+    -fx-background-color: -smide-paper;
+    -fx-cursor: hand;
+}
+
+/* A faint rule between the gutter and the code, so the clickable strip has an edge. */
+.gutter .lineno {
+    -fx-border-color: transparent -smide-border transparent transparent;
+    -fx-border-width: 0 1 0 0;
+}
+
+.gutter-executing {
+    -fx-background-color: -smide-accent-soft;
+}
+
+.breakpoint-column {
+    -fx-cursor: hand;
+    -fx-padding: 0 1 0 2;
+}
+
+.breakpoint-dot {
+    -fx-fill: -smide-danger;
+}
+
+.breakpoint-dot-disabled {
+    -fx-fill: transparent;
+    -fx-stroke: -smide-danger;
+    -fx-stroke-width: 1.4;
+}
+
+/* Only under the pointer: the column has to look clickable without adding clutter to
+   every line of every file. */
+.breakpoint-ghost {
+    -fx-fill: -smide-danger;
+    -fx-opacity: 0.32;
+}
+
+.execution-arrow {
+    -fx-fill: -smide-accent;
+    -fx-stroke: -smide-accent;
+}
+
+.debug-frames .list-cell, .debug-variables .tree-cell {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.debug-value {
+    -fx-text-fill: -smide-accent;
+}
+
+.debug-type {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+}
+
+.code-area .paragraph-box:has-caret {
+    -fx-background-color: -smide-current-line;
+}
+
+.code-area .tok-keyword { -fx-fill: -tok-keyword; -fx-font-weight: bold; }
+.code-area .tok-type { -fx-fill: -tok-type; }
+.code-area .tok-string { -fx-fill: -tok-string; }
+.code-area .tok-number { -fx-fill: -tok-number; }
+.code-area .tok-comment { -fx-fill: -tok-comment; -fx-font-style: italic; }
+.code-area .tok-doc-comment { -fx-fill: -tok-doc; -fx-font-style: italic; }
+.code-area .tok-annotation { -fx-fill: -tok-annotation; }
+.code-area .tok-operator { -fx-fill: -tok-operator; }
+.code-area .tok-punctuation { -fx-fill: -tok-punct; }
+.code-area .tok-function { -fx-fill: -tok-function; }
+.code-area .tok-variable { -fx-fill: -tok-variable; }
+.code-area .tok-constant { -fx-fill: -tok-constant; }
+.code-area .tok-tag { -fx-fill: -tok-tag; }
+.code-area .tok-attribute { -fx-fill: -tok-attribute; }
+.code-area .tok-preprocessor { -fx-fill: -tok-preproc; }
+.code-area .tok-escape { -fx-fill: -tok-escape; }
+.code-area .tok-regex { -fx-fill: -tok-regex; }
+.code-area .tok-heading { -fx-fill: -tok-heading; -fx-font-weight: bold; }
+.code-area .tok-bold { -fx-font-weight: bold; }
+.code-area .tok-italic { -fx-font-style: italic; }
+.code-area .tok-link { -fx-fill: -tok-link; -fx-underline: true; }
+.code-area .tok-code { -fx-fill: -tok-string; }
+.code-area .tok-invalid { -fx-fill: -tok-invalid; }
+.code-area .tok-text { -fx-fill: -smide-text; }
+
+.code-area .diag-error { -fx-underline: true; -fx-fill: -smide-danger; }
+.code-area .diag-warning { -fx-underline: true; }
+.code-area .diag-info { -fx-underline: true; -fx-opacity: 0.9; }
+.code-area .search-hit { -fx-fill: -smide-search-hit; -fx-font-weight: bold; }
+.code-area .bracket-match { -fx-underline: true; -fx-font-weight: bold; }
+
+/* ---------------------------------------------------------------- find bar */
+
+.find-bar {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 5 8 5 8;
+    -fx-spacing: 5;
+    -fx-alignment: center-left;
+}
+
+.find-bar .label {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+}
+
+.find-bar .text-field {
+    -fx-font-family: "Consolas", "Cascadia Mono", "Cascadia Code", monospace;
+    -fx-font-size: 12px;
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-padding: 3 8 3 8;
+    -fx-pref-width: 220;
+}
+
+.find-bar .text-field:focused {
+    -fx-border-color: -smide-accent;
+}
+
+.find-bar .toggle-button {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 3 7 3 7;
+    -fx-background-radius: 5;
+    -fx-cursor: hand;
+}
+
+.find-bar .toggle-button:selected {
+    -fx-background-color: -smide-accent;
+    -fx-text-fill: white;
+}
+
+.find-bar .button {
+    -fx-background-radius: 5;
+    -fx-cursor: hand;
+    -fx-font-size: 11.5px;
+    -fx-padding: 3 8 3 8;
+}
+
+/* -------------------------------------------------------------- scrollbars */
+
+.scroll-bar {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar:vertical {
+    -fx-pref-width: 12;
+}
+
+.scroll-bar:horizontal {
+    -fx-pref-height: 12;
+}
+
+.scroll-bar > .track,
+.scroll-bar > .track-background {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.scroll-bar > .thumb {
+    -fx-background-color: -smide-scroll-thumb;
+    -fx-background-radius: 6;
+    -fx-background-insets: 3;
+}
+
+.scroll-bar > .thumb:hover,
+.scroll-bar > .thumb:pressed {
+    -fx-background-color: -smide-accent;
+}
+
+.scroll-bar > .increment-button,
+.scroll-bar > .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.scroll-bar > .increment-button > .increment-arrow,
+.scroll-bar > .decrement-button > .decrement-arrow {
+    -fx-shape: " ";
+    -fx-padding: 0;
+}
+
+.scroll-pane,
+.scroll-pane > .viewport {
+    -fx-background-color: transparent;
+}
+
+.scroll-pane > .corner {
+    -fx-background-color: transparent;
+}
+
+/* ----------------------------------------------------------------- welcome */
+
+.welcome {
+    -fx-background-color: -smide-paper;
+}
+
+.welcome-card {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-padding: 32 34 30 34;
+    -fx-effect: dropshadow(gaussian, rgba(22, 32, 43, 0.10), 26, 0, 0, 8);
+}
+
+.welcome-title {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -smide-text;
+}
+
+.welcome-subtitle {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -smide-text-muted;
+}
+
+.welcome-section {
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -smide-text-muted;
+}
+
+.welcome-action,
+.welcome-recent-name {
+    -fx-text-fill: -smide-accent;
+    -fx-border-width: 0;
+    -fx-padding: 2 0 2 0;
+    -fx-underline: false;
+}
+
+.welcome-action {
+    -fx-font-size: 14px;
+}
+
+.welcome-action:hover,
+.welcome-recent-name:hover {
+    -fx-underline: true;
+}
+
+.welcome-action:visited,
+.welcome-recent-name:visited {
+    -fx-text-fill: -smide-accent;
+}
+
+.welcome-shortcut {
+    -fx-font-size: 11px;
+    -fx-text-fill: -smide-text-muted;
+}
+
+.welcome-recent-path {
+    -fx-font-size: 11px;
+    -fx-text-fill: -smide-text-muted;
+}
+
+/* ---------------------------------------------------------------- console */
+
+.console-area {
+    -fx-font-family: "Consolas", "Cascadia Mono", "Cascadia Code", monospace;
+    -fx-font-size: 12.5px;
+    -fx-background-color: -smide-paper;
+}
+
+.console-area .text {
+    -fx-fill: -smide-text;
+}
+
+.console-area .ansi-black { -fx-fill: -smide-text; }
+.console-area .ansi-red { -fx-fill: #c0392b; }
+.console-area .ansi-green { -fx-fill: #2f855a; }
+.console-area .ansi-yellow { -fx-fill: #b7791f; }
+.console-area .ansi-blue { -fx-fill: #2b6cb0; }
+.console-area .ansi-magenta { -fx-fill: #8a2a8a; }
+.console-area .ansi-cyan { -fx-fill: #0b6e7f; }
+.console-area .ansi-white { -fx-fill: -smide-text-muted; }
+.console-area .ansi-bold { -fx-font-weight: bold; }
+.console-area .console-system { -fx-fill: -smide-text-muted; -fx-font-style: italic; }
+.console-area .console-error { -fx-fill: -smide-danger; }
+.console-area .console-link { -fx-fill: -smide-accent; -fx-underline: true; }
+
+.dark-theme .console-area .ansi-red { -fx-fill: #ff7b6b; }
+.dark-theme .console-area .ansi-green { -fx-fill: #7fd08a; }
+.dark-theme .console-area .ansi-yellow { -fx-fill: #e5c07b; }
+.dark-theme .console-area .ansi-blue { -fx-fill: #7fb3ff; }
+.dark-theme .console-area .ansi-magenta { -fx-fill: #d39ae0; }
+.dark-theme .console-area .ansi-cyan { -fx-fill: #5fd4e8; }
+
+.console-toolbar {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 1 0 0;
+    -fx-padding: 4 2 4 2;
+    -fx-spacing: 2;
+    -fx-alignment: top-center;
+}
+
+.console-input {
+    -fx-font-family: "Consolas", "Cascadia Mono", "Cascadia Code", monospace;
+    -fx-font-size: 12px;
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* ----------------------------------------------------------- notifications */
+
+.notification-stack {
+    -fx-padding: 12;
+    -fx-spacing: 8;
+    -fx-alignment: top-right;
+}
+
+.notification {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 10 12 10 12;
+    -fx-spacing: 4;
+    -fx-max-width: 380;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.22), 18, 0, 0, 6);
+}
+
+.notification-title {
+    -fx-font-weight: bold;
+    -fx-text-fill: -smide-text;
+}
+
+.notification-message {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11.5px;
+    -fx-wrap-text: true;
+}
+
+.notification-error .notification-title {
+    -fx-text-fill: -smide-danger;
+}
+
+.notification-warning .notification-title {
+    -fx-text-fill: -smide-warning;
+}
+
+.notification .hyperlink {
+    -fx-text-fill: -smide-accent;
+    -fx-padding: 0 8 0 0;
+    -fx-border-width: 0;
+}
+
+/* ------------------------------------------------------------------ popups */
+
+.popup-panel {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.28), 22, 0, 0, 8);
+    -fx-padding: 8;
+}
+
+.popup-field {
+    -fx-font-size: 14px;
+    -fx-background-color: -smide-paper;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 6 10 6 10;
+}
+
+.popup-field:focused {
+    -fx-border-color: -smide-accent;
+}
+
+.popup-hint {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+}
+
+.popup-list {
+    -fx-background-color: -smide-surface;
+    -fx-pref-height: 320;
+}
+
+.popup-list .list-cell {
+    -fx-padding: 4 8 4 8;
+}
+
+.popup-item-secondary {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+}
+
+.popup-item-shortcut {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 10.5px;
+}
+
+.popup-tabs .toggle-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5;
+    -fx-padding: 3 10 3 10;
+    -fx-text-fill: -smide-text-muted;
+    -fx-cursor: hand;
+}
+
+.popup-tabs .toggle-button:selected {
+    -fx-background-color: -smide-accent-soft;
+    -fx-text-fill: -smide-accent;
+}
+
+.completion-item-detail {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+}
+
+.doc-popup {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 8 10 8 10;
+    -fx-max-width: 520;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.22), 14, 0, 0, 4);
+}
+
+.doc-popup-scroll,
+.doc-popup-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.doc-popup .label {
+    -fx-text-fill: -smide-text;
+    -fx-wrap-text: true;
+}
+
+.doc-popup .code {
+    -fx-font-family: "Consolas", "Cascadia Mono", "Cascadia Code", monospace;
+    -fx-font-size: 12px;
+}
+
+/* -------------------------------------------------------------- settings */
+
+.settings-tree {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 1 0 0;
+}
+
+.settings-page {
+    -fx-background-color: -smide-paper;
+    -fx-padding: 16 20 16 20;
+    -fx-spacing: 10;
+}
+
+.settings-heading {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -smide-text;
+}
+
+.settings-section {
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -smide-text-muted;
+    -fx-padding: 8 0 0 0;
+}
+
+.settings-page .label {
+    -fx-text-fill: -smide-text;
+}
+
+.settings-note {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+    -fx-wrap-text: true;
+}
+
+.dialog-pane {
+    -fx-background-color: -smide-paper;
+}
+
+.dialog-pane .label {
+    -fx-text-fill: -smide-text;
+}
+
+.dialog-pane .button {
+    -fx-background-radius: 5;
+}
+
+.dialog-pane .header-panel {
+    -fx-background-color: -smide-surface;
+}
+
+/* ------------------------------------------------------------ problems */
+
+.severity-error .ikonli-font-icon { -fx-icon-color: -smide-danger; }
+.severity-warning .ikonli-font-icon { -fx-icon-color: -smide-warning; }
+.severity-info .ikonli-font-icon { -fx-icon-color: -smide-accent; }
+
+.muted {
+    -fx-text-fill: -smide-text-muted;
+}
+
+.muted-small {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+}
+
+.empty-hint {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 12px;
+    -fx-padding: 20;
+}
+
+.context-menu,
+.menu-bar .context-menu {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 4;
+}
+
+.menu-item {
+    -fx-padding: 4 14 4 8;
+    -fx-background-radius: 4;
+}
+
+.menu-item .label {
+    -fx-text-fill: -smide-text;
+}
+
+.menu-item:focused {
+    -fx-background-color: -smide-accent-soft;
+}
+
+.menu-item:focused .label {
+    -fx-text-fill: -smide-text;
+}
+
+.menu-item .accelerator-text {
+    -fx-text-fill: -smide-text-muted;
+}
+
+.text-field,
+.text-area,
+.combo-box,
+.choice-box,
+.spinner {
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+}
+
+.check-box .box {
+    -fx-background-radius: 3;
+}
+
+.tooltip {
+    -fx-background-color: -smide-surface;
+    -fx-text-fill: -smide-text;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+    -fx-font-size: 11.5px;
+    -fx-padding: 5 8 5 8;
+}

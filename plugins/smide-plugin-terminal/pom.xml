@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.smide</groupId>
+        <artifactId>smide-plugins</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>smide-plugin-terminal</artifactId>
+    <name>smIDE Terminal Plugin</name>
+    <description>An integrated terminal: a real pseudo-terminal (pty4j) rendered by JetBrains' JediTerm emulator</description>
+
+    <!-- JediTerm is not on Maven Central; JetBrains publishes it on their own repository. -->
+    <repositories>
+        <repository>
+            <id>intellij-dependencies</id>
+            <url>https://packages.jetbrains.team/maven/p/ij/intellij-dependencies</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!-- Pseudo-terminal: ConPTY on Windows, forkpty on Unix. Bundles its natives and JNA. -->
+        <dependency>
+            <groupId>org.jetbrains.pty4j</groupId>
+            <artifactId>pty4j</artifactId>
+            <version>0.13.4</version>
+        </dependency>
+
+        <!-- The terminal emulator: the model (core) and the Swing widget (ui). jediterm-ui only
+             declares jediterm-core at runtime scope, so it is listed explicitly for compilation. -->
+        <dependency>
+            <groupId>org.jetbrains.jediterm</groupId>
+            <artifactId>jediterm-core</artifactId>
+            <version>3.47</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains.jediterm</groupId>
+            <artifactId>jediterm-ui</artifactId>
+            <version>3.47</version>
+        </dependency>
+
+        <!-- SwingNode, to host the Swing widget inside the JavaFX scene. The rest of JavaFX
+             comes from the core, so it is excluded here rather than bundled twice. -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+            <version>21</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-graphics</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>javafx-base</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+</project>
