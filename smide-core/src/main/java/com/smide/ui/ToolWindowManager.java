@@ -68,6 +68,8 @@ public final class ToolWindowManager implements ToolWindows {
     private final SplitPane vertical = new SplitPane();
     private final Node center;
     private final HBox root = new HBox();
+    /** The tool window currently being shown, so a nested request can be ignored. */
+    private String showing;
 
     public ToolWindowManager(ExtensionRegistry registry, Node center) {
         this.registry = registry;
@@ -148,6 +150,14 @@ public final class ToolWindowManager implements ToolWindows {
         if (entry == null) {
             return;
         }
+        /* A tool window may ask to be shown while it is still being built - the terminal
+           opens its first session in create(), and the tab that appears asks the window
+           to come forward. That request arrives inside a list-change notification, where
+           JavaFX refuses any further change to the scene graph, and the call is redundant
+           anyway: the outer show() is about to do exactly this. */
+        if (id.equals(showing)) {
+            return;
+        }
         ToolWindowAnchor anchor = entry.factory.anchor();
         String current = visible.get(anchor);
         if (id.equals(current)) {
@@ -155,25 +165,47 @@ public final class ToolWindowManager implements ToolWindows {
             focus(entry);
             return;
         }
-        if (current != null) {
-            hide(current);
+        showing = id;
+        try {
+            if (current != null) {
+                hide(current);
+            }
+            if (entry.content == null) {
+                entry.content = create(entry, anchor);
+            }
+            entry.panel.setTop(header(entry));
+            entry.panel.setCenter(entry.content);
+            entry.panel.setMinWidth(160);
+            entry.panel.setMinHeight(80);
+            attach(anchor, entry.panel);
+            visible.put(anchor, id);
+            entry.button.setSelected(true);
+        } finally {
+            showing = null;
         }
-        if (entry.content == null) {
-            entry.content = create(entry, anchor);
-        }
-        entry.panel.setTop(header(entry));
-        entry.panel.setCenter(entry.content);
-        entry.panel.setMinWidth(160);
-        entry.panel.setMinHeight(80);
-        attach(anchor, entry.panel);
-        visible.put(anchor, id);
-        entry.button.setSelected(true);
         focus(entry);
     }
 
     private Node create(Entry entry, ToolWindowAnchor anchor) {
         String id = entry.factory.id();
-        Node content = entry.factory.create(new ToolWindowFactory.ToolWindowContext() {
+        Node content;
+        try {
+            content = build(entry, anchor);
+        } catch (RuntimeException e) {
+            System.err.println("smIDE: tool window " + id + " failed to open: " + e);
+            e.printStackTrace();
+            Label failed = new Label(entry.factory.title() + " could not open: " + e);
+            failed.getStyleClass().add("empty-hint");
+            failed.setWrapText(true);
+            content = failed;
+        }
+        content.getStyleClass().add("tool-window-content");
+        return content;
+    }
+
+    private Node build(Entry entry, ToolWindowAnchor anchor) {
+        String id = entry.factory.id();
+        return entry.factory.create(new ToolWindowFactory.ToolWindowContext() {
             @Override
             public void setTitle(String title) {
                 entry.title = title;
@@ -192,8 +224,6 @@ public final class ToolWindowManager implements ToolWindows {
                 ToolWindowManager.this.hide(id);
             }
         });
-        content.getStyleClass().add("tool-window-content");
-        return content;
     }
 
     private static void focus(Entry entry) {

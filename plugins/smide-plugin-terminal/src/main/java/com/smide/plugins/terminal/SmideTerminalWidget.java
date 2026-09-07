@@ -7,7 +7,18 @@ import com.jediterm.terminal.ui.JediTermWidget;
 import com.jediterm.terminal.ui.TerminalPanel;
 import com.jediterm.terminal.ui.settings.SettingsProvider;
 
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JScrollBar;
+import javax.swing.plaf.basic.BasicScrollBarUI;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
 
 /**
  * {@link JediTermWidget} with two things the stock widget keeps to itself: the style
@@ -57,6 +68,90 @@ final class SmideTerminalWidget extends JediTermWidget {
         setBackground(awt);
         setOpaque(true);
         getTerminalPanel().setBackground(awt);
+        styleScrollBars(this, awt);
+    }
+
+    /**
+     * Makes JediTerm's Swing scrollbar look like the JavaFX ones around it.
+     *
+     * <p>Everything else in the window scrolls with a slim, buttonless bar; the terminal
+     * is Swing, so it arrived with the platform's chunky one, complete with arrow buttons
+     * and a light track that stood out against a dark terminal. Same colours, same width,
+     * no buttons.
+     */
+    private void styleScrollBars(Container container, Color background) {
+        for (Component child : container.getComponents()) {
+            if (child instanceof JScrollBar bar) {
+                ThemedSettingsProvider provider = (ThemedSettingsProvider) mySettingsProvider;
+                Color thumb = provider.awt("scroll-thumb", 0xae, 0xbb, 0xc9);
+                Color hover = provider.awt("accent", 0x0b, 0x6e, 0x7f);
+                bar.setUI(new SlimScrollBarUI(thumb, hover, background));
+                bar.setPreferredSize(new Dimension(SCROLLBAR_WIDTH, bar.getPreferredSize().height));
+                bar.setUnitIncrement(16);
+                bar.setBorder(null);
+                bar.setOpaque(true);
+                bar.setBackground(background);
+            } else if (child instanceof Container nested) {
+                styleScrollBars(nested, background);
+            }
+        }
+    }
+
+    private static final int SCROLLBAR_WIDTH = 12;
+
+    /** A track that is just the background and a rounded thumb, with no arrow buttons. */
+    private static final class SlimScrollBarUI extends BasicScrollBarUI {
+
+        private final Color thumb;
+        private final Color hover;
+        private final Color track;
+
+        SlimScrollBarUI(Color thumb, Color hover, Color track) {
+            this.thumb = thumb;
+            this.hover = hover;
+            this.track = track;
+        }
+
+        @Override
+        protected JButton createDecreaseButton(int orientation) {
+            return zeroSized();
+        }
+
+        @Override
+        protected JButton createIncreaseButton(int orientation) {
+            return zeroSized();
+        }
+
+        /** BasicScrollBarUI insists on a button; one with no size is how you get none. */
+        private static JButton zeroSized() {
+            JButton button = new JButton();
+            Dimension none = new Dimension(0, 0);
+            button.setPreferredSize(none);
+            button.setMinimumSize(none);
+            button.setMaximumSize(none);
+            button.setBorder(null);
+            return button;
+        }
+
+        @Override
+        protected void paintTrack(Graphics g, JComponent c, Rectangle bounds) {
+            g.setColor(track);
+            g.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+
+        @Override
+        protected void paintThumb(Graphics g, JComponent c, Rectangle bounds) {
+            if (bounds.isEmpty() || !scrollbar.isEnabled()) {
+                return;
+            }
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(isThumbRollover() || isDragging ? hover : thumb);
+            int inset = 3;
+            int width = Math.max(1, bounds.width - inset * 2);
+            g2.fillRoundRect(bounds.x + inset, bounds.y + 2, width, Math.max(8, bounds.height - 4), width, width);
+            g2.dispose();
+        }
     }
 
     /** Exposes the protected font re-initialisation. */

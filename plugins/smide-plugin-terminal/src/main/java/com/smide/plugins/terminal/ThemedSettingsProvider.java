@@ -105,6 +105,19 @@ final class ThemedSettingsProvider extends DefaultSettingsProvider {
         return 10_000;
     }
 
+    /** A theme token as an AWT colour, for the Swing parts of the widget. */
+    java.awt.Color awt(String token, int r, int g, int b) {
+        try {
+            javafx.scene.paint.Color c = javafx.scene.paint.Color.web(ide.theme().color(token));
+            return new java.awt.Color(
+                    (int) Math.round(c.getRed() * 255),
+                    (int) Math.round(c.getGreen() * 255),
+                    (int) Math.round(c.getBlue() * 255));
+        } catch (RuntimeException e) {
+            return new java.awt.Color(r, g, b);
+        }
+    }
+
     /** Parses a theme token such as {@code #16202b} into a terminal colour, with a fallback. */
     private TerminalColor color(String token, int r, int g, int b) {
         try {
