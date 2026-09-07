@@ -264,6 +264,7 @@ public final class ToolWindowManager implements ToolWindows {
                 index = 0;
             }
         }
+        com.smide.api.ui.Splits.grabbable(split);
         setDivider(split, index, dividers.get(anchor));
     }
 

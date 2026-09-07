@@ -91,6 +91,9 @@ dialogs, `runLater`, `runInBackground`).
   `InstallRecipe` and the core offers it. Install into `ide.downloads().toolsDir()`.
 - Never block the JavaFX thread on a process or the network: use
   `ide.window().runInBackground(...)` and come back with `runLater`.
+- Call `Splits.grabbable(pane)` on every `SplitPane` you build. A split pane created
+  after the window is up gets no divider padding of its own, and a divider with none is
+  zero pixels thick: invisible, and impossible to drag.
 - Stylesheet tokens for custom nodes: `-smide-paper`, `-smide-surface`,
   `-smide-surface-alt`, `-smide-border`, `-smide-text`, `-smide-text-muted`,
   `-smide-accent`, `-smide-accent-soft`, `-smide-danger`, `-smide-warning`,

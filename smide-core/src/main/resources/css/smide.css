@@ -218,13 +218,25 @@
     -fx-padding: 0;
 }
 
+/* Six pixels of divider to aim at, one pixel of line to look at.
+
+   The padding is the grab area and has to be on all four sides: a split pane takes a
+   divider's thickness from its width whichever way round the divider runs, so padding
+   written only top and bottom leaves the bar of a vertical split zero pixels high -
+   there, but invisible and impossible to drag. The insets then shrink what is painted
+   down to a hairline along the divider's own axis. */
 .split-pane > .split-pane-divider {
     -fx-background-color: -smide-border;
-    -fx-padding: 0 1 0 1;
+    -fx-padding: 3;
+    -fx-background-insets: 2.5 0 2.5 0;
 }
 
-.split-pane:vertical > .split-pane-divider {
-    -fx-padding: 1 0 1 0;
+.split-pane:horizontal > .split-pane-divider {
+    -fx-background-insets: 0 2.5 0 2.5;
+}
+
+.split-pane > .split-pane-divider:hover {
+    -fx-background-color: -smide-accent;
 }
 
 .ikonli-font-icon {

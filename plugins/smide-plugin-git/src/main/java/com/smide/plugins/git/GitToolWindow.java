@@ -1,11 +1,13 @@
 package com.smide.plugins.git;
 
 import com.smide.api.Ide;
+import com.smide.api.ui.Splits;
 import com.smide.api.ui.ToolWindowAnchor;
 import com.smide.api.ui.ToolWindowFactory;
 import com.smide.api.util.Events;
 import com.smide.api.workspace.Workspace;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -117,11 +119,22 @@ public final class GitToolWindow implements ToolWindowFactory {
         VBox commitBox = new VBox(6, message, buttons);
         commitBox.setPadding(new Insets(6));
 
-        BorderPane left = new BorderPane(changes);
+        // A split rather than a BorderPane bottom: the tool window is short, and a
+        // BorderPane hands the commit box its preferred height and leaves the file
+        // list with whatever is left - which, at this height, is nothing.
+        changes.setMinHeight(50);
+        commitBox.setMinHeight(64);
+        message.setMinHeight(30);
+        SplitPane leftSplit = new SplitPane(changes, commitBox);
+        leftSplit.setOrientation(Orientation.VERTICAL);
+        leftSplit.setDividerPositions(0.58);
+        SplitPane.setResizableWithParent(commitBox, false);
+        BorderPane left = new BorderPane(leftSplit);
         left.setTop(changesToolbar());
-        left.setBottom(commitBox);
         SplitPane split = new SplitPane(left, changesDiff);
         split.setDividerPositions(0.42);
+        Splits.grabbable(leftSplit);
+        Splits.grabbable(split);
 
         noRepo.getStyleClass().add("empty-hint");
         initButton.setOnAction(e -> ide.workspaces().active().ifPresent(w ->
@@ -413,13 +426,17 @@ public final class GitToolWindow implements ToolWindowFactory {
         this.context = context;
         if (root == null) {
             Tab changesTab = new Tab("Changes", changesPane);
-            SplitPane logSplit = new SplitPane(commits, new BorderPane(logDiff) {
-                {
-                    setTop(commitFiles);
-                    commitFiles.setPrefHeight(120);
-                }
-            });
+            // Same reason as the Changes tab: the diff has to keep a share of the
+            // height instead of being squeezed out by the file list above it.
+            commitFiles.setMinHeight(50);
+            logDiff.setMinHeight(50);
+            SplitPane filesAndDiff = new SplitPane(commitFiles, logDiff);
+            filesAndDiff.setOrientation(Orientation.VERTICAL);
+            filesAndDiff.setDividerPositions(0.45);
+            SplitPane logSplit = new SplitPane(commits, filesAndDiff);
             logSplit.setDividerPositions(0.4);
+            Splits.grabbable(filesAndDiff);
+            Splits.grabbable(logSplit);
             BorderPane logPane = new BorderPane(logSplit);
             HBox logBar = new HBox(6, new Label("Branch"), branchChooser, new Region(),
                     icon("fth-refresh-cw", "Refresh", this::refresh));
