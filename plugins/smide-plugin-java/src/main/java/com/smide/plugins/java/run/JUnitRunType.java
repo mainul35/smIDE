@@ -98,6 +98,7 @@ public final class JUnitRunType implements RunConfigurationType {
             String testClass = get("testClass", "");
             String method = get("method", "");
             List<String> cmd;
+            MavenLayout maven = null;
             if (info != null && info.isGradle()) {
                 cmd = JavaTools.gradle(ide, workspace.root());
                 cmd.add("test");
@@ -106,13 +107,9 @@ public final class JUnitRunType implements RunConfigurationType {
                     cmd.add(method.isBlank() ? testClass : testClass + "." + method);
                 }
             } else {
-                cmd = JavaTools.maven(ide, workspace.root());
+                maven = MavenLayout.of(workspace.root(), moduleDir());
+                cmd = maven.command(ide);
                 cmd.add("-B");
-                if (!moduleDir().equals(workspace.root())) {
-                    cmd.add("-pl");
-                    cmd.add(Forms.relative(workspace.root(), moduleDir()).replace('\\', '/'));
-                    cmd.add("-am");
-                }
                 cmd.add("test");
                 if (!testClass.isBlank()) {
                     cmd.add("-Dtest=" + testClass + (method.isBlank() ? "" : "#" + method));
@@ -120,7 +117,7 @@ public final class JUnitRunType implements RunConfigurationType {
                 }
             }
             cmd.addAll(Forms.splitArgs(get("extra", "")));
-            return new ProcessSpec(name(), cmd, workspace.root());
+            return new ProcessSpec(name(), cmd, maven == null ? workspace.root() : maven.directory());
         }
     }
 }

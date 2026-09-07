@@ -31,26 +31,47 @@ public final class MavenBuild {
      */
     public static String compileAndClasspath(Ide ide, Path root, Path moduleDir, boolean skipCompile)
             throws IOException, InterruptedException {
-        List<String> cmd = JavaTools.maven(ide, root);
+        MavenLayout layout = MavenLayout.of(root, moduleDir);
+        List<String> cmd = layout.command(ide);
         cmd.add("-q");
         cmd.add("-B");
-        if (!moduleDir.equals(root)) {
-            cmd.add("-pl");
-            cmd.add(Forms.relative(root, moduleDir).replace('\\', '/'));
-            cmd.add("-am");
-        }
         if (!skipCompile) {
             cmd.add("compile");
         }
         cmd.add("dependency:build-classpath");
         cmd.add("-Dmdep.outputFile=" + CLASSPATH_FILE);
         cmd.add("-Dmdep.includeScope=runtime");
-        run(ide, cmd, root, "Building " + moduleDir.getFileName());
+        run(ide, cmd, layout.directory(), "Building " + moduleDir.getFileName());
         Path file = moduleDir.resolve(CLASSPATH_FILE);
         String deps = Files.exists(file) ? Files.readString(file, StandardCharsets.UTF_8).strip() : "";
         String classes = moduleDir.resolve("target/classes").toString();
         return deps.isEmpty() ? classes : classes + java.io.File.pathSeparator + deps;
     }
+
+    /**
+     * The line worth putting in front of the user.
+     *
+     * <p>A compile error names a source file, so that wins. Otherwise it is Maven's own
+     * complaint - "Could not find the selected project in the reactor", a missing plugin,
+     * a dependency that will not resolve - which is the first ERROR line that is not one
+     * of the boilerplate lines Maven prints after every failure. Taking the last line
+     * instead, as this used to, left the user reading a link to the Maven wiki.
+     */
+    private static String reason(List<String> tail) {
+        List<String> errors = tail.stream()
+                .map(String::strip)
+                .filter(l -> l.startsWith("[ERROR]"))
+                .map(l -> l.substring("[ERROR]".length()).strip())
+                .filter(l -> !l.isEmpty() && BOILERPLATE.stream().noneMatch(l::startsWith))
+                .toList();
+        return errors.stream().filter(l -> l.contains(".java")).findFirst()
+                .or(() -> errors.stream().findFirst())
+                .orElseGet(() -> tail.isEmpty() ? "" : tail.get(tail.size() - 1).strip());
+    }
+
+    private static final List<String> BOILERPLATE = List.of(
+            "To see the full stack trace", "Re-run Maven", "For more information about the errors",
+            "[Help", "After correcting the problems");
 
     /** Runs a Maven command to completion, reporting lines to the status bar; throws on failure. */
     public static void run(Ide ide, List<String> cmd, Path cwd, String title) throws IOException, InterruptedException {
@@ -76,11 +97,7 @@ public final class MavenBuild {
                    The whole tail went into a notification balloon that covered the
                    editor; the lines are on standard error for the full story. */
                 tail.forEach(System.err::println);
-                String first = tail.stream()
-                        .filter(l -> l.contains("ERROR") && l.contains(".java"))
-                        .findFirst()
-                        .orElseGet(() -> tail.isEmpty() ? "" : tail.get(tail.size() - 1));
-                throw new IOException("Maven exited with " + code + "\n" + first.strip());
+                throw new IOException("Maven exited with " + code + "\n" + reason(tail));
             }
         } finally {
             progress.done();

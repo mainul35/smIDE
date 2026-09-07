@@ -175,13 +175,47 @@ public final class JdtLauncher implements LanguageServerLauncher {
         return env;
     }
 
+    /** The JDK to compile and navigate against, named as an execution environment. */
+    private static Map<String, Object> runtime(Ide ide) {
+        java.nio.file.Path home = JavaTools.jdkHome(ide);
+        int version = JavaTools.jdkVersion(home);
+        Map<String, Object> runtime = new HashMap<>();
+        runtime.put("name", "JavaSE-" + (version >= 9 ? version : "1." + (version == 0 ? 8 : version)));
+        runtime.put("path", home.toString());
+        runtime.put("default", true);
+        /* Named rather than left to be found. Declaring the runtime alone was not enough
+           here: the container came up with no source attachment, so a jdt:// declaration
+           opened to nothing at all. */
+        java.nio.file.Path sources = home.resolve("lib").resolve("src.zip");
+        if (java.nio.file.Files.isRegularFile(sources)) {
+            runtime.put("sources", sources.toString());
+        }
+        return runtime;
+    }
+
     @Override
     public Object initializationOptions(Ide ide, Workspace workspace) {
         Map<String, Object> java = new HashMap<>();
         java.put("import", Map.of(
                 "maven", Map.of("enabled", true),
                 "gradle", Map.of("enabled", true)));
-        java.put("configuration", Map.of("updateBuildConfiguration", "automatic"));
+        /* Naming the JDK is what attaches its src.zip.
+
+           Without it the JRE container has no source attachment, and JDT treats even
+           java.lang classes as an unidentified archive: it asks Maven Central which
+           artifact the jar is, over the network, before it will answer "go to
+           declaration". On a machine that cannot reach search.maven.org that request
+           hangs until it times out and the navigation fails - for the JDK, of all
+           things. With the runtime declared, the sources are simply there. */
+        Map<String, Object> configuration = new HashMap<>();
+        configuration.put("updateBuildConfiguration", "automatic");
+        configuration.put("runtimes", List.of(runtime(ide)));
+        java.put("configuration", configuration);
+        /* Source jars come from the same repository the build already uses, so a
+           declaration inside a dependency opens as source instead of sending JDT off to
+           identify the jar by checksum. */
+        java.put("maven", Map.of("downloadSources", true));
+        java.put("eclipse", Map.of("downloadSources", true));
         java.put("autobuild", Map.of("enabled", true));
         java.put("maxConcurrentBuilds", 1);
         java.put("completion", Map.of("guessMethodArguments", true, "favoriteStaticMembers", List.of(

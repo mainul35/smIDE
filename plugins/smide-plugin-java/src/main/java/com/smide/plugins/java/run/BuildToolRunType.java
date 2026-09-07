@@ -66,8 +66,9 @@ public final class BuildToolRunType implements RunConfigurationType {
         @Override
         public ProcessSpec prepare(Ide ide, ExecutionMode mode) {
             String wd = get("workingDir", "");
-            Path cwd = wd.isBlank() ? workspace.root() : Path.of(wd);
-            List<String> cmd = gradle ? JavaTools.gradle(ide, workspace.root()) : JavaTools.maven(ide, workspace.root());
+            // Not the workspace root: a repository often keeps its build a level down.
+            Path cwd = wd.isBlank() ? MavenLayout.buildRootFor(workspace.root()) : Path.of(wd);
+            List<String> cmd = gradle ? JavaTools.gradle(ide, cwd) : JavaTools.maven(ide, cwd);
             if (!gradle) {
                 cmd.add("-B");
             }

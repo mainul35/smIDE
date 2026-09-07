@@ -130,6 +130,13 @@ public final class IdeImpl implements Ide {
         this.execution = new ExecutionService(this, registry);
         this.actions = new ActionManager(this, registry, settings);
         this.plugins = new PluginManager(this, registry);
+        /* Every text editor gets the right-click menu the actions describe. Wired here
+           rather than inside the editor, which knows nothing about actions. */
+        this.editors.addOpenedListener(editor -> {
+            if (editor instanceof com.smide.editor.CodeEditor code) {
+                code.setContextMenu(actions.contextMenuFor("editor"));
+            }
+        });
         this.sessionStore = new SessionStore(homeDir.resolve("session.json"));
         workspaces.setStatusReporter(statusBar::message);
     }

@@ -2,15 +2,19 @@ package com.smide.editor;
 
 import com.smide.api.debug.Breakpoint;
 import com.smide.api.debug.Breakpoints;
+import com.smide.api.editor.LineAnnotations;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Polygon;
+import javafx.scene.text.Font;
+import javafx.scene.text.Text;
 import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.LineNumberFactory;
 
@@ -38,6 +42,8 @@ public final class GutterFactory implements IntFunction<Node> {
     private final IntFunction<Node> lineNumbers;
     /** The line the debugger is stopped on, or -1. */
     private int executionLine = -1;
+    /** Per-line text shown left of everything else - blame, when it is switched on. */
+    private LineAnnotations annotations;
 
     public GutterFactory(CodeArea area, Breakpoints breakpoints, Path file) {
         this.area = area;
@@ -53,6 +59,15 @@ public final class GutterFactory implements IntFunction<Node> {
 
     public int executionLine() {
         return executionLine;
+    }
+
+    /** Shows a per-line column beside the numbers, or clears it when null. */
+    public void setAnnotations(LineAnnotations annotations) {
+        this.annotations = annotations;
+    }
+
+    public LineAnnotations annotations() {
+        return annotations;
     }
 
     @Override
@@ -95,7 +110,9 @@ public final class GutterFactory implements IntFunction<Node> {
         }
 
         Node number = lineNumbers.apply(paragraph);
-        HBox row = new HBox(marker, number);
+        HBox row = annotations == null
+                ? new HBox(marker, number)
+                : new HBox(annotation(paragraph), marker, number);
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("gutter");
         /* The whole gutter toggles a breakpoint, line number included, which is what
@@ -107,6 +124,49 @@ public final class GutterFactory implements IntFunction<Node> {
         }
         return row;
     }
+
+    /**
+     * One cell of the annotation column.
+     *
+     * <p>Sized from the widest value rather than its own text, so the code does not
+     * shift left and right as the gutter scrolls past a short name.
+     */
+    private Node annotation(int paragraph) {
+        Label label = new Label(annotations.text(paragraph));
+        label.getStyleClass().add("line-annotation");
+        label.setMinWidth(Region.USE_PREF_SIZE);
+        label.setPrefWidth(width());
+        label.setMaxWidth(Region.USE_PREF_SIZE);
+        String tip = annotations.tooltip(paragraph);
+        if (tip != null && !tip.isBlank()) {
+            Tooltip.install(label, new Tooltip(tip));
+        }
+        label.setOnMouseClicked(e -> {
+            annotations.clicked(paragraph);
+            e.consume();
+        });
+        return label;
+    }
+
+    /**
+     * Measures the widest annotation once.
+     *
+     * <p>A bare {@link Text} reports its bounds without being in a scene, which a
+     * paragraph graphic being built during layout has no business creating. The font
+     * is the one the stylesheet gives {@code .line-annotation}.
+     */
+    private double width() {
+        if (annotationWidth <= 0) {
+            Text probe = new Text(annotations.widest());
+            probe.setFont(Font.font(ANNOTATION_FONT, ANNOTATION_SIZE));
+            annotationWidth = probe.getLayoutBounds().getWidth() + 14;
+        }
+        return annotationWidth;
+    }
+
+    private static final String ANNOTATION_FONT = "Consolas";
+    private static final double ANNOTATION_SIZE = 11;
+    private double annotationWidth;
 
     /** Toggles the breakpoint on a line, from the editor's mouse filter. */
     public void toggleAt(int line) {

@@ -95,9 +95,12 @@ public final class SpringBootRunType implements RunConfigurationType {
         Forms.text(grid, 2, "JVM arguments", c, "vmArgs", "-Xmx512m");
         Forms.text(grid, 3, "Main class (optional)", c, "mainClass", "");
         Forms.text(grid, 4, "Module (relative)", c, "module", "root module");
-        Forms.text(grid, 5, "Debug port", c, "debugPort", "5005");
-        Forms.check(grid, 6, "Skip tests", c, "skipTests", true);
-        return new VBox(8, grid, Forms.note("Maven: mvn spring-boot:run. Gradle: gradle bootRun. Debug attaches over JDWP on the port above."));
+        Forms.text(grid, 5, "Environment (K=V;K=V)", c, "env", "SPRING_DATASOURCE_URL=jdbc:...");
+        Forms.text(grid, 6, "Debug port", c, "debugPort", "5005");
+        Forms.check(grid, 7, "Skip tests", c, "skipTests", true);
+        return new VBox(8, grid, Forms.note("Maven: mvn spring-boot:run. Gradle: gradle bootRun."
+                + " Profiles become --spring.profiles.active, environment variables are set on the"
+                + " process, and Debug attaches over JDWP on the port above."));
     }
 
     private final class Config extends BaseRunConfiguration {
@@ -127,7 +130,10 @@ public final class SpringBootRunType implements RunConfigurationType {
                 }
                 cwd = workspace.root();
             } else {
-                cmd = JavaTools.maven(ide, workspace.root());
+                // The module, or wherever the pom really is: the workspace root is not
+                // always a Maven project, and spring-boot:run has to start in one.
+                cwd = MavenLayout.of(workspace.root(), moduleDir()).directory();
+                cmd = JavaTools.maven(ide, cwd);
                 cmd.add("-B");
                 if (flag("skipTests", true)) {
                     cmd.add("-DskipTests");
@@ -146,9 +152,8 @@ public final class SpringBootRunType implements RunConfigurationType {
                 if (!mainClass.isBlank()) {
                     cmd.add("-Dspring-boot.run.main-class=" + mainClass);
                 }
-                cwd = moduleDir();
             }
-            return new ProcessSpec(name(), cmd, cwd);
+            return new ProcessSpec(name(), cmd, cwd, Forms.environment(get("env", "")));
         }
     }
 }

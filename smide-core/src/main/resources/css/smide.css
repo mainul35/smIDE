@@ -542,8 +542,20 @@
     -fx-stroke-width: 1.5;
 }
 
-.code-area .selection {
+/* Every text surface selects the same way.
+
+   Only the editor had a selection colour, so the console, the diff view and every
+   text field fell back to the platform's saturated blue - a band that fights the
+   syntax colours on top of it and, on the dark theme, leaves dark text on a bright
+   blue. The token is a quiet tint of the background instead: the selection reads as
+   a highlight and the text keeps the colour that means something. */
+.styled-text-area .selection {
     -fx-fill: -smide-selection;
+}
+
+.text-input {
+    -fx-highlight-fill: -smide-selection;
+    -fx-highlight-text-fill: -smide-text;
 }
 
 .code-area .lineno {
@@ -553,6 +565,20 @@
     -fx-font-size: 12px;
     -fx-padding: 0 10 0 10;
     -fx-opacity: 0.8;
+}
+
+/* The blame column: quiet enough to ignore until it is wanted. */
+.line-annotation {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11px;
+    -fx-text-fill: -smide-text-muted;
+    -fx-padding: 0 6 0 6;
+    -fx-cursor: hand;
+}
+
+.line-annotation:hover {
+    -fx-background-color: -smide-accent-soft;
+    -fx-text-fill: -smide-accent;
 }
 
 .gutter {
@@ -824,6 +850,10 @@
 
 .console-area .text {
     -fx-fill: -smide-text;
+}
+
+.console-area .caret {
+    -fx-stroke: -smide-text;
 }
 
 .console-area .ansi-black { -fx-fill: -smide-text; }

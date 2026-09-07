@@ -25,7 +25,7 @@ public final class Action {
     private String shortcut;
     private String menuPath;
     private String toolbarGroup;
-    private String contextMenu;
+    private final java.util.Set<String> contextMenus = new java.util.LinkedHashSet<>();
     private int order = 100;
     private Predicate<ActionContext> enabled = ctx -> true;
     private Consumer<ActionContext> handler = ctx -> {
@@ -69,9 +69,14 @@ public final class Action {
         return this;
     }
 
-    /** Adds it to a context menu: {@code explorer}, {@code editor}, {@code tab}. */
+    /**
+     * Adds it to a context menu: {@code explorer} or {@code editor}.
+     *
+     * <p>Call it more than once for an action that belongs in both. It used to replace
+     * rather than add, which silently dropped the first of two.
+     */
     public Action contextMenu(String which) {
-        this.contextMenu = which;
+        contextMenus.add(which);
         return this;
     }
 
@@ -119,8 +124,13 @@ public final class Action {
         return toolbarGroup;
     }
 
+    /** The first context menu it was added to, or null; prefer {@link #inContextMenu}. */
     public String contextMenu() {
-        return contextMenu;
+        return contextMenus.isEmpty() ? null : contextMenus.iterator().next();
+    }
+
+    public boolean inContextMenu(String which) {
+        return contextMenus.contains(which);
     }
 
     public int order() {

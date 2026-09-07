@@ -49,3 +49,59 @@
     -fx-font-weight: bold;
     -fx-text-fill: -smide-text-muted;
 }
+
+/* ------------------------------------------------- side-by-side comparison */
+
+.diff-side {
+    -fx-background-color: -smide-surface;
+}
+
+.diff-side-title {
+    -fx-background-color: -smide-surface-alt;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 4 8 4 8;
+    -fx-font-size: 11px;
+    -fx-text-fill: -smide-text-muted;
+    -fx-max-width: infinity;
+}
+
+.diff-lineno {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -smide-text-muted;
+    -fx-padding: 0 8 0 6;
+    -fx-opacity: 0.8;
+}
+
+/* The row colours. Tinted backgrounds rather than coloured text: on this view the
+   text is ordinary source and has to stay readable, so the change is in the paper. */
+.diff-line-add {
+    -fx-background-color: -smide-diff-add;
+}
+
+.diff-line-remove {
+    -fx-background-color: -smide-diff-remove;
+}
+
+.diff-line-change {
+    -fx-background-color: -smide-diff-change;
+}
+
+.diff-line-filler {
+    -fx-background-color: -smide-diff-filler;
+}
+
+.root {
+    -smide-diff-add: #e2f5e6;
+    -smide-diff-remove: #fbe3e0;
+    -smide-diff-change: #fdf3d8;
+    -smide-diff-filler: #f0f2f4;
+}
+
+.root.dark-theme {
+    -smide-diff-add: #16301f;
+    -smide-diff-remove: #34201e;
+    -smide-diff-change: #322a16;
+    -smide-diff-filler: #151c24;
+}

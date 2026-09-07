@@ -248,6 +248,47 @@ public final class ActionManager implements Actions {
         }
     }
 
+    /**
+     * A context menu that fills itself from the actions registered for one surface.
+     *
+     * <p>Rebuilt every time it opens: what is enabled depends on where the caret is and
+     * what is selected, and both change between one right-click and the next.
+     */
+    public javafx.scene.control.ContextMenu contextMenuFor(String surface) {
+        javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu();
+        menu.setOnShowing(e -> {
+            menu.getItems().clear();
+            ActionContext ctx = currentContext();
+            List<Action> actions = new java.util.ArrayList<>();
+            for (Action a : registry.actions()) {
+                if (a.inContextMenu(surface)) {
+                    actions.add(a);
+                }
+            }
+            actions.sort((a, b) -> Integer.compare(a.order(), b.order()));
+            int lastGroup = -1;
+            for (Action a : actions) {
+                int group = a.order() / 100;
+                if (lastGroup >= 0 && group != lastGroup) {
+                    menu.getItems().add(new javafx.scene.control.SeparatorMenuItem());
+                }
+                lastGroup = group;
+                javafx.scene.control.MenuItem item = new javafx.scene.control.MenuItem(a.text());
+                javafx.scene.Node icon = com.smide.ui.Icons.of(a.iconLiteral(), 13);
+                if (icon != null) {
+                    item.setGraphic(icon);
+                }
+                if (a.shortcut() != null) {
+                    item.setAccelerator(javafx.scene.input.KeyCombination.keyCombination(a.shortcut()));
+                }
+                item.setDisable(!a.isEnabled(ctx));
+                item.setOnAction(ev -> invoke(a.id()));
+                menu.getItems().add(item);
+            }
+        });
+        return menu;
+    }
+
     @Override
     public ActionContext currentContext() {
         Optional<Workspace> workspace = ide.workspaces().active();

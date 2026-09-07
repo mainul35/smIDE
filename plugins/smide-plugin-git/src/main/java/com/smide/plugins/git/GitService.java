@@ -9,11 +9,13 @@ import org.eclipse.jgit.api.ListBranchCommand.ListMode;
 import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.RmCommand;
 import org.eclipse.jgit.api.Status;
+import org.eclipse.jgit.blame.BlameResult;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.NoHeadException;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.diff.RawText;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
@@ -501,6 +503,110 @@ public final class GitService {
     }
 
     // ------------------------------------------------- change notification
+
+    // --------------------------------------------------------------- history
+
+    /** The commits that touched one path, newest first. */
+    public List<CommitInfo> fileHistory(Path root, String path, int max) {
+        Git git = require(root);
+        try {
+            List<CommitInfo> result = new ArrayList<>();
+            for (RevCommit c : git.log().addPath(path).setMaxCount(max).call()) {
+                result.add(toInfo(c));
+            }
+            return result;
+        } catch (NoHeadException e) {
+            return List.of();
+        } catch (GitAPIException | RuntimeException e) {
+            throw wrap("Cannot read the history of " + path, e);
+        }
+    }
+
+    /** Branches, remote branches and tags: everything a comparison can be made against. */
+    public List<RefInfo> refs(Path root) {
+        Git git = require(root);
+        try {
+            String current = currentBranch(root);
+            List<RefInfo> result = new ArrayList<>();
+            for (Ref ref : git.branchList().setListMode(ListMode.ALL).call()) {
+                String name = Repository.shortenRefName(ref.getName());
+                boolean remote = ref.getName().startsWith(Constants.R_REMOTES);
+                result.add(new RefInfo(name, ref.getName(),
+                        remote ? RefInfo.Kind.REMOTE : RefInfo.Kind.BRANCH, name.equals(current)));
+            }
+            for (Ref ref : git.tagList().call()) {
+                result.add(new RefInfo(Repository.shortenRefName(ref.getName()), ref.getName(),
+                        RefInfo.Kind.TAG, false));
+            }
+            return result;
+        } catch (GitAPIException | RuntimeException e) {
+            throw wrap("Cannot list branches and tags", e);
+        }
+    }
+
+    /**
+     * A file as it was at a revision - a branch, a tag, a commit id, anything git can
+     * resolve. Empty when the file did not exist there, which is a real answer rather
+     * than an error: that is what a comparison should show.
+     */
+    public String fileAt(Path root, String revision, String path) {
+        Repository repo = require(root).getRepository();
+        try (RevWalk walk = new RevWalk(repo)) {
+            RevCommit commit = walk.parseCommit(resolve(repo, revision));
+            try (TreeWalk tree = TreeWalk.forPath(repo, path, commit.getTree())) {
+                return tree == null ? ""
+                        : new String(repo.open(tree.getObjectId(0)).getBytes(), StandardCharsets.UTF_8);
+            }
+        } catch (IOException | RuntimeException e) {
+            throw wrap("Cannot read " + path + " at " + revision, e);
+        }
+    }
+
+    /** The unified diff between the working copy of a file and its content at a revision. */
+    public String diffAgainst(Path root, String path, String revision) {
+        Git git = require(root);
+        Repository repo = git.getRepository();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (RevWalk walk = new RevWalk(repo); ObjectReader reader = repo.newObjectReader()) {
+            RevCommit commit = walk.parseCommit(resolve(repo, revision));
+            git.diff().setOutputStream(out).setPathFilter(PathFilter.create(path))
+                    .setOldTree(tree(reader, commit)).call();
+            return out.toString(StandardCharsets.UTF_8);
+        } catch (GitAPIException | IOException | RuntimeException e) {
+            throw wrap("Cannot diff " + path + " against " + revision, e);
+        }
+    }
+
+    // ----------------------------------------------------------------- blame
+
+    /** Who last touched each line of a file, in file order. */
+    public List<BlameLine> blame(Path root, String path) {
+        Git git = require(root);
+        try {
+            BlameResult result = git.blame().setFilePath(path).setFollowFileRenames(true).call();
+            if (result == null) {
+                return List.of();
+            }
+            result.computeAll();
+            RawText contents = result.getResultContents();
+            List<BlameLine> lines = new ArrayList<>();
+            for (int i = 0; i < contents.size(); i++) {
+                RevCommit commit = result.getSourceCommit(i);
+                if (commit == null) {
+                    // A line that is only in the working copy has no commit to name.
+                    lines.add(new BlameLine(i, "", "", "Not committed yet", null, ""));
+                    continue;
+                }
+                PersonIdent who = result.getSourceAuthor(i);
+                lines.add(new BlameLine(i, commit.getName(), commit.getName().substring(0, 7),
+                        who == null ? "" : who.getName(),
+                        Instant.ofEpochSecond(commit.getCommitTime()), commit.getShortMessage()));
+            }
+            return lines;
+        } catch (GitAPIException | IOException | RuntimeException e) {
+            throw wrap("Cannot annotate " + path, e);
+        }
+    }
 
     /**
      * Registers a listener told after any operation that may have changed a repository and

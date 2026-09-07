@@ -28,17 +28,41 @@ public final class JavaTools {
         return WINDOWS;
     }
 
-    /** The JDK to run things with: the setting, else JAVA_HOME, else the JDK running the IDE. */
+    /**
+     * The JDK to compile, run and navigate with.
+     *
+     * <p>The setting wins outright. Otherwise the candidates are ranked rather than taken
+     * in order, because "first one found" picks badly: a machine whose JAVA_HOME points at
+     * a runtime bundled with another application - Android Studio's, say - has a JDK that
+     * compiles fine but ships no {@code lib/src.zip}, and then Go to Declaration on
+     * {@code java.lang.String} opens nothing at all, because there is no source to open.
+     * A complete JDK is preferred, then any JDK, then whatever is running the IDE.
+     */
     public static Path jdkHome(Ide ide) {
         String setting = ide.settings().get(JDK_HOME, "");
         if (!setting.isBlank() && Files.isDirectory(Path.of(setting))) {
             return Path.of(setting);
         }
+        List<Path> candidates = new ArrayList<>();
         String env = System.getenv("JAVA_HOME");
         if (env != null && !env.isBlank() && Files.isDirectory(Path.of(env))) {
-            return Path.of(env);
+            candidates.add(Path.of(env));
         }
-        return Path.of(System.getProperty("java.home"));
+        Path running = Path.of(System.getProperty("java.home"));
+        candidates.add(running);
+        return candidates.stream().filter(JavaTools::hasSources).findFirst()
+                .or(() -> candidates.stream().filter(JavaTools::canCompile).findFirst())
+                .orElse(running);
+    }
+
+    /** A JDK that can compile: it has javac. */
+    public static boolean canCompile(Path home) {
+        return Files.isRegularFile(home.resolve("bin").resolve(WINDOWS ? "javac.exe" : "javac"));
+    }
+
+    /** A JDK that also carries the class library sources, which navigation needs. */
+    public static boolean hasSources(Path home) {
+        return canCompile(home) && Files.isRegularFile(home.resolve("lib").resolve("src.zip"));
     }
 
     public static String javaExecutable(Ide ide) {

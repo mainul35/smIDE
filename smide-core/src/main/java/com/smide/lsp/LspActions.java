@@ -96,21 +96,43 @@ public final class LspActions {
         b.get().flush();
         LspSession session = b.get().session();
         session.server().getTextDocumentService().definition(new DefinitionParams(id(editor), Positions.caret(editor)))
-                .orTimeout(8, TimeUnit.SECONDS)
+                /* Generous, because the first navigation into a dependency can make the
+                   server fetch a source jar. A short fuse here reported "failed: null" -
+                   our own timeout, wearing the server's clothes. */
+                .orTimeout(30, TimeUnit.SECONDS)
                 .whenComplete((result, error) -> Platform.runLater(() -> {
                     if (error != null) {
-                        ide.statusBar().message("Go to declaration failed: " + error.getMessage());
+                        ide.statusBar().message("Go to declaration failed: " + describe(error));
                         return;
                     }
                     List<Target> targets = targets(result);
                     if (targets.isEmpty()) {
                         ide.statusBar().message("No declaration found");
                     } else if (targets.size() == 1) {
-                        open(ide, session, targets.get(0));
+                        open(ide, session, targets.get(0), editor.path());
                     } else {
                         choose(ide, session, "Declarations", targets);
                     }
                 }));
+    }
+
+    /** The class a jdt: URI names, for a message that says what could not be opened. */
+    private static String shortName(String uri) {
+        int slash = uri.lastIndexOf('/');
+        int question = uri.indexOf('?');
+        String tail = uri.substring(slash + 1, question > slash ? question : uri.length());
+        return tail.isBlank() ? uri : tail;
+    }
+
+    /** A failure the user can act on: some of these carry no message at all. */
+    private static String describe(Throwable error) {
+        Throwable cause = error instanceof java.util.concurrent.CompletionException && error.getCause() != null
+                ? error.getCause() : error;
+        if (cause instanceof java.util.concurrent.TimeoutException) {
+            return "the language server did not answer in time. It may be fetching sources for a dependency.";
+        }
+        String message = cause.getMessage();
+        return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message;
     }
 
     /**
@@ -158,11 +180,19 @@ public final class LspActions {
     }
 
     private static void open(Ide ide, LspSession session, Target t) {
+        open(ide, session, t, null);
+    }
+
+    /**
+     * @param fileInProject the file the navigation started from, which says which project
+     *                      to reconfigure if a source jar has to be fetched
+     */
+    private static void open(Ide ide, LspSession session, Target t, Path fileInProject) {
         if (t.file() != null && java.nio.file.Files.isRegularFile(t.file())) {
             ide.editors().open(t.file(), t.line(), t.column());
             return;
         }
-        openFromServer(ide, session, t);
+        openFromServer(ide, session, t, fileInProject, true);
     }
 
     /**
@@ -174,15 +204,32 @@ public final class LspActions {
      * simply overwritten next time.
      */
     private static void openFromServer(Ide ide, LspSession session, Target t) {
+        openFromServer(ide, session, t, null, true);
+    }
+
+    private static void openFromServer(Ide ide, LspSession session, Target t, Path fileInProject,
+                                       boolean mayFetchSources) {
         if (t.uri() == null) {
             ide.statusBar().message("No declaration found");
             return;
         }
         session.sendRequest("java/classFileContents", new TextDocumentIdentifier(t.uri()))
-                .orTimeout(15, TimeUnit.SECONDS)
+                .orTimeout(45, TimeUnit.SECONDS)
                 .whenComplete((contents, error) -> Platform.runLater(() -> {
-                    if (error != null || !(contents instanceof String source) || source.isBlank()) {
-                        ide.statusBar().message("The declaration is in a library with no source attached.");
+                    if (error != null) {
+                        System.err.println("smIDE: classFileContents failed for " + t.uri() + ": " + error);
+                        ide.statusBar().message("Cannot open the declaration: " + describe(error));
+                        return;
+                    }
+                    if (!(contents instanceof String source) || source.isBlank()) {
+                        /* No source in the jar. The URI names the artifact, so rather than
+                           stopping at "not attached", offer to fetch it and come back. */
+                        if (mayFetchSources && LibrarySources.offer(ide, session, t.uri(), fileInProject,
+                                () -> openFromServer(ide, session, t, fileInProject, false))) {
+                            return;
+                        }
+                        ide.statusBar().message("The declaration is in a library with no source attached: "
+                                + shortName(t.uri()));
                         return;
                     }
                     try {

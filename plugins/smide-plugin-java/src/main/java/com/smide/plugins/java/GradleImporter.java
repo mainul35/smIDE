@@ -64,6 +64,7 @@ public final class GradleImporter implements ProjectImporter {
         }
         boolean springBoot = false;
         boolean springLens = false;
+        List<JavaProjectInfo.WebModule> webModules = new ArrayList<>();
         for (Path dir : moduleDirs) {
             String name = dir.equals(root) ? root.getFileName().toString() : root.relativize(dir).toString().replace('\\', ':');
             List<Path> src = existing(dir.resolve("src/main/java"), dir.resolve("src/main/kotlin"));
@@ -73,6 +74,10 @@ public final class GradleImporter implements ProjectImporter {
             String script = readScript(dir);
             springBoot |= script.contains("org.springframework.boot");
             springLens |= script.contains("spring-lens");
+            if (script.contains("'war'") || script.contains("\"war\"") || script.contains("apply plugin: war")) {
+                // The war plugin is how a Gradle build says "this is a web application".
+                webModules.add(new JavaProjectInfo.WebModule(name, dir));
+            }
             for (String task : TASKS) {
                 String qualified = dir.equals(root) ? task : name + ":" + task;
                 tasks.add(new BuildTask(task, "gradle " + qualified, "Tasks/" + name, List.of("gradle", qualified), root));
@@ -81,7 +86,7 @@ public final class GradleImporter implements ProjectImporter {
         ProjectModel model = new ProjectModel("gradle", root.getFileName().toString(), root, modules, tasks);
         SourceScanner.Result scanned = SourceScanner.scan(model);
         registry.put(root, new JavaProjectInfo("gradle", model, springBoot, springLens, scanned.mains(), scanned.tests(),
-                "jar", root.getFileName().toString(), "", List.of(), 0));
+                "jar", root.getFileName().toString(), "", webModules, List.of(), 0));
         return model;
     }
 

@@ -4,6 +4,7 @@ import com.smide.api.Ide;
 import com.smide.api.settings.SettingsPage;
 import com.smide.plugins.java.JavaTools;
 import com.smide.plugins.java.JdtLauncher;
+import com.smide.plugins.java.run.Tomcat;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
@@ -66,6 +67,18 @@ public final class JavaSettingsPage implements SettingsPage {
         wrapper.setSelected(editor.staged().getBoolean(JavaTools.PREFER_WRAPPER, true));
         wrapper.selectedProperty().addListener((o, a, b) -> editor.staged().setBoolean(JavaTools.PREFER_WRAPPER, b));
 
+        TextField tomcat = new TextField(editor.staged().get(Tomcat.HOME_SETTING, ""));
+        tomcat.setPromptText(Tomcat.home(ide)
+                .map(h -> h + "  (detected)")
+                .orElse("no Tomcat found - needed only for war projects"));
+        tomcat.textProperty().addListener((o, a, b) -> editor.staged().set(Tomcat.HOME_SETTING, b));
+        Button browseTomcat = new Button("...");
+        browseTomcat.setOnAction(e -> ide.window()
+                .chooseDirectory("Tomcat home", Tomcat.home(ide).orElse(Path.of(System.getProperty("user.home"))))
+                .ifPresent(p -> tomcat.setText(p.toString())));
+        HBox tomcatRow = new HBox(4, tomcat, browseTomcat);
+        HBox.setHgrow(tomcat, Priority.ALWAYS);
+
         TextField jvmArgs = new TextField(editor.staged().get(JdtLauncher.JVM_ARGS_KEY, "-Xmx1G"));
         jvmArgs.textProperty().addListener((o, a, b) -> editor.staged().set(JdtLauncher.JVM_ARGS_KEY, b));
         Label status = new Label("JDT Language Server: " + jdt.installedVersion());
@@ -75,8 +88,9 @@ public final class JavaSettingsPage implements SettingsPage {
         grid.addRow(0, new Label("JDK home"), jdkRow);
         grid.addRow(1, new Label("Maven home"), maven);
         grid.add(wrapper, 1, 2);
-        grid.addRow(3, new Label("JDT LS JVM args"), jvmArgs);
-        grid.add(new HBox(8, status, install), 1, 4);
+        grid.addRow(3, new Label("Tomcat home"), tomcatRow);
+        grid.addRow(4, new Label("JDT LS JVM args"), jvmArgs);
+        grid.add(new HBox(8, status, install), 1, 5);
 
         Label note = new Label("The JDK runs applications, tests, Maven and the language server. "
                 + "JDT LS needs Java 21 or newer and about 50 MB; it is stored under " + ide.downloads().toolsDir() + ".");

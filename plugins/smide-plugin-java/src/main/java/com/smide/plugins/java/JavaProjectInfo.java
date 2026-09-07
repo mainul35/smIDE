@@ -17,6 +17,7 @@ import java.util.List;
  * @param packaging   {@code jar}, {@code war}, {@code pom}
  * @param artifactId  the root artifact id
  * @param version     the root version
+ * @param webModules  modules packaged as a war, which a servlet container can serve
  * @param profiles    Maven profile ids declared in the build
  * @param javaVersion the release the build compiles for, or 0
  */
@@ -29,8 +30,13 @@ public record JavaProjectInfo(String buildTool,
                               String packaging,
                               String artifactId,
                               String version,
+                              List<WebModule> webModules,
                               List<String> profiles,
                               int javaVersion) {
+
+    /** A module that builds a war, and where it is. */
+    public record WebModule(String name, Path dir) {
+    }
 
     /** A class worth running, and the module it lives in. */
     public record RunnableClass(String fqn, Path moduleRoot, Path file) {

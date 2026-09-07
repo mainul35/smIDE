@@ -13,6 +13,7 @@ import com.smide.plugins.java.run.ApplicationRunType;
 import com.smide.plugins.java.run.BuildToolRunType;
 import com.smide.plugins.java.run.JUnitRunType;
 import com.smide.plugins.java.run.SpringBootRunType;
+import com.smide.plugins.java.run.TomcatRunType;
 import com.smide.plugins.java.templates.MavenQuickstartTemplate;
 import com.smide.plugins.java.templates.SpringBootTemplate;
 import com.smide.plugins.java.ui.DeployToolWindow;
@@ -48,8 +49,12 @@ public final class JavaPlugin implements Plugin {
         context.registerProjectImporter(new MavenImporter(registry));
         context.registerProjectImporter(new GradleImporter(registry));
 
-        context.registerRunConfigurationType(new ApplicationRunType(ide, registry));
+        /* Spring Boot first, and Tomcat before the plain application: detection order is
+           the order the run chooser offers them in, and for a web application the server
+           is the configuration that actually serves the thing. */
         context.registerRunConfigurationType(new SpringBootRunType(ide, registry));
+        context.registerRunConfigurationType(new TomcatRunType(ide, registry));
+        context.registerRunConfigurationType(new ApplicationRunType(ide, registry));
         context.registerRunConfigurationType(new JUnitRunType(ide, registry));
         context.registerRunConfigurationType(new BuildToolRunType(ide, false));
         context.registerRunConfigurationType(new BuildToolRunType(ide, true));
@@ -120,7 +125,9 @@ public final class JavaPlugin implements Plugin {
     private void build(Workspace w, String mavenGoals, String gradleTasks, boolean skipTests) {
         JavaProjectInfo info = registry.get(w).orElse(null);
         boolean gradle = info != null && info.isGradle();
-        List<String> cmd = gradle ? JavaTools.gradle(ide, w.root()) : JavaTools.maven(ide, w.root());
+        // Where the build file is, which is not always the folder that was opened.
+        java.nio.file.Path buildRoot = com.smide.plugins.java.run.MavenLayout.buildRootFor(w.root());
+        List<String> cmd = gradle ? JavaTools.gradle(ide, buildRoot) : JavaTools.maven(ide, buildRoot);
         if (!gradle) {
             cmd.add("-B");
         }
@@ -133,7 +140,7 @@ public final class JavaPlugin implements Plugin {
                 cmd.add("-DskipTests");
             }
         }
-        ide.execution().run(new ProcessSpec((gradle ? gradleTasks : mavenGoals) + " [" + w.name() + "]", cmd, w.root()));
+        ide.execution().run(new ProcessSpec((gradle ? gradleTasks : mavenGoals) + " [" + w.name() + "]", cmd, buildRoot));
     }
 
     private void installJdt() {

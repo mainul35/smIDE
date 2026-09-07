@@ -203,7 +203,8 @@ public final class MavenToolWindow implements ToolWindowFactory {
             cmd.add("-B");
         }
         cmd.addAll(com.smide.plugins.java.run.Forms.splitArgs(line));
-        ide.execution().run(new ProcessSpec(line, cmd, current.root()));
+        ide.execution().run(new ProcessSpec(line, cmd,
+                com.smide.plugins.java.run.MavenLayout.buildRootFor(current.root())));
     }
 
     @Override

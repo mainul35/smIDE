@@ -53,6 +53,20 @@ public interface TextEditor extends Editor {
     /** Diagnostics to underline; replaces the previous set from the same source. */
     void setDiagnostics(List<Diagnostic> diagnostics);
 
+    /**
+     * Shows a column of per-line text in the gutter, or clears it when null.
+     *
+     * <p>Blame is the reason this exists, but nothing here knows that: an editor draws
+     * whatever it is handed.
+     */
+    default void setLineAnnotations(LineAnnotations annotations) {
+    }
+
+    /** The annotations currently shown, or null. */
+    default LineAnnotations lineAnnotations() {
+        return null;
+    }
+
     /** Called after every edit, with the whole text. */
     void addTextListener(Consumer<String> listener);
 

@@ -291,7 +291,7 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
         ActionContext ctx = ide.actions().currentContext();
         List<Action> actions = new ArrayList<>();
         for (Action a : registry.actions()) {
-            if ("explorer".equals(a.contextMenu())) {
+            if (a.inContextMenu("explorer")) {
                 actions.add(a);
             }
         }

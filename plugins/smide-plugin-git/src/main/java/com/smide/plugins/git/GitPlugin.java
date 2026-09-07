@@ -79,6 +79,52 @@ public final class GitPlugin implements Plugin {
                     ide.toolWindows().show(GitToolWindow.ID);
                     toolWindow.refresh();
                 }));
+
+        // ------------------------------------------------- history and comparison
+
+        context.registerAction(Action.of("vcs.history", "Show File History").menu("VCS")
+                .contextMenu("explorer").contextMenu("editor").icon("fth-clock").order(51)
+                .enabledWhen(ctx -> inRepository(ctx) && file(ctx).isPresent())
+                .perform(ctx -> file(ctx).ifPresent(toolWindow::showHistory)));
+        context.registerAction(Action.of("vcs.compare", "Compare with Branch or Revision...").menu("VCS")
+                .contextMenu("explorer").contextMenu("editor").order(52)
+                .enabledWhen(ctx -> inRepository(ctx) && file(ctx).isPresent())
+                .perform(ctx -> file(ctx).ifPresent(f -> GitCompare.open(ide, ui, f, null))));
+        context.registerAction(Action.of("vcs.compareSelection", "Compare Selection with Branch or Revision...")
+                .menu("VCS").contextMenu("editor").order(53)
+                .enabledWhen(ctx -> inRepository(ctx) && selectedLines(ctx) != null)
+                .perform(ctx -> file(ctx).ifPresent(f -> GitCompare.open(ide, ui, f, selectedLines(ctx)))));
+        context.registerAction(Action.of("vcs.annotate", "Annotate with Git Blame").menu("VCS")
+                .contextMenu("editor").shortcut("shortcut+alt+A").order(54)
+                .enabledWhen(ctx -> inRepository(ctx) && ctx.textEditor().isPresent() && file(ctx).isPresent())
+                .perform(ctx -> ctx.textEditor().ifPresent(editor -> file(ctx).ifPresent(f ->
+                        GitBlame.toggle(ide, ui, editor, f, toolWindow::showCommit)))));
+    }
+
+    /** The file an action is about: the editor's, or the one picked in the explorer. */
+    private static Optional<Path> file(ActionContext ctx) {
+        return ctx.editor().map(com.smide.api.editor.Editor::path).or(ctx::selectedFile);
+    }
+
+    /**
+     * The lines a selection covers, {@code [first, last]} zero-based, or null when
+     * nothing is selected. A selection that ends at the very start of a line does not
+     * include that line, which is what the user sees on screen.
+     */
+    private static int[] selectedLines(ActionContext ctx) {
+        return ctx.textEditor().map(editor -> {
+            int start = editor.selectionStart();
+            int end = editor.selectionEnd();
+            if (end <= start) {
+                return null;
+            }
+            int first = editor.lineOf(start);
+            int last = editor.lineOf(end);
+            if (last > first && editor.columnOf(end) == 0) {
+                last--;
+            }
+            return new int[]{first, last};
+        }).orElse(null);
     }
 
     private boolean inRepository(ActionContext ctx) {

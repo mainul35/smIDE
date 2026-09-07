@@ -112,6 +112,26 @@ public final class Forms {
         return out;
     }
 
+    /**
+     * Reads an environment from the form field: {@code KEY=value;OTHER=value}.
+     *
+     * <p>Semicolons separate, the first {@code =} splits, and nothing else is special,
+     * so a value may contain {@code =} - a connection string usually does.
+     */
+    public static java.util.Map<String, String> environment(String text) {
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        if (text == null || text.isBlank()) {
+            return out;
+        }
+        for (String pair : text.split(";")) {
+            int equals = pair.indexOf('=');
+            if (equals > 0) {
+                out.put(pair.substring(0, equals).strip(), pair.substring(equals + 1).strip());
+            }
+        }
+        return out;
+    }
+
     public static String relative(Path root, Path dir) {
         try {
             return root.equals(dir) ? "" : root.relativize(dir).toString();

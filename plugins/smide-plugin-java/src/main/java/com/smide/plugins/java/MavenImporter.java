@@ -96,6 +96,7 @@ public final class MavenImporter implements ProjectImporter {
     public ProjectModel importProject(Ide ide, Workspace workspace) throws IOException {
         Path root = workspace.root();
         List<ProjectModule> modules = new ArrayList<>();
+        List<JavaProjectInfo.WebModule> webModules = new ArrayList<>();
         List<BuildTask> tasks = new ArrayList<>();
         Set<String> profiles = new LinkedHashSet<>();
         boolean[] flags = new boolean[2];
@@ -105,7 +106,7 @@ public final class MavenImporter implements ProjectImporter {
         Model rootModel = null;
         if (Files.isRegularFile(rootPom)) {
             rootModel = read(rootPom);
-            collect(root, rootModel, modules, tasks, profiles, flags, javaVersion, 0);
+            collect(root, rootModel, modules, webModules, tasks, profiles, flags, javaVersion, 0);
         } else {
             // No aggregator at the top: adopt each nested build as a module of this workspace.
             for (Path pom : nestedPoms(root)) {
@@ -114,7 +115,7 @@ public final class MavenImporter implements ProjectImporter {
                     if (rootModel == null) {
                         rootModel = model;
                     }
-                    collect(pom.getParent(), model, modules, tasks, profiles, flags, javaVersion, 0);
+                    collect(pom.getParent(), model, modules, webModules, tasks, profiles, flags, javaVersion, 0);
                 } catch (IOException e) {
                     System.err.println("smIDE: cannot read " + pom + ": " + e);
                 }
@@ -131,11 +132,12 @@ public final class MavenImporter implements ProjectImporter {
                 : rootModel.getParent() != null ? rootModel.getParent().getVersion() : "";
         registry.put(root, new JavaProjectInfo("maven", model, flags[0], flags[1], scanned.mains(), scanned.tests(),
                 rootModel.getPackaging() == null ? "jar" : rootModel.getPackaging(), name, version,
-                new ArrayList<>(profiles), javaVersion[0]));
+                webModules, new ArrayList<>(profiles), javaVersion[0]));
         return model;
     }
 
-    private void collect(Path dir, Model model, List<ProjectModule> modules, List<BuildTask> tasks,
+    private void collect(Path dir, Model model, List<ProjectModule> modules,
+                         List<JavaProjectInfo.WebModule> webModules, List<BuildTask> tasks,
                          Set<String> profiles, boolean[] flags, int[] javaVersion, int depth) {
         String name = model.getArtifactId() == null ? dir.getFileName().toString() : model.getArtifactId();
         Path src = resolve(dir, model.getBuild() == null ? null : model.getBuild().getSourceDirectory(), "src/main/java");
@@ -162,6 +164,11 @@ public final class MavenImporter implements ProjectImporter {
             modules.add(new ProjectModule(name, dir, sourceRoots, testRoots, resources, out));
         } else {
             modules.add(new ProjectModule(name, dir, List.of(), List.of(), List.of(), out));
+        }
+
+        if ("war".equals(model.getPackaging())) {
+            // What a servlet container can be handed; a Tomcat configuration is offered for it.
+            webModules.add(new JavaProjectInfo.WebModule(name, dir));
         }
 
         for (String phase : LIFECYCLE) {
@@ -209,7 +216,7 @@ public final class MavenImporter implements ProjectImporter {
                 Path pom = Files.isDirectory(child) ? child.resolve("pom.xml") : child;
                 if (Files.isRegularFile(pom)) {
                     try {
-                        collect(pom.getParent(), read(pom), modules, tasks, profiles, flags, javaVersion, depth + 1);
+                        collect(pom.getParent(), read(pom), modules, webModules, tasks, profiles, flags, javaVersion, depth + 1);
                     } catch (IOException e) {
                         System.err.println("smIDE: cannot read " + pom + ": " + e);
                     }

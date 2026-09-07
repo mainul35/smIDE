@@ -584,6 +584,25 @@ public final class CodeEditor implements TextEditor {
         }
     }
 
+    /** Right-click menu for the text itself; the actions decide what is in it. */
+    public void setContextMenu(javafx.scene.control.ContextMenu menu) {
+        area.setContextMenu(menu);
+    }
+
+    @Override
+    public void setLineAnnotations(com.smide.api.editor.LineAnnotations annotations) {
+        if (gutter == null) {
+            return;
+        }
+        gutter.setAnnotations(annotations);
+        gutter.refresh();
+    }
+
+    @Override
+    public com.smide.api.editor.LineAnnotations lineAnnotations() {
+        return gutter == null ? null : gutter.annotations();
+    }
+
     /**
      * Marks the line the debugger has stopped on, scrolling it into view; -1 clears it.
      */

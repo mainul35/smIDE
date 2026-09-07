@@ -65,6 +65,16 @@ public final class GitToolWindow implements ToolWindowFactory {
     private final Label noRepo = new Label("This workspace is not a Git repository.");
     private final Button initButton = new Button("Initialize Git repository");
 
+    // History tab: one file, every commit that touched it.
+    private final ListView<CommitInfo> historyCommits = new ListView<>();
+    private final DiffView historyDiff;
+    private final Label historyTitle = new Label("Open a file and choose Git > Show File History.");
+    private Path historyFile;
+    private String historyPath;
+    private Tab historyTab;
+    private Tab logTab;
+    private TabPane tabs;
+
     // Log tab.
     private final ListView<CommitInfo> commits = new ListView<>();
     private final ListView<FileChange> commitFiles = new ListView<>();
@@ -80,9 +90,11 @@ public final class GitToolWindow implements ToolWindowFactory {
         this.ide = ui.ide();
         this.changesDiff = new DiffView(ide.theme());
         this.logDiff = new DiffView(ide.theme());
+        this.historyDiff = new DiffView(ide.theme());
 
         buildChanges();
         buildLog();
+        buildHistory();
 
         ui.git().addListener(this::scheduleRefresh);
         ide.workspaces().addActiveListener(w -> scheduleRefresh());
@@ -319,6 +331,92 @@ public final class GitToolWindow implements ToolWindowFactory {
         }));
     }
 
+    // ------------------------------------------------------------- history
+
+    private void buildHistory() {
+        historyCommits.setCellFactory(v -> new CommitCell());
+        historyCommits.getSelectionModel().selectedItemProperty().addListener((o, a, commit) -> {
+            historyDiff.setDiff(null);
+            if (commit == null || historyPath == null) {
+                return;
+            }
+            ui.activeRoot().ifPresent(root ->
+                    ui.read(() -> ui.git().diffInCommit(root, commit.id(), historyPath), historyDiff::setDiff));
+        });
+        // Double-click opens that version beside the working copy, which is the next
+        // question after "what did this commit do to the file".
+        historyCommits.setOnMouseClicked(e -> {
+            CommitInfo commit = historyCommits.getSelectionModel().getSelectedItem();
+            if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2 && commit != null && historyFile != null) {
+                compareWithRevision(commit.id(), commit.shortId());
+            }
+        });
+        historyTitle.getStyleClass().add("tool-window-title");
+    }
+
+    /** Shows the history of one file, bringing the window forward. */
+    public void showHistory(Path file) {
+        ui.activeRoot().ifPresentOrElse(root -> ui.git().relativize(root, file).ifPresentOrElse(path -> {
+            historyFile = file;
+            historyPath = path;
+            historyTitle.setText(path.toUpperCase());
+            historyCommits.getItems().clear();
+            historyDiff.setDiff(null);
+            if (context != null) {
+                context.show();
+            }
+            if (tabs != null && historyTab != null) {
+                tabs.getSelectionModel().select(historyTab);
+            }
+            ui.read(() -> ui.git().fileHistory(root, path, 200), list -> {
+                historyCommits.getItems().setAll(list);
+                if (list.isEmpty()) {
+                    historyTitle.setText(path.toUpperCase() + "   (no commits yet)");
+                }
+            });
+        }, () -> ide.statusBar().message(file.getFileName() + " is not in this repository")),
+                () -> ide.statusBar().message("This workspace is not a Git repository"));
+    }
+
+    /** Opens the file as it was at a revision beside the working copy. */
+    private void compareWithRevision(String revision, String label) {
+        ui.activeRoot().ifPresent(root -> ui.read(() -> ui.git().fileAt(root, revision, historyPath), text -> {
+            SideBySideDiff diff = new SideBySideDiff(ide.theme());
+            String working = "";
+            try {
+                working = java.nio.file.Files.readString(historyFile);
+            } catch (java.io.IOException ignored) {
+                // A file that is gone from the working tree compares against nothing.
+            }
+            diff.setContent(historyPath + "  at  " + label, text, historyPath + "  (working tree)", working);
+            javafx.stage.Stage stage = new javafx.stage.Stage();
+            stage.initOwner(ide.window().stage());
+            stage.setTitle(historyFile.getFileName() + " - working tree against " + label);
+            stage.setScene(new javafx.scene.Scene(diff, 1000, 640));
+            ide.theme().style(stage);
+            stage.show();
+        }));
+    }
+
+    /** Selects a commit in the Log tab; used when an annotation is clicked. */
+    public void showCommit(String commitId) {
+        if (context != null) {
+            context.show();
+        }
+        if (tabs != null && logTab != null) {
+            tabs.getSelectionModel().select(logTab);
+        }
+        for (CommitInfo commit : commits.getItems()) {
+            if (commit.id().equals(commitId)) {
+                commits.getSelectionModel().select(commit);
+                commits.scrollTo(commit);
+                return;
+            }
+        }
+        ide.statusBar().message("Commit " + commitId.substring(0, Math.min(7, commitId.length()))
+                + " is older than the log shown here");
+    }
+
     // ------------------------------------------------------------- refresh
 
     private void scheduleRefresh() {
@@ -444,8 +542,27 @@ public final class GitToolWindow implements ToolWindowFactory {
             logBar.setAlignment(Pos.CENTER_LEFT);
             logBar.setPadding(new Insets(4, 6, 4, 8));
             logPane.setTop(logBar);
-            Tab logTab = new Tab("Log", logPane);
-            TabPane tabs = new TabPane(changesTab, logTab);
+            logTab = new Tab("Log", logPane);
+
+            BorderPane historyPane = new BorderPane(new SplitPane(historyCommits, historyDiff) {
+                {
+                    setDividerPositions(0.45);
+                    Splits.grabbable(this);
+                }
+            });
+            HBox historyBar = new HBox(6, historyTitle, new Region(),
+                    icon("fth-refresh-cw", "Refresh", () -> {
+                        if (historyFile != null) {
+                            showHistory(historyFile);
+                        }
+                    }));
+            HBox.setHgrow(historyBar.getChildren().get(1), Priority.ALWAYS);
+            historyBar.setAlignment(Pos.CENTER_LEFT);
+            historyBar.setPadding(new Insets(4, 6, 4, 8));
+            historyPane.setTop(historyBar);
+            historyTab = new Tab("History", historyPane);
+
+            tabs = new TabPane(changesTab, logTab, historyTab);
             tabs.getStyleClass().add("document-tabs");
             tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
             root = new BorderPane(tabs);

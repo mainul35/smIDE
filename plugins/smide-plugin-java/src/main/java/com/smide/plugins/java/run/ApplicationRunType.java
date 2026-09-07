@@ -16,9 +16,7 @@ import javafx.scene.layout.VBox;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -141,14 +139,7 @@ public final class ApplicationRunType implements RunConfigurationType {
             cmd.addAll(Forms.splitArgs(get("args", "")));
             String wd = get("workingDir", "");
             Path cwd = wd.isBlank() ? module : Path.of(wd);
-            Map<String, String> env = new HashMap<>();
-            for (String pair : get("env", "").split(";")) {
-                int eq = pair.indexOf('=');
-                if (eq > 0) {
-                    env.put(pair.substring(0, eq).strip(), pair.substring(eq + 1).strip());
-                }
-            }
-            return new ProcessSpec(name(), cmd, cwd, env);
+            return new ProcessSpec(name(), cmd, cwd, Forms.environment(get("env", "")));
         }
 
         private String gradleClasspath(Path module) {

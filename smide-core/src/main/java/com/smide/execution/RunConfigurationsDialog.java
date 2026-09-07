@@ -24,7 +24,9 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Run/Debug Configurations: a list on the left, the chosen configuration's form on the right. */
 public final class RunConfigurationsDialog {
@@ -48,6 +50,15 @@ public final class RunConfigurationsDialog {
         stage.setTitle("Run/Debug Configurations - " + workspace.name());
 
         list.getItems().setAll(ide.execution().configurations(workspace));
+        /* What each configuration looked like on the way in. A detected configuration is
+           a fresh object every time the list is built, so editing one and pressing OK used
+           to change nothing that outlived the dialog: the profile you set was gone by the
+           next run. Anything that differs from its snapshot is saved, which turns a
+           detected configuration into a real one the moment it is worth keeping. */
+        Map<RunConfiguration, String> asOpened = new IdentityHashMap<>();
+        for (RunConfiguration c : list.getItems()) {
+            asOpened.put(c, snapshot(c));
+        }
         list.setCellFactory(v -> new ListCell<>() {
             @Override
             protected void updateItem(RunConfiguration c, boolean empty) {
@@ -100,8 +111,9 @@ public final class RunConfigurationsDialog {
                     ide.execution().deleteConfiguration(c);
                 }
             }
-            for (RunConfiguration c : touched) {
-                if (list.getItems().contains(c)) {
+            for (RunConfiguration c : list.getItems()) {
+                String opened = asOpened.get(c);
+                if (opened == null || !opened.equals(snapshot(c))) {
                     ide.execution().saveConfiguration(c);
                 }
             }
@@ -128,6 +140,11 @@ public final class RunConfigurationsDialog {
             form.setCenter(hint());
         }
         stage.show();
+    }
+
+    /** Name and fields together, length-prefixed, so a rename counts as a change too. */
+    private static String snapshot(RunConfiguration c) {
+        return c.name().length() + ":" + c.name() + c.toMap();
     }
 
     private Node hint() {
