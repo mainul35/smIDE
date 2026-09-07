@@ -59,6 +59,8 @@ public final class CodeEditor implements TextEditor {
     private final FindBar findBar;
     private final Workspace workspace;
     private final LanguageSupport language;
+    /** Kept, so a change to the font applies to this editor and not only to the next one. */
+    private com.smide.api.settings.Settings settings;
     private final ReadOnlyBooleanWrapper modified = new ReadOnlyBooleanWrapper(false);
     private final List<Consumer<String>> textListeners = new CopyOnWriteArrayList<>();
     private final List<Runnable> caretListeners = new CopyOnWriteArrayList<>();
@@ -96,13 +98,8 @@ public final class CodeEditor implements TextEditor {
             area.setParagraphGraphicFactory(LineNumberFactory.get(area));
         }
         area.setLineHighlighterOn(false);
-        if (settings != null) {
-            String family = settings.get("editor.fontFamily", DEFAULT_FONT).replace("\"", "");
-            int size = settings.getInt("editor.fontSize", 13);
-            area.setStyle("-fx-font-family: \"" + family + "\", Consolas, \"Cascadia Mono\", monospace;"
-                    + " -fx-font-size: " + size + "px;");
-            area.setWrapText(settings.getBoolean("editor.wrap", false));
-        }
+        this.settings = settings;
+        applyDisplaySettings();
         root.getStyleClass().add("code-editor");
         root.setCenter(scroll);
         findBar = new FindBar(this);
@@ -587,6 +584,28 @@ public final class CodeEditor implements TextEditor {
     /** Right-click menu for the text itself; the actions decide what is in it. */
     public void setContextMenu(javafx.scene.control.ContextMenu menu) {
         area.setContextMenu(menu);
+    }
+
+    /**
+     * Applies the font and wrapping from settings.
+     *
+     * <p>Called again whenever those settings change, so a new size lands in the editors
+     * that are already open. It used to run only in the constructor, which meant a font
+     * change showed up in the next file opened and nowhere else.
+     */
+    public void applyDisplaySettings() {
+        if (settings == null) {
+            return;
+        }
+        String family = settings.get("editor.fontFamily", DEFAULT_FONT).replace("\"", "");
+        int size = settings.getInt("editor.fontSize", 13);
+        area.setStyle("-fx-font-family: \"" + family + "\", Consolas, \"Cascadia Mono\", monospace;"
+                + " -fx-font-size: " + size + "px;");
+        area.setWrapText(settings.getBoolean("editor.wrap", false));
+        if (gutter != null) {
+            // The gutter is measured in the new font too, so the numbers stay lined up.
+            gutter.refresh();
+        }
     }
 
     @Override

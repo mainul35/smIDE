@@ -93,6 +93,20 @@ public final class EditorManager implements Editors {
         breakpoints.addListener(file -> find(file)
                 .filter(e -> e instanceof CodeEditor)
                 .ifPresent(e -> ((CodeEditor) e).refreshGutter()));
+        /* The font is read when an editor is built, so changing it in Settings reached
+           the next file opened and none of the ones already on screen. Every open editor
+           is told instead. */
+        settings.addListener(key -> {
+            if (key != null && key.startsWith("editor.")) {
+                window.runLater(() -> {
+                    for (Editor editor : open()) {
+                        if (editor instanceof CodeEditor code) {
+                            code.applyDisplaySettings();
+                        }
+                    }
+                });
+            }
+        });
     }
 
     private void fireActive() {
