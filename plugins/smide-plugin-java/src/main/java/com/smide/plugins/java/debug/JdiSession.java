@@ -130,6 +130,13 @@ public final class JdiSession implements DebugSession {
             request.setSuspendPolicy(EventRequest.SUSPEND_ALL);
             request.enable();
         }
+        int wanted = pendingByClass.values().stream().mapToInt(List::size).sum();
+        if (wanted == 0) {
+            ide.statusBar().message("Debugging " + name + " with no breakpoints set.");
+        } else {
+            ide.statusBar().message("Debugging " + name + ": " + installed.size() + " of " + wanted
+                    + " breakpoints bound, the rest when their classes load.");
+        }
         pump = new Thread(this::pumpEvents, "smide-jdi-" + name);
         pump.setDaemon(true);
         pump.start();
@@ -184,6 +191,12 @@ public final class JdiSession implements DebugSession {
                 // JDI lines are one-based; the API's are zero-based.
                 List<Location> locations = type.locationsOfLine(b.line() + 1);
                 if (locations.isEmpty()) {
+                    /* No code was compiled for that line - a blank line, a comment, or a
+                       class file older than the source. Silence here looked exactly like
+                       a debugger that ignores breakpoints. */
+                    ide.notifications().warn("Breakpoint not set",
+                            b.label() + " has no executable code in " + type.name()
+                                    + ". Rebuild the project if the class file is out of date.");
                     continue;
                 }
                 BreakpointRequest request = vm.eventRequestManager().createBreakpointRequest(locations.get(0));
@@ -195,6 +208,7 @@ public final class JdiSession implements DebugSession {
                 }
                 request.enable();
                 installed.add(request);
+                ide.statusBar().message("Breakpoint set at " + b.label());
             } catch (AbsentInformationException e) {
                 ide.statusBar().message("No line numbers in " + type.name() + "; compile with debug information.");
             } catch (RuntimeException e) {

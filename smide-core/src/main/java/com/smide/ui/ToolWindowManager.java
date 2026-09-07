@@ -18,6 +18,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,14 +30,20 @@ import java.util.Optional;
  * each edge, and one panel per edge showing whichever tool window on that edge was
  * chosen last. Bottom tool windows put their buttons on the lower half of the left stripe.
  *
- * <p>Panels are added to and removed from split panes on show and hide, with the
- * divider positions remembered, so a hidden panel costs no space at all.
+ * <p>Each tool window owns its panel, and showing one puts that panel into the split
+ * while taking the previous one out. An earlier version kept one panel per edge and
+ * swapped the node inside it, which looked equivalent and was not: the terminal is a
+ * Swing component inside a {@code SwingNode}, and swapping around it left its surface
+ * painting over the panel - the Debug window was there, underneath a terminal that had
+ * already been replaced, header and all. Removing the whole panel from the split leaves
+ * the layout no stale content to keep.
  */
 public final class ToolWindowManager implements ToolWindows {
 
     private static final class Entry {
         final ToolWindowFactory factory;
         final ToggleButton button;
+        final BorderPane panel = new BorderPane();
         Node content;
         String title;
 
@@ -44,13 +51,14 @@ public final class ToolWindowManager implements ToolWindows {
             this.factory = factory;
             this.button = button;
             this.title = factory.title();
+            panel.getStyleClass().add("tool-window");
         }
     }
 
     private final ExtensionRegistry registry;
     private final Map<String, Entry> entries = new LinkedHashMap<>();
-    private final Map<ToolWindowAnchor, String> visible = new HashMap<>();
-    private final Map<ToolWindowAnchor, Double> dividers = new HashMap<>();
+    private final Map<ToolWindowAnchor, String> visible = new EnumMap<>(ToolWindowAnchor.class);
+    private final Map<ToolWindowAnchor, Double> dividers = new EnumMap<>(ToolWindowAnchor.class);
 
     private final VBox leftStripeTop = new VBox();
     private final VBox leftStripeBottom = new VBox();
@@ -58,9 +66,6 @@ public final class ToolWindowManager implements ToolWindows {
     private final VBox rightStripe = new VBox();
     private final SplitPane horizontal = new SplitPane();
     private final SplitPane vertical = new SplitPane();
-    private final BorderPane leftPanel = panel();
-    private final BorderPane rightPanel = panel();
-    private final BorderPane bottomPanel = panel();
     private final Node center;
     private final HBox root = new HBox();
 
@@ -88,7 +93,7 @@ public final class ToolWindowManager implements ToolWindows {
 
         dividers.put(ToolWindowAnchor.LEFT, 0.22);
         dividers.put(ToolWindowAnchor.RIGHT, 0.75);
-        dividers.put(ToolWindowAnchor.BOTTOM, 0.68);
+        dividers.put(ToolWindowAnchor.BOTTOM, 0.62);
 
         for (ToolWindowFactory f : registry.toolWindows()) {
             register(f);
@@ -98,12 +103,6 @@ public final class ToolWindowManager implements ToolWindows {
 
     public Node node() {
         return root;
-    }
-
-    private static BorderPane panel() {
-        BorderPane pane = new BorderPane();
-        pane.getStyleClass().add("tool-window");
-        return pane;
     }
 
     private void register(ToolWindowFactory factory) {
@@ -151,85 +150,91 @@ public final class ToolWindowManager implements ToolWindows {
         }
         ToolWindowAnchor anchor = entry.factory.anchor();
         String current = visible.get(anchor);
-        if (current != null && !current.equals(id)) {
+        if (id.equals(current)) {
+            entry.button.setSelected(true);
+            focus(entry);
+            return;
+        }
+        if (current != null) {
             hide(current);
         }
         if (entry.content == null) {
-            entry.content = entry.factory.create(new ToolWindowFactory.ToolWindowContext() {
-                @Override
-                public void setTitle(String title) {
-                    entry.title = title;
-                    if (id.equals(visible.get(anchor))) {
-                        setHeader(panelFor(anchor), entry);
-                    }
-                }
-
-                @Override
-                public void show() {
-                    ToolWindowManager.this.show(id);
-                }
-
-                @Override
-                public void hide() {
-                    ToolWindowManager.this.hide(id);
-                }
-            });
-            entry.content.getStyleClass().add("tool-window-content");
+            entry.content = create(entry, anchor);
         }
-        BorderPane panel = panelFor(anchor);
-        setHeader(panel, entry);
-        panel.setCenter(entry.content);
-        if (!isPanelShown(anchor)) {
-            attach(anchor, panel);
-        }
+        entry.panel.setTop(header(entry));
+        entry.panel.setCenter(entry.content);
+        entry.panel.setMinWidth(160);
+        entry.panel.setMinHeight(80);
+        attach(anchor, entry.panel);
         visible.put(anchor, id);
         entry.button.setSelected(true);
-        entry.content.requestFocus();
+        focus(entry);
     }
 
-    private void setHeader(BorderPane panel, Entry entry) {
+    private Node create(Entry entry, ToolWindowAnchor anchor) {
+        String id = entry.factory.id();
+        Node content = entry.factory.create(new ToolWindowFactory.ToolWindowContext() {
+            @Override
+            public void setTitle(String title) {
+                entry.title = title;
+                if (id.equals(visible.get(anchor))) {
+                    entry.panel.setTop(header(entry));
+                }
+            }
+
+            @Override
+            public void show() {
+                ToolWindowManager.this.show(id);
+            }
+
+            @Override
+            public void hide() {
+                ToolWindowManager.this.hide(id);
+            }
+        });
+        content.getStyleClass().add("tool-window-content");
+        return content;
+    }
+
+    private static void focus(Entry entry) {
+        if (entry.content != null) {
+            entry.content.requestFocus();
+        }
+    }
+
+    private Node header(Entry entry) {
         Label title = new Label(entry.title.toUpperCase());
         title.getStyleClass().add("tool-window-title");
         Region gap = new Region();
         HBox.setHgrow(gap, Priority.ALWAYS);
         HBox header = new HBox(title, gap, Icons.button("fth-minus", "Hide", () -> hide(entry.factory.id())));
         header.getStyleClass().add("tool-window-header");
-        panel.setTop(header);
+        return header;
     }
 
-    private BorderPane panelFor(ToolWindowAnchor anchor) {
-        return switch (anchor) {
-            case LEFT -> leftPanel;
-            case RIGHT -> rightPanel;
-            case BOTTOM -> bottomPanel;
-        };
-    }
-
-    private boolean isPanelShown(ToolWindowAnchor anchor) {
-        return switch (anchor) {
-            case LEFT, RIGHT -> horizontal.getItems().contains(panelFor(anchor));
-            case BOTTOM -> vertical.getItems().contains(bottomPanel);
-        };
+    private SplitPane splitFor(ToolWindowAnchor anchor) {
+        return anchor == ToolWindowAnchor.BOTTOM ? vertical : horizontal;
     }
 
     private void attach(ToolWindowAnchor anchor, BorderPane panel) {
-        panel.setMinWidth(160);
-        panel.setMinHeight(80);
+        SplitPane split = splitFor(anchor);
         SplitPane.setResizableWithParent(panel, false);
+        int index;
         switch (anchor) {
             case LEFT -> {
-                horizontal.getItems().add(0, panel);
-                setDivider(horizontal, 0, dividers.get(anchor));
+                split.getItems().add(0, panel);
+                index = 0;
             }
-            case RIGHT -> horizontal.getItems().add(panel);
-            case BOTTOM -> {
-                vertical.getItems().add(panel);
-                setDivider(vertical, 0, dividers.get(anchor));
+            case RIGHT -> {
+                split.getItems().add(panel);
+                index = split.getItems().size() - 2;
+            }
+            default -> {
+                split.getItems().add(panel);
+                index = 0;
             }
         }
-        if (anchor == ToolWindowAnchor.RIGHT) {
-            setDivider(horizontal, horizontal.getItems().size() - 2, dividers.get(anchor));
-        }
+        setDivider(split, index, dividers.get(anchor));
     }
 
     /**
@@ -250,28 +255,12 @@ public final class ToolWindowManager implements ToolWindows {
         });
     }
 
-    private void detach(ToolWindowAnchor anchor, BorderPane panel) {
-        switch (anchor) {
-            case LEFT -> {
-                if (horizontal.getItems().contains(panel)) {
-                    dividers.put(anchor, horizontal.getDividerPositions()[0]);
-                    horizontal.getItems().remove(panel);
-                }
-            }
-            case RIGHT -> {
-                if (horizontal.getItems().contains(panel)) {
-                    double[] positions = horizontal.getDividerPositions();
-                    dividers.put(anchor, positions[positions.length - 1]);
-                    horizontal.getItems().remove(panel);
-                }
-            }
-            case BOTTOM -> {
-                if (vertical.getItems().contains(panel)) {
-                    dividers.put(anchor, vertical.getDividerPositions()[0]);
-                    vertical.getItems().remove(panel);
-                }
-            }
+    private void remember(ToolWindowAnchor anchor) {
+        double[] positions = splitFor(anchor).getDividerPositions();
+        if (positions.length == 0) {
+            return;
         }
+        dividers.put(anchor, anchor == ToolWindowAnchor.RIGHT ? positions[positions.length - 1] : positions[0]);
     }
 
     @Override
@@ -282,7 +271,11 @@ public final class ToolWindowManager implements ToolWindows {
         }
         ToolWindowAnchor anchor = entry.factory.anchor();
         if (id.equals(visible.get(anchor))) {
-            detach(anchor, panelFor(anchor));
+            remember(anchor);
+            splitFor(anchor).getItems().remove(entry.panel);
+            // The content leaves the scene with its panel, so a Swing surface inside it
+            // stops being drawn instead of hanging over whatever comes next.
+            entry.panel.setCenter(null);
             visible.remove(anchor);
         }
         entry.button.setSelected(false);
@@ -330,23 +323,12 @@ public final class ToolWindowManager implements ToolWindows {
     public Map<String, Double> dividerPositions() {
         Map<String, Double> out = new HashMap<>();
         for (ToolWindowAnchor anchor : ToolWindowAnchor.values()) {
-            if (isPanelShown(anchor)) {
-                detachSnapshot(anchor);
+            if (visible.containsKey(anchor)) {
+                remember(anchor);
             }
             out.put(anchor.name(), dividers.get(anchor));
         }
         return out;
-    }
-
-    private void detachSnapshot(ToolWindowAnchor anchor) {
-        switch (anchor) {
-            case LEFT -> dividers.put(anchor, horizontal.getDividerPositions()[0]);
-            case RIGHT -> {
-                double[] positions = horizontal.getDividerPositions();
-                dividers.put(anchor, positions[positions.length - 1]);
-            }
-            case BOTTOM -> dividers.put(anchor, vertical.getDividerPositions()[0]);
-        }
     }
 
     public void restore(Map<String, String> visibleByAnchor, Map<String, Double> dividerPositions) {

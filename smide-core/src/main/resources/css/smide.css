@@ -17,6 +17,8 @@
     -smide-accent-soft: #dceef1;
     -smide-scroll-thumb: #aebbc9;
     -smide-selection: #d5e5f2;
+    -smide-row-selected: #0b6e7f;
+    -smide-row-selected-text: #ffffff;
     -smide-current-line: #eef3f7;
     -smide-danger: #C0392B;
     -smide-warning: #B7791F;
@@ -60,6 +62,10 @@
     -smide-accent-soft: #16323c;
     -smide-scroll-thumb: #3d4f63;
     -smide-selection: #243b52;
+    /* Deeper than the accent: white on #3fb8cc is barely readable, and a bright band
+       across a dark window is a glare. */
+    -smide-row-selected: #1d5462;
+    -smide-row-selected-text: #eaf4f7;
     -smide-current-line: #141e29;
     -smide-danger: #E06C5B;
     -smide-warning: #D6A24A;
@@ -353,13 +359,34 @@
 
 .tree-view:focused .tree-cell:selected,
 .list-view:focused .list-cell:filled:selected {
-    -fx-background-color: -smide-accent;
-    -fx-text-fill: white;
+    -fx-background-color: -smide-row-selected;
+    -fx-text-fill: -smide-row-selected-text;
 }
 
 .tree-view:focused .tree-cell:selected .ikonli-font-icon,
 .list-view:focused .list-cell:filled:selected .ikonli-font-icon {
-    -fx-icon-color: white;
+    -fx-icon-color: -smide-row-selected-text;
+}
+
+/*
+ * A row built from a graphic - the debugger's variables, a Git change, a search hit -
+ * is made of Labels that carry their own colour. On a selected row those colours sit on
+ * the accent background: a teal value on teal is invisible, which is exactly what a
+ * variable's value did when you clicked it. Everything inside a selected row is white,
+ * whatever it asked for.
+ */
+.tree-view:focused .tree-cell:selected .label,
+.tree-view:focused .tree-cell:selected .text,
+.list-view:focused .list-cell:filled:selected .label,
+.list-view:focused .list-cell:filled:selected .text {
+    -fx-text-fill: -smide-row-selected-text;
+    -fx-fill: -smide-row-selected-text;
+}
+
+/* Selected but not focused: the row is a pale tint, so the text stays readable dark. */
+.tree-view .tree-cell:selected .label,
+.list-view .list-cell:filled:selected .label {
+    -fx-text-fill: -smide-text;
 }
 
 .tree-cell > .tree-disclosure-node > .arrow {

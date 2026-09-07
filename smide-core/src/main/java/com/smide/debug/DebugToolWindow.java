@@ -113,6 +113,10 @@ public final class DebugToolWindow implements ToolWindowFactory {
             }
             return;
         }
+        // Stopping is the moment the window matters; bring it forward every time.
+        if (context != null) {
+            context.show();
+        }
         List<DebugSession.StackFrameInfo> stack = session.frames();
         frames.getItems().setAll(stack);
         if (!stack.isEmpty()) {

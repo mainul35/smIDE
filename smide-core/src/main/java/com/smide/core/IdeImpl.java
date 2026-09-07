@@ -153,7 +153,13 @@ public final class IdeImpl implements Ide {
         registry.addToolWindow(findInPath);
         debugWindow = new DebugToolWindow(this);
         registry.addToolWindow(debugWindow);
-        execution.setDebugSessionSink(session -> debugWindow.setSession(session));
+        execution.setDebugSessionSink(session -> {
+            /* Shown through the manager, not by the window itself: a tool window that has
+               never been created has no handle to show itself with, so a session would
+               attach and stop with nothing on screen to say so. */
+            debugWindow.setSession(session);
+            toolWindows.show(DebugToolWindow.ID);
+        });
         popups = new SearchPopups(this, languages, fileIndex);
 
         WelcomeView welcome = new WelcomeView(SmIdeApp.VERSION, List.of(
