@@ -10,12 +10,14 @@ import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TitledPane;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -52,8 +54,9 @@ final class ReviewPanel extends BorderPane {
     private final Button stop = new Button("Stop");
     private final Button copy = new Button("Copy");
     private final CheckBox wholeProject = new CheckBox("Look at related files");
-    private final TextArea sources = new TextArea();
-    private final TitledPane sourcesPane = new TitledPane("Sources", sources);
+    private final ListView<CodeContext.Source> sources = new ListView<>();
+    private final Label skippedNote = new Label();
+    private final TitledPane sourcesPane = new TitledPane("Sources", new VBox(sources, skippedNote));
     private final TextArea question = new TextArea();
     private final Button ask = new Button("Ask");
     private final VBox askBar;
@@ -65,7 +68,8 @@ final class ReviewPanel extends BorderPane {
      */
     private final Map<Path, String> transcripts = new LinkedHashMap<>();
     private final Map<Path, Discussion> discussions = new LinkedHashMap<>();
-    private final Map<Path, String> sourceLists = new LinkedHashMap<>();
+    private final Map<Path, List<CodeContext.Source>> sourceLists = new LinkedHashMap<>();
+    private final Map<Path, String> skippedLists = new LinkedHashMap<>();
 
     private Path current;
     private Assistant.Turn turn;
@@ -116,9 +120,32 @@ final class ReviewPanel extends BorderPane {
         VBox header = new VBox(2, fileLabel, bar);
         header.setPadding(new Insets(6, 2, 0, 8));
 
-        sources.setEditable(false);
+        /* The listing opens what it lists. A reader who wants the file that calls this one
+           should not have to read its path off a panel and type it into Go to File.
+           Ctrl+click, to match the editor's own go-to gesture, and double-click because
+           that is what a list of files means everywhere else. */
         sources.getStyleClass().add("assistant-sources");
-        sources.setPrefRowCount(5);
+        sources.setPrefHeight(112);
+        sources.setPlaceholder(new Label("Nothing sent yet."));
+        sources.setCellFactory(list -> new SourceCell());
+        sources.setOnMouseClicked(e -> {
+            boolean ctrlClick = e.getButton() == MouseButton.PRIMARY
+                    && e.getClickCount() == 1 && e.isShortcutDown();
+            boolean doubleClick = e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2;
+            if (ctrlClick || doubleClick) {
+                open(sources.getSelectionModel().getSelectedItem());
+            }
+        });
+        sources.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ENTER) {
+                open(sources.getSelectionModel().getSelectedItem());
+            }
+        });
+        skippedNote.getStyleClass().add("muted-small");
+        skippedNote.setWrapText(true);
+        skippedNote.setPadding(new Insets(4, 8, 4, 8));
+        skippedNote.setManaged(false);
+        skippedNote.setVisible(false);
         sourcesPane.setExpanded(false);
         sourcesPane.setAnimated(false);
 
@@ -182,7 +209,8 @@ final class ReviewPanel extends BorderPane {
             review.setDisable(true);
             copy.setDisable(true);
             view.show(placeholder("Open a file and press Review."));
-            sources.clear();
+            sources.getItems().clear();
+            sourcesPane.setText("Sources");
             setAskable(false);
             status.setText("");
             return;
@@ -194,7 +222,7 @@ final class ReviewPanel extends BorderPane {
         view.show(previous != null ? previous
                 : placeholder("Press Review to read **" + path.getFileName() + "** for code"
                         + " smells, security problems and technical debt."));
-        sources.setText(sourceLists.getOrDefault(path, ""));
+        showSourcesFor(path);
         setAskable(previous != null);
         if (previous == null) {
             status.setText("");
@@ -394,19 +422,55 @@ final class ReviewPanel extends BorderPane {
     }
 
     private void showSources(Path file, CodeContext.Result context) {
-        StringBuilder text = new StringBuilder();
-        for (String line : context.included()) {
-            text.append(line).append('\n');
+        sourceLists.put(file, context.included());
+        StringBuilder notes = new StringBuilder();
+        for (String line : context.skipped()) {
+            notes.append(notes.isEmpty() ? "Not sent: " : "; ").append(line);
         }
-        if (!context.skipped().isEmpty()) {
-            text.append('\n');
-            for (String line : context.skipped()) {
-                text.append("not sent: ").append(line).append('\n');
+        skippedLists.put(file, notes.toString());
+        showSourcesFor(file);
+    }
+
+    /** Puts one file's listing on screen, with the count on the pane's title. */
+    private void showSourcesFor(Path file) {
+        List<CodeContext.Source> listed = sourceLists.getOrDefault(file, List.of());
+        sources.getItems().setAll(listed);
+        sourcesPane.setText(listed.isEmpty() ? "Sources"
+                : "Sources  (" + listed.size() + " files)");
+        String notes = skippedLists.getOrDefault(file, "");
+        skippedNote.setText(notes);
+        skippedNote.setManaged(!notes.isBlank());
+        skippedNote.setVisible(!notes.isBlank());
+    }
+
+    /** Opens a listed file in the editor, which is the point of listing it. */
+    private void open(CodeContext.Source source) {
+        if (source == null) {
+            return;
+        }
+        try {
+            ide.editors().open(source.path());
+        } catch (RuntimeException e) {
+            ide.notifications().error("Could not open " + source.relative(),
+                    e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        }
+    }
+
+    /** The path, with what put it in the prompt beside it. */
+    private static final class SourceCell extends javafx.scene.control.ListCell<CodeContext.Source> {
+
+        @Override
+        protected void updateItem(CodeContext.Source source, boolean empty) {
+            super.updateItem(source, empty);
+            if (empty || source == null) {
+                setText(null);
+                setTooltip(null);
+                return;
             }
+            setText(source.relative() + (source.why().isBlank() ? "" : "   " + source.why()));
+            setTooltip(new javafx.scene.control.Tooltip(
+                    source.path() + "\n\nCtrl+click or double-click to open."));
         }
-        sources.setText(text.toString());
-        sourceLists.put(file, text.toString());
-        sourcesPane.setText("Sources  (" + context.included().size() + " files)");
     }
 
     /** The open editor's text, which may be ahead of the file, else what is on disk. */

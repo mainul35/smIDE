@@ -36,13 +36,32 @@ import java.util.stream.Stream;
 final class CodeContext {
 
     /**
+     * One file that went into the prompt.
+     *
+     * <p>The path is kept, not just the text of the line: the panel lists these and the
+     * reader will want to open one, and a listing you cannot get from to the file is a
+     * listing you have to retype into Go to File.
+     *
+     * @param path     where the file is
+     * @param relative how it is written in the listing, from the project root
+     * @param why      what put it in - reviewed, called by, calls into
+     */
+    record Source(Path path, String relative, String why) {
+
+        @Override
+        public String toString() {
+            return why.isBlank() ? relative : relative + "  - " + why;
+        }
+    }
+
+    /**
      * What was assembled.
      *
      * @param prompt   the text to send
-     * @param included one line per file that went in, for the panel to show
+     * @param included one entry per file that went in, for the panel to list
      * @param skipped  what did not fit, so silence is never mistaken for absence
      */
-    record Result(String prompt, List<String> included, List<String> skipped) {
+    record Result(String prompt, List<Source> included, List<String> skipped) {
     }
 
     /** Directories whose contents are output, dependencies or history, never source. */
@@ -85,7 +104,7 @@ final class CodeContext {
      */
     static Result of(Path root, Path file, String text, int budget, int maxFiles, int perFile) {
         StringBuilder prompt = new StringBuilder();
-        List<String> included = new ArrayList<>();
+        List<Source> included = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
 
         String name = file.getFileName().toString();
@@ -99,7 +118,7 @@ final class CodeContext {
             prompt.append("The file under review is `").append(name).append("`.")
                     .append(" There is no project open, so nothing around it could be read.\n\n")
                     .append(fence(file, head)).append('\n');
-            included.add(name + "  (the file under review)");
+            included.add(new Source(file, name, "the file under review"));
             return new Result(prompt.toString(), included, skipped);
         }
 
@@ -120,7 +139,7 @@ final class CodeContext {
         }
 
         prompt.append("## The file under review\n\n").append(fence(file, head)).append('\n');
-        included.add(relative + "  (the file under review)");
+        included.add(new Source(file, relative, "the file under review"));
         int spent = prompt.length();
 
         List<Neighbour> neighbours = neighbours(root, file, head, files);
@@ -145,7 +164,7 @@ final class CodeContext {
             }
             prompt.append(block);
             spent += block.length();
-            included.add(neighbour.relative + "  - " + neighbour.why);
+            included.add(new Source(neighbour.path, neighbour.relative, neighbour.why));
             taken++;
         }
         return new Result(prompt.toString(), included, skipped);

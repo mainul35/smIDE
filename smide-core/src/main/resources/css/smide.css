@@ -1219,14 +1219,28 @@
 }
 
 /* What went to the model. A listing, so it is fixed width and never wrapped
-   into something that reads like a sentence. */
+   into something that reads like a sentence - and every row opens its file. */
 .assistant-sources {
     -fx-font-family: "Cascadia Mono", "Consolas", monospace;
     -fx-font-size: 11px;
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1 0 0 0;
 }
 
-.assistant-sources .content {
-    -fx-background-color: -smide-surface;
+.assistant-sources .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -smide-text;
+    -fx-padding: 2 8 2 8;
+}
+
+.assistant-sources .list-cell:hover {
+    -fx-background-color: -smide-surface-alt;
+}
+
+.assistant-sources .list-cell:selected {
+    -fx-background-color: -smide-row-selected;
+    -fx-text-fill: -smide-row-selected-text;
 }
 
 /* The one action on the screen at that moment: the assistant's "I have read
