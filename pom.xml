@@ -37,6 +37,26 @@
         <junit.version>5.11.4</junit.version>
     </properties>
 
+    <!--
+        MDViewer, whose renderer draws the Markdown editor and the assistant's answers and
+        whose client the assistant sends through, is published to GitHub Packages rather
+        than Maven Central.
+
+        GitHub's Maven registry authenticates reads as well as writes, so this needs a
+        token with read:packages in your ~/.m2/settings.xml under the id below. INSTALL.md
+        section 2 has the four lines. Without it the build stops on
+        com.mdviewer:mdviewer:jar - the artifact is there, the request is anonymous.
+    -->
+    <repositories>
+        <repository>
+            <id>github-mdviewer</id>
+            <name>GitHub Packages - mainul35/markdown-viewer</name>
+            <url>https://maven.pkg.github.com/mainul35/markdown-viewer</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+    </repositories>
+
     <dependencyManagement>
         <dependencies>
             <dependency>

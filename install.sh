@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 #
-# Installs smIDE on Linux: checks what is needed, builds MDViewer and smIDE, and
-# writes a launcher and a desktop entry.
+# Installs smIDE on Linux: checks what is needed, builds it, and writes a launcher
+# and a desktop entry.
 #
 #   ./install.sh                      build and install
-#   ./install.sh --mdviewer <path>    use an MDViewer checkout you already have
+#   ./install.sh --mdviewer <path>    build MDViewer from a checkout instead of the registry
 #   ./install.sh --skip-mdviewer      MDViewer is already in ~/.m2
 #   ./install.sh --no-desktop         no launcher, no menu entry
 #   ./install.sh --check              report what is missing and stop
+#
+# MDViewer, which two of the sixteen modules compile against, is fetched from GitHub
+# Packages - which needs a token with read:packages in ~/.m2/settings.xml. The script
+# says how, and --mdviewer builds it from a checkout instead.
 #
 # Nothing is installed outside your home directory without asking first. Language
 # servers are not installed here at all - smIDE offers each one when you first open a
@@ -16,7 +20,6 @@
 
 set -euo pipefail
 
-MDVIEWER_REPO="https://github.com/mainul35/markdown-viewer.git"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="$PREFIX/bin"
 DESKTOP_DIR="$PREFIX/share/applications"
@@ -218,50 +221,67 @@ fi
 
 # --------------------------------------------------------------- MDViewer
 
-# smIDE embeds MDViewer's renderer and its OpenAI-compatible client, and those
-# coordinates are not on Maven Central. Without this the reactor stops on dependency
-# resolution, which is a confusing way to find out.
-mdviewer_version=$(sed -nE 's/.*<mdviewer\.version>(.*)<\/mdviewer\.version>.*/\1/p' \
-    "$SOURCE_DIR/pom.xml" | head -1)
+# smIDE embeds MDViewer's renderer and its OpenAI-compatible client, so two of the
+# sixteen modules need it to compile. It is published to GitHub Packages rather than
+# Maven Central, and GitHub's Maven registry authenticates reads as well as writes -
+# so this needs a token in ~/.m2/settings.xml, or a checkout to build from.
+mdviewer_version=$(sed -nE 's/.*<mdviewer\.version>(.*)<\/mdviewer\.version>.*//p'     "$SOURCE_DIR/pom.xml" | head -1)
 mdviewer_jar="$HOME/.m2/repository/com/mdviewer/mdviewer/$mdviewer_version/mdviewer-$mdviewer_version.jar"
+settings="$HOME/.m2/settings.xml"
 
-if $skip_mdviewer; then
-    step "Skipping MDViewer as asked"
-    [ -f "$mdviewer_jar" ] || fail "But it is not in ~/.m2 either: $mdviewer_jar"
-elif [ -f "$mdviewer_jar" ]; then
-    step "MDViewer $mdviewer_version is already installed"
+have_credentials() {
+    [ -f "$settings" ] && grep -q "github-mdviewer" "$settings"
+}
+
+explain_credentials() {
+    cat <<CREDS
+
+MDViewer $mdviewer_version comes from GitHub Packages, and GitHub asks for a token even
+to read a public one. Create a token with the read:packages scope:
+
+    https://github.com/settings/tokens        (classic, tick read:packages)
+
+then put it in $settings:
+
+    <settings>
+      <servers>
+        <server>
+          <id>github-mdviewer</id>
+          <username>YOUR_GITHUB_USERNAME</username>
+          <password>YOUR_TOKEN</password>
+        </server>
+      </servers>
+    </settings>
+
+The id has to be github-mdviewer: that is what the repository in smIDE's pom.xml is
+called, and Maven matches them by name.
+
+Or skip the registry entirely and build MDViewer from source:
+
+    ./install.sh --mdviewer /path/to/markdown-viewer
+
+CREDS
+}
+
+if [ -f "$mdviewer_jar" ]; then
+    step "MDViewer $mdviewer_version is already in ~/.m2"
     echo "$mdviewer_jar"
-else
-    step "Installing MDViewer $mdviewer_version into ~/.m2"
-    if [ -z "$mdviewer_path" ]; then
-        mdviewer_path="$(dirname "$SOURCE_DIR")/MDViewer"
-        if [ ! -d "$mdviewer_path" ]; then
-            cat <<WHY
-
-smIDE is built on MDViewer, which is a library here rather than a separate program:
-
-  - the Markdown editor IS MDViewer embedded - its renderer, its stylesheet, its
-    PlantUML, Mermaid and chart support
-  - the assistant uses its OpenAI-compatible client and the same renderer for answers
-
-Two of the sixteen modules need it to compile - smide-plugin-markdown and
-smide-plugin-assistant. It is published on GitHub but not to Maven Central, so it has
-to be built into ~/.m2 once. Nothing of it runs separately, and nothing is installed
-outside your home directory.
-
-WHY
-            echo "Clone $MDVIEWER_REPO to $mdviewer_path and build it? [y/N]"
-            read -r answer
-            case "$answer" in
-                [yY]*) git clone "$MDVIEWER_REPO" "$mdviewer_path" ;;
-                *)     fail "Then pass --mdviewer <path> to a checkout you have." ;;
-            esac
-        fi
-    fi
+elif $skip_mdviewer; then
+    step "Skipping MDViewer as asked"
+    fail "But it is not in ~/.m2 either: $mdviewer_jar"
+elif [ -n "$mdviewer_path" ]; then
+    step "Building MDViewer $mdviewer_version from $mdviewer_path"
     [ -f "$mdviewer_path/pom.xml" ] || fail "No pom.xml in $mdviewer_path"
     (cd "$mdviewer_path" && mvn -q install -DskipTests)
     [ -f "$mdviewer_jar" ] || fail "MDViewer built but $mdviewer_jar is not there. Version mismatch?"
     green "Installed $mdviewer_jar"
+elif have_credentials; then
+    step "MDViewer $mdviewer_version will come from GitHub Packages"
+    echo "Credentials for github-mdviewer found in $settings."
+else
+    step "MDViewer $mdviewer_version needs a token"
+    explain_credentials
+    fail "No github-mdviewer server in $settings."
 fi
 
 # ------------------------------------------------------------------- build

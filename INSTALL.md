@@ -12,9 +12,9 @@ database drivers.
 
 ## 0. Linux, the short way
 
-There is a script that does sections 1 to 4 for you — checks the prerequisites, builds
-MDViewer into your local Maven repository, builds smIDE, and writes a `smide` launcher and
-a menu entry under `~/.local`:
+There is a script that does sections 1 to 4 for you — checks the prerequisites, checks you
+can fetch MDViewer, builds smIDE, and writes a `smide` launcher and a menu entry under
+`~/.local`:
 
 ```bash
 ./install.sh --check     # report what is missing and stop
@@ -27,8 +27,8 @@ found has no `lib/src.zip`. It does **not** install language servers: smIDE offe
 when you first open a file of that language, which is the only point at which it knows
 which ones you want.
 
-`--mdviewer <path>` uses an MDViewer checkout you already have, `--skip-mdviewer` if it is
-already installed, `--no-desktop` for no launcher. The rest of this document is what the
+`--mdviewer <path>` builds MDViewer from a checkout instead of fetching it, `--skip-mdviewer`
+if it is already in `~/.m2`, `--no-desktop` for no launcher. The rest of this document is what the
 script does, and what to do on Windows and macOS where there is no script yet.
 
 ---
@@ -66,7 +66,7 @@ login shell elsewhere), and that is configurable in Settings.
 
 ---
 
-## 2. MDViewer, the one dependency not on Maven Central
+## 2. MDViewer, and the token that fetches it
 
 **smIDE is built on MDViewer.** Not alongside it — it is a library here, and two of the
 sixteen modules will not compile without it:
@@ -79,25 +79,53 @@ sixteen modules will not compile without it:
   not approved, and renders answers with the same Markdown renderer.
 
 Nothing of MDViewer runs as a separate program. It is a compile-time dependency,
-`com.mdviewer:mdviewer:1.1.0`, and the build declares no remote repository for it — so it
-has to be in your local Maven repository before smIDE will build.
+`com.mdviewer:mdviewer`, published to **GitHub Packages** at
+`https://maven.pkg.github.com/mainul35/markdown-viewer`, and smIDE's root `pom.xml`
+declares that repository.
+
+### The token
+
+GitHub's Maven registry **authenticates reads as well as writes**, even for a public
+package. So one setup step is unavoidable: a token, once.
+
+1. Create a classic personal access token with the **`read:packages`** scope at
+   <https://github.com/settings/tokens>.
+2. Put it in `~/.m2/settings.xml`:
+
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>github-mdviewer</id>
+      <username>YOUR_GITHUB_USERNAME</username>
+      <password>YOUR_TOKEN</password>
+    </server>
+  </servers>
+</settings>
+```
+
+The id must be **`github-mdviewer`** — that is the name the repository has in smIDE's
+`pom.xml`, and Maven matches a server to a repository by id. If you already have a
+`settings.xml`, add the `<server>` block to the `<servers>` you have rather than replacing
+the file.
+
+Without it the build stops on `com.mdviewer:mdviewer:jar` — the artifact is there, the
+request is anonymous.
+
+### Or build it from source instead
+
+If you would rather not keep a token for this, clone MDViewer and install it into your
+local repository; the local artifact is found first and the registry is never asked:
 
 ```bash
-git clone https://github.com/mainul35/markdown-viewer.git MDViewer
-cd MDViewer
+git clone https://github.com/mainul35/markdown-viewer.git
+cd markdown-viewer
 mvn install -DskipTests
 ```
 
-That puts `mdviewer-1.1.0.jar` under `~/.m2/repository/com/mdviewer/mdviewer/1.1.0/`.
-Check it landed:
+`./install.sh --mdviewer /path/to/markdown-viewer` does exactly that.
 
-```bash
-ls ~/.m2/repository/com/mdviewer/mdviewer/1.1.0/
-```
-
-If you skip this, the smIDE build stops with `Could not resolve dependencies ...
-com.mdviewer:mdviewer:jar:1.1.0 was not found`. The version is set by `<mdviewer.version>`
-in the root `pom.xml`; if you build a different MDViewer version, change it there to match.
+The version smIDE wants is set by `<mdviewer.version>` in the root `pom.xml`.
 
 ---
 
