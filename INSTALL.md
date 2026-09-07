@@ -36,7 +36,7 @@ script does, and what to do on Windows and macOS where there is no script yet.
 | | Version | Why |
 |---|---|---|
 | **JDK** | 21 | The IDE is compiled and run on 21. A **JDK**, not a JRE — see the note below |
-| **Maven** | 3.9 or newer | The build |
+| **Maven** | 3.8 or newer | The build |
 | **Git** | any recent | Cloning, and the Git tool window shells out to it for pull and push |
 
 JavaFX is not a separate install: the OpenJFX artifacts come from Maven, including the
@@ -64,10 +64,19 @@ login shell elsewhere), and that is configurable in Settings.
 
 ## 2. MDViewer, the one dependency not on Maven Central
 
-smIDE embeds [MDViewer](https://github.com/mainul35/MDViewer) — its Markdown renderer draws
-the Markdown editor's preview and the assistant's answers, and its OpenAI-compatible client
-is what the assistant talks through. It is declared as `com.mdviewer:mdviewer:1.1.0` and the
-build has no remote repository for it, so it has to be in your local Maven repository first.
+**smIDE is built on MDViewer.** Not alongside it — it is a library here, and two of the
+sixteen modules will not compile without it:
+
+- **`smide-plugin-markdown`** — the Markdown editor *is* MDViewer embedded: its renderer,
+  its stylesheet, its PlantUML, Mermaid and chart support. That is what makes a document
+  look the same in both products, which was the point of building on it.
+- **`smide-plugin-assistant`** — the assistant sends its requests through MDViewer's
+  OpenAI-compatible client, including the host allowlist that refuses an endpoint you have
+  not approved, and renders answers with the same Markdown renderer.
+
+Nothing of MDViewer runs as a separate program. It is a compile-time dependency,
+`com.mdviewer:mdviewer:1.1.0`, and the build declares no remote repository for it — so it
+has to be in your local Maven repository before smIDE will build.
 
 ```bash
 git clone <your MDViewer remote> MDViewer

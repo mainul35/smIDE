@@ -92,17 +92,32 @@ step "Checking what is needed"
 
 if jdk=$(find_jdk); then
     green "JDK 21+        $jdk"
-    [ -f "$jdk/lib/src.zip" ] || red "  no lib/src.zip - Ctrl+click into JDK classes will have no source"
+    if [ ! -f "$jdk/lib/src.zip" ]; then
+        red "  no lib/src.zip - Ctrl+click into the JDK's own classes will have no source"
+        if command -v apt-get >/dev/null 2>&1; then
+            echo "  Fix:  sudo apt-get install openjdk-21-source"
+        else
+            echo "  Fix:  install your distribution's JDK sources package, or use a Temurin build"
+        fi
+    fi
 else
     red "JDK 21+        not found"
     missing+=("a JDK 21 or newer (openjdk-21-jdk, java-21-openjdk-devel, or Temurin)")
 fi
 
 if command -v mvn >/dev/null 2>&1; then
-    green "Maven          $(mvn -v 2>/dev/null | head -1 | cut -d' ' -f3)"
+    mvn_version=$(mvn -v 2>/dev/null | head -1 | cut -d' ' -f3)
+    mvn_major=${mvn_version%%.*}
+    mvn_minor=$(echo "$mvn_version" | cut -d. -f2)
+    if [ "${mvn_major:-0}" -gt 3 ] 2>/dev/null        || { [ "${mvn_major:-0}" -eq 3 ] && [ "${mvn_minor:-0}" -ge 8 ]; } 2>/dev/null; then
+        green "Maven          $mvn_version"
+    else
+        red "Maven          $mvn_version  (3.8 or newer needed)"
+        missing+=("Maven 3.8 or newer")
+    fi
 else
     red "Maven          not found"
-    missing+=("Maven 3.9 or newer")
+    missing+=("Maven 3.8 or newer")
 fi
 
 if command -v git >/dev/null 2>&1; then
@@ -165,8 +180,21 @@ else
     if [ -z "$mdviewer_path" ]; then
         mdviewer_path="$(dirname "$SOURCE_DIR")/MDViewer"
         if [ ! -d "$mdviewer_path" ]; then
-            echo "smIDE needs MDViewer $mdviewer_version, which is not on Maven Central."
-            echo "Clone it to $mdviewer_path and build it? [y/N]"
+            cat <<WHY
+
+smIDE is built on MDViewer, which is a library here rather than a separate program:
+
+  - the Markdown editor IS MDViewer embedded - its renderer, its stylesheet, its
+    PlantUML, Mermaid and chart support
+  - the assistant uses its OpenAI-compatible client and the same renderer for answers
+
+Two of the sixteen modules need it to compile - smide-plugin-markdown and
+smide-plugin-assistant. It is published on GitHub but not to Maven Central, so it has
+to be built into ~/.m2 once. Nothing of it runs separately, and nothing is installed
+outside your home directory.
+
+WHY
+            echo "Clone $MDVIEWER_REPO to $mdviewer_path and build it? [y/N]"
             read -r answer
             case "$answer" in
                 [yY]*) git clone "$MDVIEWER_REPO" "$mdviewer_path" ;;

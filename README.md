@@ -50,7 +50,7 @@ and push through the system `git` so your credentials apply; the branch on the s
 
 ## Running it
 
-Requires JDK 21 and Maven 3.9, and MDViewer installed into your local Maven repository -
+Requires JDK 21 and Maven 3.8, and MDViewer installed into your local Maven repository -
 see [INSTALL.md](INSTALL.md) for the whole of it, including which language servers arrive
 by themselves and which need a toolchain first.
 
