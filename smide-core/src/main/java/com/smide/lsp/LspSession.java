@@ -238,8 +238,14 @@ public final class LspSession {
                 InitializeResult result = server.initialize(params).get(120, TimeUnit.SECONDS);
                 capabilities = result.getCapabilities();
                 server.initialized(new InitializedParams());
-                server.getWorkspaceService().didChangeConfiguration(new DidChangeConfigurationParams(
-                        launcher.initializationOptions(ide, workspace)));
+                /* An empty object rather than nothing when a launcher has no options.
+                   Several servers - the YAML one among them - do no work until a
+                   configuration has been pushed, and the class that carries it refuses a
+                   null settings value outright: "Property must not be null: settings"
+                   was thrown here, took the session down with it, and the language came
+                   up as failed for no reason the user could see. */
+                server.getWorkspaceService().didChangeConfiguration(
+                        new DidChangeConfigurationParams(options == null ? Map.of() : options));
                 setState(State.READY, null);
                 done.complete(null);
                 process.onExit().thenAccept(p -> {
