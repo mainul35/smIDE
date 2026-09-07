@@ -31,6 +31,7 @@
         <module>smide-plugin-lang-csharp</module>
         <module>smide-plugin-lang-docker</module>
         <module>smide-plugin-database</module>
+        <module>smide-plugin-assistant</module>
     </modules>
 
     <!-- Every plugin compiles against the API and, for now, nothing else from the IDE. -->

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.smide</groupId>
+        <artifactId>smide-plugins</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>smide-plugin-assistant</artifactId>
+    <name>smIDE Assistant Plugin</name>
+    <description>A programming buddy: reviews the open file for smells, vulnerabilities and debt, and runs practice sessions</description>
+
+    <dependencies>
+        <!--
+            MDViewer as a library, for the two pieces this shares with its assistant: the
+            OpenAI-compatible client with its host allowlist, and the Markdown renderer
+            that draws the replies. The same configuration file shape, so a provider set
+            up in one is set up the same way in the other.
+        -->
+        <dependency>
+            <groupId>com.mdviewer</groupId>
+            <artifactId>mdviewer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-web</artifactId>
+        </dependency>
+        <!-- Ships with the core; the answer editor is a CodeArea like any other. -->
+        <dependency>
+            <groupId>org.fxmisc.richtext</groupId>
+            <artifactId>richtextfx</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1207,3 +1207,24 @@
     -fx-font-size: 11.5px;
     -fx-padding: 5 8 5 8;
 }
+
+/* ----------------------------------------------------------- assistant */
+
+/* The file being reviewed, and the heading over the answer box: quiet, but the
+   one thing in the panel that has to be readable at a glance. */
+.assistant-file {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -smide-text;
+}
+
+/* What went to the model. A listing, so it is fixed width and never wrapped
+   into something that reads like a sentence. */
+.assistant-sources {
+    -fx-font-family: "Cascadia Mono", "Consolas", monospace;
+    -fx-font-size: 11px;
+}
+
+.assistant-sources .content {
+    -fx-background-color: -smide-surface;
+}

@@ -105,6 +105,11 @@
             <artifactId>smide-plugin-database</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-assistant</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
