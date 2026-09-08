@@ -165,7 +165,51 @@ public final class JdtLauncher implements LanguageServerLauncher {
 
     private static Path dataDir(Ide ide, Workspace workspace) {
         String key = Integer.toHexString(workspace.root().toString().hashCode());
-        return ide.homeDir().resolve("jdtls-data").resolve(workspace.name() + "-" + key);
+        Path dir = ide.homeDir().resolve("jdtls-data").resolve(workspace.name() + "-" + key);
+        discardIfJdkChanged(ide, dir);
+        return dir;
+    }
+
+    /**
+     * Throws the workspace away when it was built against a different JDK.
+     *
+     * <p>JDT decides each project's JRE container when it imports it, and does not revisit
+     * that when the runtimes change later: the log says "JVM Runtimes changed, saving new
+     * configuration" and every already-imported project keeps the container it was given.
+     * So a workspace imported once against the wrong JDK stays wrong for good - which is
+     * what happened when the packaged IDE named its own jlink runtime, and correcting the
+     * configuration afterwards changed nothing at all, because the import had happened.
+     *
+     * <p>A line of text beside the workspace records which JDK it was imported with. When
+     * that stops matching, the workspace goes and JDT imports again - a couple of minutes
+     * once, against a JDK that has source, rather than a permanently sourceless one.
+     */
+    private static void discardIfJdkChanged(Ide ide, Path dir) {
+        Path marker = dir.resolveSibling(dir.getFileName() + ".jdk");
+        String current = JavaTools.jdk(ide).map(Path::toString).orElse("");
+        String previous = "";
+        try {
+            if (Files.isRegularFile(marker)) {
+                previous = Files.readString(marker).strip();
+            }
+        } catch (IOException e) {
+            // Unreadable marker: treat as unknown, which re-imports. Safe either way.
+        }
+        try {
+            if (Files.isDirectory(dir) && !current.isEmpty() && !current.equals(previous)) {
+                ide.notifications().info("Java project re-import",
+                        "The JDK changed to " + current + ", so the Java language server's"
+                        + " workspace is being rebuilt. Navigation will be ready shortly.");
+                deleteTree(dir);
+            }
+            if (!current.isEmpty()) {
+                Files.createDirectories(marker.getParent());
+                Files.writeString(marker, current);
+            }
+        } catch (IOException e) {
+            // A workspace that could not be cleared is a slow start, not a broken one.
+            System.err.println("smIDE: could not reset the Java workspace at " + dir + " - " + e);
+        }
     }
 
     @Override

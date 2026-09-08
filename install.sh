@@ -7,6 +7,7 @@
 #   ./install.sh --prefix DIR       install under DIR (default ~/.local)
 #   ./install.sh --mdviewer PATH    build MDViewer from a checkout you have
 #   ./install.sh --no-desktop       no launcher, no menu entry
+#   ./install.sh --no-java-server   do not fetch the Java language server
 #   ./install.sh --uninstall        remove what this installed
 #
 # What you get is an application, not a build tree: jpackage puts smIDE's jars beside
@@ -27,6 +28,7 @@ CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/smide"
 
 mdviewer_path=""
 make_desktop=true
+java_server=true
 check_only=false
 uninstall=false
 
@@ -35,6 +37,7 @@ while [ $# -gt 0 ]; do
         --prefix)     PREFIX="${2:?--prefix needs a directory}"; shift 2 ;;
         --mdviewer)   mdviewer_path="${2:?--mdviewer needs a path}"; shift 2 ;;
         --no-desktop) make_desktop=false; shift ;;
+        --no-java-server) java_server=false; shift ;;
         --check)      check_only=true; shift ;;
         --uninstall)  uninstall=true; shift ;;
         -h|--help)    sed -n '3,20p' "$0" | sed 's/^#\{1,\} \{0,1\}//'; exit 0 ;;
@@ -412,6 +415,36 @@ DESKTOP
     esac
 fi
 
+# ------------------------------------------------- the Java language server
+
+# Java is the language this IDE is built around, so an installed smIDE that cannot
+# complete or navigate Java is not an installed IDE. The other thirteen servers stay on
+# demand: they are half a gigabyte between them, and each wants a toolchain - Node, Go,
+# rustup, the .NET SDK - that this machine may have no reason to carry.
+JDTLS_DIR="$HOME/.smide/tools/jdtls"
+if ! $java_server; then
+    step "Skipping the Java language server as asked"
+elif [ -d "$JDTLS_DIR/plugins" ]; then
+    step "The Java language server is already installed"
+    echo "$JDTLS_DIR"
+else
+    step "Fetching the Java language server"
+    echo "Eclipse JDT, about 50 MB, so that Java works the first time you open a file."
+    snapshots="https://download.eclipse.org/jdtls/snapshots/"
+    if latest=$(curl -fsSL --max-time 60 "$snapshots/latest.txt" 2>/dev/null)        && [ -n "$latest" ] && [ "${latest%.tar.gz}" != "$latest" ]; then
+        archive="$LOG_DIR/$latest"
+        if run_step_soft "Downloading $latest"                 curl -fsSL --max-time 900 -o "$archive" "$snapshots$latest"; then
+            mkdir -p "$JDTLS_DIR"
+            if run_step_soft "Unpacking the Java language server"                     tar -xzf "$archive" -C "$JDTLS_DIR"; then
+                green "  $JDTLS_DIR"
+            fi
+        fi
+    else
+        echo "  Could not reach download.eclipse.org. smIDE will offer to install it"
+        echo "  the first time you open a Java file."
+    fi
+fi
+
 # ------------------------------------------------------------------- done
 
 step "Done"
@@ -424,9 +457,9 @@ The installed copy carries its own Java runtime: it does not use JAVA_HOME, and 
 does not need Maven. A JDK is still worth having on the PATH for Java development,
 because that is what the Java language server compiles your code with.
 
-Language servers install on demand. Open a file and smIDE offers the server for that
-language; seven of them need Node.js, Go needs the Go toolchain, Rust needs rustup,
-C# needs the .NET SDK.
+Java works out of the box: its language server was installed above. The other thirteen
+are on demand - open a file and smIDE offers that language's server. Seven of them need
+Node.js, Go needs the Go toolchain, Rust needs rustup, C# needs the .NET SDK.
 
 The assistant needs a model endpoint before it does anything: Settings > Tools >
 Assistant. Nothing is sent anywhere until you ask for a review, and only to a host
