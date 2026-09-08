@@ -103,6 +103,16 @@ final class ReviewPanel extends BorderPane {
         /** What sits above the arriving text: the review and the question, for a follow-up. */
         String pending = "";
 
+        /**
+         * Which attempt is the current one.
+         *
+         * <p>Reading the project happens off the thread, so Stop followed by Review leaves
+         * an earlier reading still on its way back. Without a number to check against, it
+         * arrives and sends a second request nobody asked for, on top of whatever the file
+         * is doing by then.
+         */
+        int generation;
+
         long lastRender;
     }
 
@@ -380,6 +390,8 @@ final class ReviewPanel extends BorderPane {
         session.running = true;
         session.turn = null;
         session.streaming = null;
+        session.generation++;
+        int generation = session.generation;
         session.note = "Reading the project...";
         setStatus(session, "Reading the project around " + file.getFileName() + "...");
         if (session.transcript == null) {
@@ -393,8 +405,8 @@ final class ReviewPanel extends BorderPane {
         ide.window().runInBackground(() -> {
             CodeContext.Result context = CodeContext.of(root, file, text, budget, maxFiles, perFile);
             ide.window().runLater(() -> {
-                if (!session.running) {
-                    return; // Stopped while the project was being read.
+                if (!session.running || session.generation != generation) {
+                    return; // Stopped, or asked again, while the project was being read.
                 }
                 showSources(file, session, context);
                 send(file, session, context);
@@ -570,6 +582,7 @@ final class ReviewPanel extends BorderPane {
             return;
         }
         session.running = false;
+        session.generation++;
         if (session.turn != null) {
             session.turn.cancel();
             session.turn = null;
