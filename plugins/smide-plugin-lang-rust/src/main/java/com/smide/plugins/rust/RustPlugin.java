@@ -107,8 +107,80 @@ public final class RustPlugin implements Plugin {
             return "rust-analyzer";
         }
 
-        private static Optional<Path> locate() {
-            return onPathOrInCargo(WINDOWS ? "rust-analyzer.exe" : "rust-analyzer");
+        /** Resolved once per run; the answer needs a subprocess and does not change. */
+        private static Optional<Path> resolved;
+
+        static synchronized void forget() {
+            resolved = null;
+        }
+
+        private static synchronized Optional<Path> locate() {
+            if (resolved == null) {
+                resolved = find();
+            }
+            return resolved;
+        }
+
+        /**
+         * The real rust-analyzer, asked for by rustup.
+         *
+         * <p>Not ~/.cargo/bin/rust-analyzer, which is a proxy: rustup puts one there for
+         * every tool it knows about, as a hard link to itself, the moment rustup is
+         * installed - whether or not the component is. Launching that when the component
+         * is missing gets a process that prints "not installed for the toolchain" and
+         * exits, which reaches the IDE as JsonRpcException: Stream closed, and reads as
+         * "rust-analyzer failed" rather than "rust-analyzer is not installed".
+         *
+         * <p>{@code rustup which} answers with the toolchain's own binary, and fails when
+         * the component is absent - which is the honest answer, and puts the Install
+         * button back where the failure notification was.
+         */
+        private static Optional<Path> find() {
+            Optional<Path> viaRustup = onPathOrInCargo(WINDOWS ? "rustup.exe" : "rustup")
+                    .flatMap(RustAnalyzer::askRustup);
+            if (viaRustup.isPresent()) {
+                return viaRustup;
+            }
+            // No rustup: a real binary someone installed themselves, but never the proxy
+            // directory, which without rustup cannot hold a working one either.
+            String exe = WINDOWS ? "rust-analyzer.exe" : "rust-analyzer";
+            String path = System.getenv("PATH");
+            Path cargoBin = Path.of(System.getProperty("user.home", "."), ".cargo", "bin");
+            if (path != null) {
+                for (String dir : path.split(File.pathSeparator)) {
+                    if (dir.isBlank()) {
+                        continue;
+                    }
+                    Path candidate = Path.of(dir, exe);
+                    if (Files.isRegularFile(candidate) && !candidate.getParent().equals(cargoBin)) {
+                        return Optional.of(candidate);
+                    }
+                }
+            }
+            return Optional.empty();
+        }
+
+        private static Optional<Path> askRustup(Path rustup) {
+            try {
+                Process process = new ProcessBuilder(rustup.toString(), "which", "rust-analyzer")
+                        .redirectErrorStream(false)
+                        .start();
+                String out = new String(process.getInputStream().readAllBytes()).strip();
+                if (!process.waitFor(20, java.util.concurrent.TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
+                    return Optional.empty();
+                }
+                if (process.exitValue() != 0 || out.isEmpty()) {
+                    return Optional.empty();
+                }
+                Path binary = Path.of(out);
+                return Files.isRegularFile(binary) ? Optional.of(binary) : Optional.empty();
+            } catch (IOException e) {
+                return Optional.empty();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
         }
 
         /**
@@ -162,6 +234,8 @@ public final class RustPlugin implements Plugin {
                     progress.progress("rustup component add rust-analyzer", -1);
                     ide.downloads().runTool(List.of(rustup, "component", "add", "rust-analyzer"),
                             ide.downloads().toolsDir(), progress);
+                    // The cached answer was "no"; it is now "yes".
+                    forget();
                 }
             });
         }
