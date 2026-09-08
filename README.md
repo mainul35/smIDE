@@ -48,11 +48,19 @@ and push through the system `git` so your credentials apply; the branch on the s
 
 **Terminal.** A real shell per workspace, in a tool window.
 
-## Running it
+## Installing it
 
-Requires JDK 21 and Maven 3.8, and MDViewer installed into your local Maven repository -
-see [INSTALL.md](INSTALL.md) for the whole of it, including which language servers arrive
-by themselves and which need a toolchain first.
+```bash
+./install.sh          # Linux, macOS
+.\install.ps1         # Windows
+```
+
+That builds smIDE and installs it as an application with a Java runtime of its own: the
+installed copy needs no JDK, no Maven and no network to start. Building it needs JDK 21,
+Maven 3.8 and Git. [INSTALL.md](INSTALL.md) has the rest - which language servers arrive
+by themselves, which need a toolchain first, and how to configure the assistant.
+
+## Running it from source
 
 ```bash
 mvn install -DskipTests

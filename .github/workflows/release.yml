@@ -1,0 +1,110 @@
+# Builds smIDE for Linux, Windows and macOS and attaches the packages to a release.
+#
+# jpackage builds for the machine it runs on, so there is one job per platform and each
+# produces an app-image: smIDE's jars beside a Java runtime jlinked for that platform.
+# Somebody who downloads one needs no JDK, no Maven and no network to run it, which is
+# the whole point of doing this here rather than on their machine.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# or run it by hand from the Actions tab to get the packages as build artifacts without
+# making a release.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            archive: tar
+          - os: windows-latest
+            platform: windows-x64
+            archive: zip
+          - os: macos-latest
+            platform: macos-aarch64
+            archive: tar
+          - os: macos-13
+            platform: macos-x64
+            archive: tar
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # MDViewer is published to GitHub Packages, whose Maven registry authenticates
+      # reads - which would mean a token secret here. The repository is public and the
+      # build is a minute, so this builds it instead and the workflow needs no secret
+      # beyond the one GitHub provides for the release itself.
+      - name: Check out MDViewer
+        uses: actions/checkout@v4
+        with:
+          repository: mainul35/markdown-viewer
+          path: markdown-viewer
+
+      - name: Install MDViewer into the local repository
+        run: mvn -B -q install -DskipTests
+        working-directory: markdown-viewer
+
+      - name: Build smIDE
+        run: mvn -B -q install -DskipTests
+
+      - name: Package the application
+        run: mvn -B -q -pl smide-dist -Pdist package
+
+      - name: Name the archive
+        id: name
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "$version" = "$GITHUB_REF_NAME" ] && version="$(git rev-parse --short HEAD)"
+          echo "archive=smIDE-$version-${{ matrix.platform }}" >> "$GITHUB_OUTPUT"
+
+      - name: Archive (tar)
+        if: matrix.archive == 'tar'
+        shell: bash
+        run: tar -czf "${{ steps.name.outputs.archive }}.tar.gz" -C smide-dist/target/dist smIDE
+
+      - name: Archive (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: Compress-Archive -Path smide-dist/target/dist/smIDE -DestinationPath "${{ steps.name.outputs.archive }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.archive }}
+          path: |
+            ${{ steps.name.outputs.archive }}.tar.gz
+            ${{ steps.name.outputs.archive }}.zip
+          if-no-files-found: error
+
+      # Attached with the GitHub CLI, which every runner already has, rather than a
+      # third-party action: this step has write access to the repository and is not a
+      # place to add a dependency on somebody else's code.
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The first job to finish creates the release; the rest find it already there.
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" \
+            --generate-notes --verify-tag || true
+          # One archive exists per platform - the glob picks whichever it is.
+          gh release upload "$GITHUB_REF_NAME" ${{ steps.name.outputs.archive }}.* --clobber

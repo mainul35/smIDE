@@ -10,26 +10,60 @@ database drivers.
 
 ---
 
-## 0. Linux, the short way
+## 0. Install it
 
-There is a script that does sections 1 to 4 for you — checks the prerequisites, checks you
-can fetch MDViewer, builds smIDE, and writes a `smide` launcher and a menu entry under
-`~/.local`:
+smIDE installs as an **application, not a build tree**: `jpackage` puts its jars beside
+a Java runtime of its own, so the installed copy needs no JDK, no Maven and no network to
+start.
+
+### Linux and macOS
 
 ```bash
-./install.sh --check     # report what is missing and stop
-./install.sh             # do all of it
+./install.sh
 ```
 
-Nothing is installed outside your home directory without asking first — the one thing that
-would is your distribution's JDK sources package, which the script offers when the JDK it
-found has no `lib/src.zip`. It does **not** install language servers: smIDE offers each one
-when you first open a file of that language, which is the only point at which it knows
-which ones you want.
+### Windows
 
-`--mdviewer <path>` builds MDViewer from a checkout instead of fetching it, `--skip-mdviewer`
-if it is already in `~/.m2`, `--no-desktop` for no launcher. The rest of this document is what the
-script does, and what to do on Windows and macOS where there is no script yet.
+```powershell
+.\install.ps1
+```
+
+Either one checks what it needs, fetches or builds MDViewer, compiles the sixteen
+modules, packages them with a runtime, and installs to `~/.local/opt/smide` (or
+`%LOCALAPPDATA%\Programs\smIDE`) with a `smide` command and a menu entry.
+
+| | |
+|---|---|
+| `--check` / `-Check` | report what is missing and stop |
+| `--uninstall` / `-Uninstall` | remove what was installed; `~/.smide` is left alone |
+| `--prefix DIR` / `-Prefix DIR` | install somewhere else |
+| `--mdviewer PATH` / `-MdViewer PATH` | build MDViewer from a checkout you have |
+| `--no-desktop` / `-NoShortcut` | no launcher, no menu entry |
+
+**To build it you need a JDK 21, Maven 3.8 and Git.** To *run* what comes out you need
+none of them — that is the difference the packaging makes. A JDK is still worth having on
+the PATH afterwards, because the Java language server compiles your code with it.
+
+Language servers are not installed by either script. smIDE offers each one when you first
+open a file of that language, which is the only point at which anything knows which of the
+fourteen you want.
+
+### Without building at all
+
+The `release` workflow builds the same package on Linux, Windows and macOS and attaches
+the archives to a GitHub release:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Then installing is unpack-and-run — no JDK, no Maven, nothing to compile. Because this
+repository is private, downloading a release asset needs an authenticated `gh`:
+
+```bash
+gh release download v0.1.0 --repo mainul35/smIDE --pattern '*linux-x64.tar.gz'
+tar xzf smIDE-0.1.0-linux-x64.tar.gz -C ~/.local/opt
+```
 
 ---
 
@@ -83,10 +117,12 @@ Nothing of MDViewer runs as a separate program. It is a compile-time dependency,
 `https://maven.pkg.github.com/mainul35/markdown-viewer`, and smIDE's root `pom.xml`
 declares that repository.
 
-### The token
+### The token, which the installers do not require
 
 GitHub's Maven registry **authenticates reads as well as writes**, even for a public
-package. So one setup step is unavoidable: a token, once.
+package. `install.sh` and `install.ps1` therefore do not insist on one: with no
+credentials configured they clone MDViewer and build it, which needs nothing and takes a
+minute. Set the token up only if you would rather fetch than build.
 
 1. Create a classic personal access token with the **`read:packages`** scope at
    <https://github.com/settings/tokens>.
@@ -109,8 +145,9 @@ The id must be **`github-mdviewer`** — that is the name the repository has in 
 `settings.xml`, add the `<server>` block to the `<servers>` you have rather than replacing
 the file.
 
-Without it the build stops on `com.mdviewer:mdviewer:jar` — the artifact is there, the
-request is anonymous.
+Without it a plain `mvn install` stops on `com.mdviewer:mdviewer:jar` — the artifact is
+there, the request is anonymous. The install scripts do not hit this, because they fall
+back to building from source.
 
 ### Or build it from source instead
 
@@ -137,8 +174,10 @@ cd smIDE
 mvn install -DskipTests
 ```
 
-The reactor is the API, the core, fourteen plugins and a distribution module that exists
-to put them all on one class path. A clean build takes a couple of minutes; afterwards
+The reactor is the API, the core, fourteen plugins and a distribution module that puts
+them all on one class path. `mvn -pl smide-dist -Pdist package` goes one step further and
+runs `jpackage`, producing `smide-dist/target/dist/smIDE` — the application with its own
+runtime, which is what the install scripts copy into place. A clean build takes a couple of minutes; afterwards
 Maven only rebuilds what changed.
 
 Run the tests with `mvn install` (no `-DskipTests`) if you want them.
