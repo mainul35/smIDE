@@ -46,7 +46,7 @@ final class ReviewPanel extends BorderPane {
 
     private final Assistant assistant;
     private final Ide ide;
-    private final MarkdownView view;
+    private final MarkdownPane view;
 
     private final Label fileLabel = new Label("No file open");
     private final Label status = new Label();
@@ -79,7 +79,7 @@ final class ReviewPanel extends BorderPane {
     ReviewPanel(Assistant assistant) {
         this.assistant = assistant;
         this.ide = assistant.ide();
-        this.view = new MarkdownView(ide.theme());
+        this.view = new MarkdownPane();
 
         fileLabel.getStyleClass().add("assistant-file");
         status.getStyleClass().add("muted-small");

@@ -65,7 +65,7 @@ final class PracticePanel extends BorderPane {
     private final Label answerLabel = new Label("Your answer");
     private final HBox acknowledge = new HBox(8, understood, skip);
 
-    private final MarkdownView view;
+    private final MarkdownPane view;
     private final AnswerEditor answer;
     private SplitPane split;
     private VBox answerBox;
@@ -87,7 +87,7 @@ final class PracticePanel extends BorderPane {
     PracticePanel(Assistant assistant) {
         this.assistant = assistant;
         this.ide = assistant.ide();
-        this.view = new MarkdownView(ide.theme());
+        this.view = new MarkdownPane();
         this.answer = new AnswerEditor(ide);
 
         topic.getItems().setAll(TOPICS);

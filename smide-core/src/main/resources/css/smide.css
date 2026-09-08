@@ -1270,3 +1270,100 @@
 .assistant-question .content {
     -fx-background-color: -smide-surface;
 }
+
+/* ------------------------------------------- assistant markdown (no WebView)
+
+   The assistant's transcript is drawn with real controls rather than a browser:
+   JavaFX WebKit aborts the process on some Linux builds, and a tool window that
+   can kill the IDE is one nobody opens twice. These are the styles the renderer
+   asks for, in the theme's own tokens. */
+
+.md-scroll,
+.md-scroll .viewport {
+    -fx-background-color: transparent;
+}
+
+.md-pane {
+    -fx-background-color: transparent;
+}
+
+.md-text {
+    -fx-fill: -smide-text;
+    -fx-font-size: 12.5px;
+}
+
+.md-paragraph {
+    -fx-padding: 3 0 3 0;
+    -fx-line-spacing: 2;
+}
+
+.md-heading {
+    -fx-padding: 10 0 3 0;
+}
+
+.md-heading .md-text {
+    -fx-font-weight: bold;
+}
+
+.md-h1 .md-text { -fx-font-size: 15px; }
+.md-h2 .md-text { -fx-font-size: 14px; }
+.md-h3 .md-text { -fx-font-size: 13px; }
+.md-h4 .md-text,
+.md-h5 .md-text,
+.md-h6 .md-text { -fx-font-size: 12.5px; }
+
+.md-strong { -fx-font-weight: bold; }
+.md-emphasis { -fx-font-style: italic; }
+.md-link { -fx-fill: -smide-accent; }
+
+/* Inline code and fenced blocks share the bundled code font, so a finding reads
+   in the same face as the line it is about. */
+.md-inline-code {
+    -fx-font-family: "JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace;
+    -fx-font-size: 11.5px;
+    -fx-fill: -smide-accent;
+}
+
+.md-code {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+    -fx-padding: 0;
+}
+
+.md-code > .viewport {
+    -fx-background-color: transparent;
+}
+
+.md-code-text {
+    -fx-font-family: "JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace;
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -smide-text;
+    -fx-padding: 8 10 8 10;
+}
+
+.md-list {
+    -fx-padding: 2 0 2 6;
+}
+
+.md-bullet {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 12.5px;
+    -fx-padding: 3 0 0 0;
+}
+
+.md-quote {
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 0 0 3;
+    -fx-padding: 2 0 2 10;
+}
+
+.md-quote .md-text {
+    -fx-fill: -smide-text-muted;
+}
+
+.md-rule {
+    -fx-padding: 8 0 8 0;
+}
