@@ -69,11 +69,26 @@ final class MarkdownView extends StackPane {
         show("");
     }
 
+    /**
+     * Puts the rendered HTML on the page.
+     *
+     * <p>The HTML is handed over as a member on {@code window}, not pasted into the
+     * script. It used to go in as a JavaScript string literal - a whole review, escaped,
+     * re-parsed as source five times a second while an answer streamed - and on Linux
+     * that killed the process: SIGABRT inside libjfxwebkit at twkExecuteScript, with the
+     * window gone before the JVM could write an error log. Whatever the bug in WebKit is,
+     * a few dozen kilobytes of JavaScript source per second is not a reasonable thing to
+     * ask of it, and setMember does not compile anything at all.
+     */
     private void write(String text) {
         try {
             MarkdownService.Result rendered = markdown.render(text, Path.of("."));
-            engine.executeScript("window.__show(" + js(rendered.html()) + ", "
-                    + (follow ? "true" : "false") + ");");
+            Object window = engine.executeScript("window");
+            if (!(window instanceof netscape.javascript.JSObject page)) {
+                return;
+            }
+            page.setMember("__html", rendered.html());
+            engine.executeScript(follow ? "window.__show(true)" : "window.__show(false)");
         } catch (RuntimeException e) {
             // A half-written fenced block during streaming can upset the parser; the next
             // fragment almost always fixes it, so this is not worth reporting.
@@ -91,6 +106,7 @@ final class MarkdownView extends StackPane {
         }
     }
 
+    /** A JavaScript string literal. Only short values go through this now. */
     private static String js(String text) {
         StringBuilder out = new StringBuilder("\"");
         for (int i = 0; i < text.length(); i++) {
@@ -157,8 +173,11 @@ final class MarkdownView extends StackPane {
                     >= document.body.scrollHeight - 40;
               window.__pinned = bottom;
             });
-            window.__show = function (html, follow) {
-              document.getElementById('content').innerHTML = html;
+            /* The HTML arrives as window.__html, set from Java, rather than as an
+               argument pasted into this call: a review is tens of kilobytes and this
+               runs on every update. */
+            window.__show = function (follow) {
+              document.getElementById('content').innerHTML = window.__html || '';
               if (follow && window.__pinned) { window.scrollTo(0, document.body.scrollHeight); }
             };
             """;

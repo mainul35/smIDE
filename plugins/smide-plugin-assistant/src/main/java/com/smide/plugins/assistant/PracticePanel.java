@@ -307,7 +307,7 @@ final class PracticePanel extends BorderPane {
                     // can start at the top while the rest is still coming.
                     streaming.append(fragment);
                     long now = System.currentTimeMillis();
-                    if (now - lastRender > 180) {
+                    if (now - lastRender > 350) {
                         lastRender = now;
                         view.show(streaming.toString());
                     }
@@ -394,7 +394,7 @@ final class PracticePanel extends BorderPane {
                 fragment -> {
                     streaming.append(fragment);
                     long now = System.currentTimeMillis();
-                    if (now - lastRender > 180) {
+                    if (now - lastRender > 350) {
                         lastRender = now;
                         // The rubric is in the same reply, so nothing is rendered until
                         // it is complete - showing the marking scheme as it streams past
@@ -454,7 +454,7 @@ final class PracticePanel extends BorderPane {
                 fragment -> {
                     streaming.append(fragment);
                     long now = System.currentTimeMillis();
-                    if (now - lastRender > 180) {
+                    if (now - lastRender > 350) {
                         lastRender = now;
                         view.show(heading + visible(streaming.toString()));
                     }

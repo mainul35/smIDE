@@ -300,7 +300,7 @@ final class ReviewPanel extends BorderPane {
                     long now = System.currentTimeMillis();
                     // Re-rendering Markdown on every token of a long review is most of a
                     // core for no gain; five times a second reads as continuous.
-                    if (now - lastRender > 180) {
+                    if (now - lastRender > 350) {
                         lastRender = now;
                         view.show(streaming.toString());
                     }
@@ -371,7 +371,7 @@ final class ReviewPanel extends BorderPane {
                 fragment -> {
                     streaming.append(fragment);
                     long now = System.currentTimeMillis();
-                    if (now - lastRender > 180) {
+                    if (now - lastRender > 350) {
                         lastRender = now;
                         view.show(before + streaming);
                     }
