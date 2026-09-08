@@ -122,7 +122,7 @@ public final class Assistant {
     }
 
     /** The part of a failure worth putting on screen. Never the stack trace. */
-    private static String describe(Exception e) {
+    private String describe(Exception e) {
         if (e instanceof ChatProvider.NotAllowedException) {
             return e.getMessage();
         }
@@ -130,6 +130,15 @@ public final class Assistant {
         if (message == null || message.isBlank()) {
             return e.getClass().getSimpleName();
         }
-        return message.length() > 400 ? message.substring(0, 400) + "..." : message;
+        String text = message.length() > 400 ? message.substring(0, 400) + "..." : message;
+        /* A 401 is configuration, not a fault, and the endpoint says so in its own words -
+           "No api key passed in" - which tells somebody what is wrong and nothing about
+           where to put one. The answer is two levels into Settings, so it gets said. */
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        if (lower.contains("401") || lower.contains("api key") || lower.contains("unauthorized")) {
+            text += "\n\nThis provider has no key. Press **Configure** to add one, or set"
+                    + " the environment variable named against it in " + config.file() + ".";
+        }
+        return text;
     }
 }

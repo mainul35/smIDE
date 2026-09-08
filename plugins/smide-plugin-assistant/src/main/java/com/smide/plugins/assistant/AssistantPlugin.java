@@ -44,6 +44,11 @@ public final class AssistantPlugin implements Plugin {
                     toolWindow.reviewActiveFile();
                 }));
 
+        context.registerAction(Action.of("assistant.settings", "Assistant Settings...")
+                .menu("Tools").icon("fth-sliders").order(72)
+                .description("Which model the assistant uses, and what it may see")
+                .perform(ctx -> ide.showSettings("Tools/Assistant")));
+
         context.registerAction(Action.of("assistant.practice", "Practice Session...")
                 .menu("Tools").icon("fth-award").order(71)
                 .description("Practise a topic: questions one at a time, marked when you submit")

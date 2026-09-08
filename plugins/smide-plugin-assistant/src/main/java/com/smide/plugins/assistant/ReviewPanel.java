@@ -53,6 +53,7 @@ final class ReviewPanel extends BorderPane {
     private final Button review = new Button("Review");
     private final Button stop = new Button("Stop");
     private final Button copy = new Button("Copy");
+    private final Button configure = new Button("Configure...");
     private final CheckBox wholeProject = new CheckBox("Look at related files");
     private final ListView<CodeContext.Source> sources = new ListView<>();
     private final Label skippedNote = new Label();
@@ -94,6 +95,12 @@ final class ReviewPanel extends BorderPane {
 
         review.setOnAction(e -> start());
         stop.setOnAction(e -> cancel());
+        // The panel is where somebody finds out the assistant is not configured, so it
+        // is where the way to configure it belongs. Settings > Tools > Assistant is three
+        // levels into a tree, which is not somewhere anybody goes looking on a hunch.
+        configure.setTooltip(new javafx.scene.control.Tooltip(
+                "Which model answers, and what it is allowed to see"));
+        configure.setOnAction(e -> ide.showSettings("Tools/Assistant"));
         copy.setOnAction(e -> {
             // The whole conversation, not just the review: by the third question that is
             // what somebody wants to paste into a ticket.
@@ -109,10 +116,10 @@ final class ReviewPanel extends BorderPane {
         /* Two rows, and no button that may shrink. A tool window is a third of the width
            of a dialog, and a single row of controls in one turns every button into an
            ellipsis - which is a button you cannot read and will not press. */
-        for (Button button : new Button[]{review, stop, copy}) {
+        for (Button button : new Button[]{review, stop, copy, configure}) {
             button.setMinWidth(Region.USE_PREF_SIZE);
         }
-        HBox buttons = new HBox(8, review, stop, copy);
+        HBox buttons = new HBox(8, review, stop, copy, configure);
         buttons.setAlignment(Pos.CENTER_LEFT);
         VBox bar = new VBox(6, buttons, wholeProject);
         bar.setPadding(new Insets(6, 8, 6, 8));

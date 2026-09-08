@@ -136,11 +136,12 @@ public final class AssistantConfig {
     public String whyNotReady() {
         AiConfig.Endpoint endpoint = endpoint();
         if (endpoint.baseUrl().isBlank()) {
-            return "No model endpoint is configured. Settings > Tools > Assistant.";
+            return "No model endpoint is configured. Press Configure, or Settings >"
+                    + " Tools > Assistant.";
         }
         if (!config.isAllowed(endpoint.baseUrl())) {
             return "Refusing to send code to " + endpoint.host()
-                    + ": it is not an allowed host. Settings > Tools > Assistant.";
+                    + ": it is not an allowed host. Press Configure to allow it.";
         }
         return "";
     }

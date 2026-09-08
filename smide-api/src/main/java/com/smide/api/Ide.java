@@ -56,6 +56,17 @@ public interface Ide {
 
     Settings settings();
 
+    /**
+     * Opens the Settings dialog, at a page if one is named.
+     *
+     * <p>The path a page registered itself under - "Tools/Assistant" - or null for
+     * wherever it opened last. A plugin that tells the user something is unconfigured
+     * needs to be able to take them to where it is configured; without this the only
+     * honest instruction is "look in Settings", and a page three levels into a tree is
+     * not somewhere people look.
+     */
+    void showSettings(String page);
+
     Theme theme();
 
     EventBus events();
