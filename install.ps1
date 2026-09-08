@@ -38,6 +38,70 @@ function Write-Ok($text)   { Write-Host $text -ForegroundColor Green }
 function Write-Bad($text)  { Write-Host $text -ForegroundColor Red }
 function Stop-With($text)  { Write-Bad $text; exit 1 }
 
+$LogDir = Join-Path ([IO.Path]::GetTempPath()) ("smide-install-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+
+# Runs a command, showing that it is still going and what it is doing.
+#
+# Maven quiet says nothing for minutes, which from the outside is the same shape as a
+# hang; Maven loud says several thousand lines. So the output goes to a log, a spinner
+# says the seconds are passing, and the module Maven names in its reactor line is shown
+# beside it. The log is printed only when the command fails, and then all of it.
+function Invoke-Step {
+    param(
+        [string]$Message,
+        [string]$File,
+        [string[]]$Arguments,
+        [string]$WorkingDirectory = $PWD.Path,
+        [switch]$Soft
+    )
+    $out = Join-Path $LogDir ("step-" + [guid]::NewGuid().ToString('N') + ".log")
+    $err = "$out.err"
+    $proc = Start-Process -FilePath $File -ArgumentList $Arguments `
+        -WorkingDirectory $WorkingDirectory -NoNewWindow -PassThru `
+        -RedirectStandardOutput $out -RedirectStandardError $err
+
+    $frames = @('-', '', '|', '/')
+    $i = 0
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $interactive = -not [Console]::IsOutputRedirected
+    if (-not $interactive) { Write-Host "  $Message..." }
+    while (-not $proc.HasExited) {
+        if ($interactive) {
+            $detail = ""
+            try {
+                # The most recent thing Maven said it was building. The file is being
+                # written to as this reads it, so a failure here is expected and ignored.
+                $line = Select-String -Path $out -Pattern '^\[INFO\] Building (?!jar)(.+?)\s+\d' `
+                    -ErrorAction SilentlyContinue | Select-Object -Last 1
+                if ($line) { $detail = $line.Matches[0].Groups[1].Value }
+            } catch { }
+            $text = "  {0} {1}  {2}s  {3}" -f $frames[$i++ % 4], $Message,
+                [int]$clock.Elapsed.TotalSeconds, $detail
+            $width = [Math]::Max(20, [Console]::WindowWidth - 1)
+            if ($text.Length -gt $width) { $text = $text.Substring(0, $width) }
+            Write-Host ("`r" + $text.PadRight($width)) -NoNewline
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    if ($interactive) { Write-Host ("`r" + (" " * [Math]::Max(20, [Console]::WindowWidth - 1)) + "`r") -NoNewline }
+
+    $seconds = [int]$clock.Elapsed.TotalSeconds
+    if ($proc.ExitCode -eq 0) {
+        Write-Ok "  $Message - ${seconds}s"
+        return $true
+    }
+    if ($Soft) {
+        Write-Host "  $Message did not work; falling back."
+        return $false
+    }
+    Write-Bad "  $Message failed after ${seconds}s"
+    Write-Host ""
+    if (Test-Path $out) { Get-Content $out }
+    if (Test-Path $err) { Get-Content $err }
+    exit $proc.ExitCode
+}
+
 # ------------------------------------------------------------------ uninstall
 
 if ($Uninstall) {
@@ -156,9 +220,8 @@ $settings = Join-Path $HOME ".m2\settings.xml"
 
 function Build-MdViewer($path) {
     if (-not (Test-Path (Join-Path $path "pom.xml"))) { Stop-With "No pom.xml in $path" }
-    Push-Location $path
-    try { & mvn -q install -DskipTests; if ($LASTEXITCODE -ne 0) { Stop-With "MDViewer build failed" } }
-    finally { Pop-Location }
+    Invoke-Step -Message "Building MDViewer" -File "mvn" `
+        -Arguments @("install", "-DskipTests") -WorkingDirectory $path | Out-Null
     if (-not (Test-Path $mdviewerJar)) { Stop-With "MDViewer built but $mdviewerJar is not there" }
     Write-Ok "Installed $mdviewerJar"
 }
@@ -179,10 +242,13 @@ if (Test-Path $mdviewerJar) {
     New-Item -ItemType Directory -Force -Path $CacheDir | Out-Null
     $checkout = Join-Path $CacheDir "markdown-viewer"
     if (Test-Path (Join-Path $checkout ".git")) {
+        Invoke-Step -Message "Updating the MDViewer checkout" -File "git" `
+            -Arguments @("fetch", "origin") -WorkingDirectory $checkout | Out-Null
         Push-Location $checkout
-        try { & git fetch -q origin; & git checkout -q origin/main } finally { Pop-Location }
+        try { & git checkout -q origin/main } finally { Pop-Location }
     } else {
-        & git clone -q $MdViewerRepo $checkout
+        Invoke-Step -Message "Cloning MDViewer" -File "git" `
+            -Arguments @("clone", $MdViewerRepo, $checkout) | Out-Null
     }
     Build-MdViewer $checkout
 }
@@ -190,14 +256,12 @@ if (Test-Path $mdviewerJar) {
 # --------------------------------------------------------------------- build
 
 Write-Step "Building smIDE"
-Write-Host "This compiles sixteen modules and then packages them with a Java runtime."
-Push-Location $SourceDir
-try {
-    & mvn -q install -DskipTests
-    if ($LASTEXITCODE -ne 0) { Stop-With "Build failed" }
-    & mvn -q -pl smide-dist -Pdist package
-    if ($LASTEXITCODE -ne 0) { Stop-With "Packaging failed" }
-} finally { Pop-Location }
+Write-Host "Sixteen modules, then jpackage puts them beside a Java runtime. Two or three"
+Write-Host "minutes the first time; Maven has most of it cached afterwards."
+Invoke-Step -Message "Compiling the modules" -File "mvn" `
+    -Arguments @("install", "-DskipTests") -WorkingDirectory $SourceDir | Out-Null
+Invoke-Step -Message "Packaging with a Java runtime" -File "mvn" `
+    -Arguments @("-pl", "smide-dist", "-Pdist", "package") -WorkingDirectory $SourceDir | Out-Null
 
 $image = Join-Path $SourceDir "smide-dist\target\dist\smIDE"
 if (-not (Test-Path $image)) { Stop-With "jpackage produced nothing at $image" }

@@ -61,6 +61,88 @@ bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 step()  { printf '\n'; bold "==> $*"; }
 fail()  { red "$*"; exit 1; }
 
+LOG_DIR="$(mktemp -d)"
+trap 'printf "\033[?25h"; rm -rf "$LOG_DIR"' EXIT
+
+# Runs a command, showing that it is still going and what it is doing.
+#
+# Maven with -q says nothing for minutes, which from the outside is the same shape as
+# a hang; without -q it says several thousand lines, which is the same shape as a fire.
+# So the output goes to a log, a spinner says the seconds are passing, and the module
+# Maven names in its reactor line is echoed beside it - the one line of its output
+# that answers "how far along is this".
+#
+#   run_step "Compiling" mvn install -DskipTests
+#   run_step --in "$dir" "Building MDViewer" mvn install -DskipTests
+#
+# The log is only shown when the command fails, and then all of it.
+run_step() {
+    local dir=""
+    if [ "$1" = "--in" ]; then
+        dir="$2"; shift 2
+    fi
+    local message="$1"; shift
+    # mktemp rather than a timestamp: date +%s%N is GNU-only, and on macOS every step
+    # in the same second would write to the same file.
+    local log; log=$(mktemp "$LOG_DIR/step.XXXXXX")
+    local start=$SECONDS
+
+    # A subshell rather than `env -C`, which BSD env - and so macOS - does not have.
+    if [ -n "$dir" ]; then
+        ( cd "$dir" && "$@" ) >"$log" 2>&1 &
+    else
+        "$@" >"$log" 2>&1 &
+    fi
+    local pid=$!
+
+    if [ -t 1 ]; then
+        local frames='-\|/'
+        local i=0 detail width
+        printf '\033[?25l'                       # hide the cursor while it spins
+        while kill -0 "$pid" 2>/dev/null; do
+            # The most recent thing Maven said it was building, if it said anything.
+            detail=$(grep -oE '^\[INFO\] Building [^0-9]*' "$log" 2>/dev/null \
+                     | tail -1 | sed 's/^\[INFO\] Building //;s/ *$//')
+            width=$(( ${COLUMNS:-80} - 24 ))
+            [ ${#detail} -gt "$width" ] && detail="${detail:0:$width}..."
+            printf '\r\033[K  %s %s  %ds  %s' \
+                "${frames:$((i++ % 4)):1}" "$message" "$((SECONDS - start))" "$detail"
+            sleep 0.2
+        done
+        printf '\033[?25h\r\033[K'
+    else
+        # Piped or in CI: no animation, but still say what started and when it ended.
+        printf '  %s...\n' "$message"
+    fi
+
+    local status=0
+    wait "$pid" || status=$?
+    if [ "$status" -ne 0 ]; then
+        red "  $message failed after $((SECONDS - start))s"
+        printf '\n'
+        cat "$log"
+        exit "$status"
+    fi
+    green "  $message - $((SECONDS - start))s"
+}
+
+# The same, for a step that is allowed to fail: returns its status and says so quietly
+# rather than printing a log and stopping. Used where there is a fallback worth taking.
+run_step_soft() {
+    local message="$1"; shift
+    local start=$SECONDS status=0
+    # Erasing the line only makes sense on a terminal; piped, the escape is printed.
+    [ -t 1 ] && printf '  %s...' "$message"
+    "$@" >"$LOG_DIR/soft.log" 2>&1 || status=$?
+    [ -t 1 ] && printf '\r\033[K'
+    if [ "$status" -eq 0 ]; then
+        green "  $message - $((SECONDS - start))s"
+    else
+        echo "  $message did not work; falling back."
+    fi
+    return "$status"
+}
+
 # ------------------------------------------------------------------ uninstall
 
 if $uninstall; then
@@ -243,7 +325,7 @@ settings="$HOME/.m2/settings.xml"
 build_mdviewer_from() {
     local path="$1"
     [ -f "$path/pom.xml" ] || fail "No pom.xml in $path"
-    (cd "$path" && mvn -q install -DskipTests)
+    run_step --in "$path" "Building MDViewer" mvn install -DskipTests
     [ -f "$mdviewer_jar" ] || fail "MDViewer built but $mdviewer_jar is not there. Version mismatch?"
     green "Installed $mdviewer_jar"
 }
@@ -253,9 +335,8 @@ if [ -f "$mdviewer_jar" ]; then
 elif [ -n "$mdviewer_path" ]; then
     step "Building MDViewer $mdviewer_version from $mdviewer_path"
     build_mdviewer_from "$mdviewer_path"
-elif [ -f "$settings" ] && grep -q "github-mdviewer" "$settings"; then
-    step "MDViewer $mdviewer_version will come from GitHub Packages"
-    echo "Credentials for github-mdviewer found in $settings."
+elif [ -f "$settings" ] && grep -q "github-mdviewer" "$settings"      && run_step_soft "Fetching MDViewer from GitHub Packages"         mvn -f "$SOURCE_DIR/pom.xml" -q dependency:get             -Dartifact="com.mdviewer:mdviewer:$mdviewer_version"             -DremoteRepositories="github-mdviewer::::https://maven.pkg.github.com/mainul35/markdown-viewer"; then
+    step "MDViewer $mdviewer_version came from GitHub Packages"
 else
     step "Building MDViewer $mdviewer_version from source"
     echo "MDViewer is a library two of smIDE's modules compile against - its Markdown"
@@ -264,9 +345,10 @@ else
     echo "instead. Nothing for you to set up. Into $CACHE_DIR."
     mkdir -p "$CACHE_DIR"
     if [ -d "$CACHE_DIR/markdown-viewer/.git" ]; then
-        (cd "$CACHE_DIR/markdown-viewer" && git fetch -q --tags origin && git checkout -q origin/main)
+        run_step --in "$CACHE_DIR/markdown-viewer" "Updating the MDViewer checkout"             git fetch --tags origin
+        (cd "$CACHE_DIR/markdown-viewer" && git checkout -q origin/main)
     else
-        git clone -q "$MDVIEWER_REPO" "$CACHE_DIR/markdown-viewer"
+        run_step "Cloning MDViewer" git clone "$MDVIEWER_REPO" "$CACHE_DIR/markdown-viewer"
     fi
     build_mdviewer_from "$CACHE_DIR/markdown-viewer"
 fi
@@ -274,9 +356,10 @@ fi
 # ------------------------------------------------------------------- build
 
 step "Building smIDE"
-echo "This compiles sixteen modules and then packages them with a Java runtime."
-(cd "$SOURCE_DIR" && mvn -q install -DskipTests)
-(cd "$SOURCE_DIR" && mvn -q -pl smide-dist -Pdist package)
+echo "Sixteen modules, then jpackage puts them beside a Java runtime. Two or three"
+echo "minutes the first time; Maven has most of it cached afterwards."
+run_step --in "$SOURCE_DIR" "Compiling the modules" mvn install -DskipTests
+run_step --in "$SOURCE_DIR" "Packaging with a Java runtime"     mvn -pl smide-dist -Pdist package
 
 image="$SOURCE_DIR/smide-dist/target/dist/smIDE"
 [ -d "$image" ] || fail "jpackage produced nothing at $image"
@@ -287,7 +370,7 @@ green "Built $(du -sh "$image" | cut -f1) of self-contained application."
 step "Installing into $APP_DIR"
 mkdir -p "$OPT_DIR"
 rm -rf "$APP_DIR"
-cp -R "$image" "$APP_DIR"
+run_step "Copying the application" cp -R "$image" "$APP_DIR"
 
 # jpackage names the binary after the application, and puts it in bin/ everywhere
 # except macOS, where the app-image is a bundle.
