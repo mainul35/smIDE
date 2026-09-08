@@ -18,6 +18,16 @@
     <properties>
         <smide.debugLayout>false</smide.debugLayout>
         <smide.open></smide.open>
+        <!-- jpackage rejects a version with a qualifier, so the shipped one is plain. -->
+        <app.version>0.1.0</app.version>
+        <!--
+            The modules the bundled runtime is jlinked with. Wider than a jdeps run would
+            give, because half of these are reached by reflection and would be found only
+            when a user hit the feature: jdk.jdi is the debugger, jdk.crypto.ec is TLS,
+            jdk.zipfs is reading a jar as a filesystem, jdk.localedata is every locale but
+            English. A runtime missing one of these fails at the user rather than here.
+        -->
+        <app.modules>java.base,java.compiler,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.sql,java.xml,java.xml.crypto,jdk.attach,jdk.charsets,jdk.compiler,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.dynalink,jdk.httpserver,jdk.jdi,jdk.jdwp.agent,jdk.localedata,jdk.management,jdk.unsupported,jdk.zipfs</app.modules>
     </properties>
 
     <dependencies>
@@ -115,6 +125,28 @@
     <build>
         <plugins>
             <!--
+                Every runtime jar in one directory, which is what jpackage takes as its
+                input and what a launcher script would put on the class path. Copied
+                rather than referenced so the result does not depend on ~/.m2 existing.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.7.1</version>
+                <executions>
+                    <execution>
+                        <id>collect-runtime</id>
+                        <phase>package</phase>
+                        <goals><goal>copy-dependencies</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/app/lib</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                            <overWriteIfNewer>true</overWriteIfNewer>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--
                 mvn -pl smide-dist exec:exec
 
                 A separate JVM rather than exec:java: JavaFX wants to own the process it
@@ -137,4 +169,94 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+            mvn -Pdist package
+
+            An application anybody can run: jpackage puts the jars from app/lib beside a
+            runtime jlinked from the modules above, and the result needs no JDK, no Maven
+            and no network. Built as an app-image rather than an installer because that is
+            the one format every platform can produce without a third-party toolchain -
+            WiX on Windows, dpkg or rpm on Linux - and unpacking a directory is an install
+            everybody already knows how to do.
+
+            jpackage builds for the machine it runs on, so this profile produces one
+            platform's package. The release workflow runs it on all three.
+        -->
+        <profile>
+            <id>dist</id>
+            <build>
+                <plugins>
+                    <!--
+                        jpackage refuses to write into a directory that already exists,
+                        so a second run has to start from nothing. Only target/dist is
+                        removed: cleaning the rest would rebuild the world every time.
+                    -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-clean-plugin</artifactId>
+                        <version>3.4.0</version>
+                        <executions>
+                            <execution>
+                                <id>clear-dist</id>
+                                <phase>prepare-package</phase>
+                                <goals><goal>clean</goal></goals>
+                                <configuration>
+                                    <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                                    <filesets>
+                                        <fileset>
+                                            <directory>${project.build.directory}/dist</directory>
+                                        </fileset>
+                                    </filesets>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>jpackage</id>
+                                <phase>package</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>${java.home}/bin/jpackage</executable>
+                                    <!--
+                                        Not merged with the plugin-level arguments above,
+                                        which are how the IDE is run from source: without
+                                        this, jpackage is handed -cp and the whole class
+                                        path and refuses with "Invalid Option".
+                                    -->
+                                    <arguments combine.self="override">
+                                        <argument>--type</argument>
+                                        <argument>app-image</argument>
+                                        <argument>--name</argument>
+                                        <argument>smIDE</argument>
+                                        <argument>--app-version</argument>
+                                        <argument>${app.version}</argument>
+                                        <argument>--input</argument>
+                                        <argument>${project.build.directory}/app/lib</argument>
+                                        <argument>--main-jar</argument>
+                                        <argument>smide-core-${project.version}.jar</argument>
+                                        <argument>--main-class</argument>
+                                        <argument>com.smide.Launcher</argument>
+                                        <argument>--dest</argument>
+                                        <argument>${project.build.directory}/dist</argument>
+                                        <argument>--add-modules</argument>
+                                        <argument>${app.modules}</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-Xmx2g</argument>
+                                        <argument>--vendor</argument>
+                                        <argument>smIDE</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
