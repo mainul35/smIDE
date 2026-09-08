@@ -258,8 +258,10 @@ elif [ -f "$settings" ] && grep -q "github-mdviewer" "$settings"; then
     echo "Credentials for github-mdviewer found in $settings."
 else
     step "Building MDViewer $mdviewer_version from source"
-    echo "No github-mdviewer credentials in $settings, so this builds it rather than"
-    echo "asking you for a token. Into $CACHE_DIR."
+    echo "MDViewer is a library two of smIDE's modules compile against - its Markdown"
+    echo "renderer draws the Markdown editor and the assistant's answers. There is a"
+    echo "published copy, but fetching it needs a GitHub token, so this builds it"
+    echo "instead. Nothing for you to set up. Into $CACHE_DIR."
     mkdir -p "$CACHE_DIR"
     if [ -d "$CACHE_DIR/markdown-viewer/.git" ]; then
         (cd "$CACHE_DIR/markdown-viewer" && git fetch -q --tags origin && git checkout -q origin/main)

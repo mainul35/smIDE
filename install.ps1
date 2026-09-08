@@ -172,8 +172,10 @@ if (Test-Path $mdviewerJar) {
     Write-Step "MDViewer $mdviewerVersion will come from GitHub Packages"
 } else {
     Write-Step "Building MDViewer $mdviewerVersion from source"
-    Write-Host "No github-mdviewer credentials in $settings, so this builds it rather than"
-    Write-Host "asking you for a token. Into $CacheDir."
+    Write-Host "MDViewer is a library two of smIDE's modules compile against - its Markdown"
+    Write-Host "renderer draws the Markdown editor and the assistant's answers. There is a"
+    Write-Host "published copy, but fetching it needs a GitHub token, so this builds it"
+    Write-Host "instead. Nothing for you to set up. Into $CacheDir."
     New-Item -ItemType Directory -Force -Path $CacheDir | Out-Null
     $checkout = Join-Path $CacheDir "markdown-viewer"
     if (Test-Path (Join-Path $checkout ".git")) {
