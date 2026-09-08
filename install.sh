@@ -225,7 +225,8 @@ fi
 # sixteen modules need it to compile. It is published to GitHub Packages rather than
 # Maven Central, and GitHub's Maven registry authenticates reads as well as writes -
 # so this needs a token in ~/.m2/settings.xml, or a checkout to build from.
-mdviewer_version=$(sed -nE 's/.*<mdviewer\.version>(.*)<\/mdviewer\.version>.*//p'     "$SOURCE_DIR/pom.xml" | head -1)
+mdviewer_version=$(sed -nE 's/.*<mdviewer\.version>(.*)<\/mdviewer\.version>.*/\1/p'     "$SOURCE_DIR/pom.xml" | head -1)
+[ -n "$mdviewer_version" ] || fail "No <mdviewer.version> in $SOURCE_DIR/pom.xml"
 mdviewer_jar="$HOME/.m2/repository/com/mdviewer/mdviewer/$mdviewer_version/mdviewer-$mdviewer_version.jar"
 settings="$HOME/.m2/settings.xml"
 
