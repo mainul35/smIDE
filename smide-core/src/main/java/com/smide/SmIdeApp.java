@@ -2,6 +2,7 @@ package com.smide;
 
 import com.smide.core.IdeImpl;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.stage.Stage;
 
 import java.nio.file.Path;
@@ -42,6 +43,19 @@ public class SmIdeApp extends Application {
         if (ide != null) {
             ide.shutdown();
         }
+        /* And then actually go.
+         *
+         * Closing the window ends the JavaFX toolkit and nothing else: the JVM stays up
+         * for as long as any non-daemon thread is alive, and those come from libraries -
+         * a language server's reader, a pty, a JGit worker - not from code here. The
+         * symptom is a window that has gone and a terminal that never gets its prompt
+         * back, which reads as a hang because it is one.
+         *
+         * After shutdown, so everything that had to be written has been written. Nothing
+         * of ours is expected to be running by this point; this is for what we do not
+         * own. */
+        Platform.exit();
+        System.exit(0);
     }
 
     public static void main(String[] args) {

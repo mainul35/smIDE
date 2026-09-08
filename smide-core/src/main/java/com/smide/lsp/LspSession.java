@@ -86,6 +86,21 @@ public final class LspSession {
     private String failure;
     private Path logFile;
 
+    /**
+     * The threads LSP4J reads server messages on, shared by every session.
+     *
+     * <p>Daemons, which is the whole point. The library's three-argument launcher makes a
+     * pool of its own and those threads are not daemons: each sits blocked on a language
+     * server's output for the life of the session, and the JVM will not exit while one
+     * does. Closing the window left the process running and the terminal that started it
+     * never got its prompt back.
+     */
+    private static final ExecutorService LISTENERS = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "smide-lsp-listener");
+        t.setDaemon(true);
+        return t;
+    });
+
     LspSession(Ide ide, LanguageServerLauncher launcher, Workspace workspace) {
         this.ide = ide;
         this.launcher = launcher;
@@ -218,7 +233,8 @@ public final class LspSession {
                 InputStream in = process.getInputStream();
                 OutputStream out = process.getOutputStream();
                 LspClientImpl client = new LspClientImpl(ide, this);
-                Launcher<LanguageServer> jsonRpc = LSPLauncher.createClientLauncher(client, in, out);
+                Launcher<LanguageServer> jsonRpc = LSPLauncher.createClientLauncher(
+                        client, in, out, LISTENERS, m -> m);
                 jsonRpc.startListening();
                 server = jsonRpc.getRemoteProxy();
                 endpoint = jsonRpc.getRemoteEndpoint();
