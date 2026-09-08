@@ -13,6 +13,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Spinner;
@@ -199,7 +200,26 @@ public final class SettingsDialog {
                 CheckBox restore = new CheckBox("Reopen workspaces and files from the last session");
                 restore.setSelected(editor.staged().getBoolean("session.restore", true));
                 restore.selectedProperty().addListener((o, a, b) -> editor.staged().setBoolean("session.restore", b));
-                return new VBox(8, dark, autoscroll, restore);
+
+                /* Windows and macOS hand the toolkit their scaling factor; Linux does not,
+                   so the window comes out at 1:1 next to a desktop drawn at 150% and reads
+                   as "the fonts are broken". Auto follows GDK_SCALE when the desktop sets
+                   it, and this is for when it does not. */
+                ChoiceBox<String> scale = new ChoiceBox<>();
+                scale.getItems().addAll("Auto", "100%", "125%", "150%", "175%", "200%");
+                String saved = editor.staged().get(com.smide.ui.UiScale.KEY, "Auto");
+                scale.setValue(scale.getItems().contains(saved) ? saved : "Auto");
+                scale.valueProperty().addListener((o, a, b) ->
+                        editor.staged().set(com.smide.ui.UiScale.KEY, b == null ? "Auto" : b));
+                HBox scaleRow = new HBox(8, new Label("Interface size"), scale);
+                scaleRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+                Label scaleNote = new Label("How large the whole interface is drawn. Applies when"
+                        + " smIDE next starts, and only on Linux - Windows and macOS take this"
+                        + " from the system. Auto follows the desktop's own setting.");
+                scaleNote.getStyleClass().add("settings-note");
+                scaleNote.setWrapText(true);
+
+                return new VBox(8, dark, autoscroll, restore, scaleRow, scaleNote);
             }
         });
         pages.put("Editor", new SettingsPage() {
