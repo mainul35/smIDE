@@ -109,6 +109,15 @@ final class AssistantSettingsPage implements SettingsPage {
                     ? "A key is set for this provider." : "No key is set for this provider.");
         };
         load.run();
+        /* Pin what is on screen, so OK writes it whether or not anything was touched. The
+           choice was otherwise only staged when the dropdown changed, and a choice that
+           was never written falls back to provider.default at the next start: configure
+           one provider, restart, and the request goes to a different one whose key is
+           stale or missing. That looks exactly like a key that was not saved. */
+        editor.staged().set(AssistantConfig.PROVIDER_KEY,
+                provider.getValue() == null ? "" : provider.getValue());
+        editor.staged().set(AssistantConfig.MODEL_KEY,
+                model.getValue() == null ? "" : model.getValue().strip());
         provider.valueProperty().addListener((o, was, now) -> {
             if (now != null) {
                 editor.staged().set(AssistantConfig.PROVIDER_KEY, now);
