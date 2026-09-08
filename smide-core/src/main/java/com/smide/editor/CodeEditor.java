@@ -50,8 +50,11 @@ public final class CodeEditor implements TextEditor {
     });
     private static final int HIGHLIGHT_LIMIT = 2_000_000;
 
-    /** The editor font unless Settings says otherwise. */
-    public static final String DEFAULT_FONT = "Consolas";
+    /**
+     * The editor font unless Settings says otherwise: the bundled JetBrains Mono, or the
+     * best monospace this machine has if it could not be loaded.
+     */
+    public static final String DEFAULT_FONT = com.smide.ui.Fonts.monospace();
 
     private final CodeArea area = new CodeArea();
     private final VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(area);
@@ -615,7 +618,7 @@ public final class CodeEditor implements TextEditor {
         }
         String family = settings.get("editor.fontFamily", DEFAULT_FONT).replace("\"", "");
         int size = settings.getInt("editor.fontSize", 13);
-        area.setStyle("-fx-font-family: \"" + family + "\", Consolas, \"Cascadia Mono\", monospace;"
+        area.setStyle("-fx-font-family: \"" + family + "\", " + com.smide.ui.Fonts.cssStack() + ";"
                 + " -fx-font-size: " + size + "px;");
         area.setWrapText(settings.getBoolean("editor.wrap", false));
         if (gutter != null) {

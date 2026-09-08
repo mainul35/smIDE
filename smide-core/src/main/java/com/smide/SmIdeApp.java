@@ -16,6 +16,9 @@ public class SmIdeApp extends Application {
 
     @Override
     public void start(Stage stage) {
+        // Before any window is built, so the first frame is drawn in the right font
+        // rather than in whatever the platform had and then repainted.
+        com.smide.ui.Fonts.load();
         List<Path> openOnStart = new ArrayList<>();
         Parameters params = getParameters();
         if (params != null) {

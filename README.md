@@ -10,7 +10,8 @@ around.
 
 **Editing.** A code editor with line numbers, syntax highlighting, bracket matching,
 auto-indent, comment toggling, duplicate/move line, find and replace (regex, case, whole
-word), go to line, and a per-document undo history. Consolas by default, configurable in
+word), go to line, and a per-document undo history. JetBrains Mono is bundled and used by
+default, so code looks the same on every platform; the family and size are configurable in
 Settings.
 
 **Language intelligence.** A full LSP client: completion with documentation, hover docs,
@@ -137,3 +138,11 @@ Every shortcut is editable in Settings → Keymap.
 
 `~/.smide` holds settings, the session, recent workspaces, downloaded tools and logs.
 `<project>/.smide` holds that project's run configurations and breakpoints.
+
+## Fonts
+
+Code is drawn in [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), bundled in
+`smide-core` under the SIL Open Font License 1.1 - the licence travels with it in
+`resources/fonts/OFL.txt`. It is loaded before the first window is drawn, so an editor
+looks the same on a machine that has no Consolas and no Cascadia Mono, which is every
+Linux machine.

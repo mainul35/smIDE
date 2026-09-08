@@ -164,7 +164,10 @@ public final class GutterFactory implements IntFunction<Node> {
         return annotationWidth;
     }
 
-    private static final String ANNOTATION_FONT = "Consolas";
+    // Asked for by name, so it has to be one this machine really has: Font.font falls
+    // back to the default *proportional* face for a name it does not know, which in a
+    // gutter of blame dates is instantly obvious.
+    private static final String ANNOTATION_FONT = com.smide.ui.Fonts.monospace();
     private static final double ANNOTATION_SIZE = 11;
     private double annotationWidth;
 
