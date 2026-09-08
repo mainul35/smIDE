@@ -39,20 +39,96 @@ public final class JavaTools {
      * A complete JDK is preferred, then any JDK, then whatever is running the IDE.
      */
     public static Path jdkHome(Ide ide) {
+        return jdk(ide).orElseGet(() -> Path.of(System.getProperty("java.home")));
+    }
+
+    /**
+     * The JDK to compile, run and navigate with, if this machine has one at all.
+     *
+     * <p>Empty is a real answer, and the reason this returns an Optional. smIDE ships with
+     * a Java runtime of its own - a jlink image with no {@code javac} - so the JVM running
+     * the IDE stopped being a usable fallback the day it was packaged: JDT rejects it with
+     * "Invalid runtime for JavaSE-21: the path does not point to a JDK", and Java support
+     * quietly degrades. Better to find nothing and say so than to name something invalid.
+     *
+     * <p>Candidates are ranked rather than taken in order, because "first one found" picks
+     * badly: a JAVA_HOME pointing at a runtime bundled with another application compiles
+     * fine and ships no {@code lib/src.zip}, and then Go to Declaration on
+     * {@code java.lang.String} opens nothing. A complete JDK first, then any JDK.
+     */
+    public static Optional<Path> jdk(Ide ide) {
         String setting = ide.settings().get(JDK_HOME, "");
         if (!setting.isBlank() && Files.isDirectory(Path.of(setting))) {
-            return Path.of(setting);
+            return Optional.of(Path.of(setting));
         }
         List<Path> candidates = new ArrayList<>();
         String env = System.getenv("JAVA_HOME");
         if (env != null && !env.isBlank() && Files.isDirectory(Path.of(env))) {
             candidates.add(Path.of(env));
         }
-        Path running = Path.of(System.getProperty("java.home"));
-        candidates.add(running);
+        candidates.add(Path.of(System.getProperty("java.home")));
+        candidates.addAll(onPath());
+        candidates.addAll(installed());
         return candidates.stream().filter(JavaTools::hasSources).findFirst()
-                .or(() -> candidates.stream().filter(JavaTools::canCompile).findFirst())
-                .orElse(running);
+                .or(() -> candidates.stream().filter(JavaTools::canCompile).findFirst());
+    }
+
+    /** JDKs reachable through the PATH, by where their javac is. */
+    private static List<Path> onPath() {
+        List<Path> found = new ArrayList<>();
+        String path = System.getenv("PATH");
+        if (path == null) {
+            return found;
+        }
+        String javac = WINDOWS ? "javac.exe" : "javac";
+        for (String dir : path.split(java.io.File.pathSeparator)) {
+            if (dir.isBlank()) {
+                continue;
+            }
+            Path candidate = Path.of(dir).resolve(javac);
+            if (Files.isRegularFile(candidate)) {
+                found.add(candidate.getParent().getParent());
+            }
+        }
+        return found;
+    }
+
+    /**
+     * JDKs where the platform's packages put them.
+     *
+     * <p>Looked for rather than waited for, because an application started from a desktop
+     * menu has none of the environment a login shell would have given it: no JAVA_HOME, and
+     * a PATH that on Linux is often just /usr/bin. The JDK is on the machine; nothing had
+     * told us where.
+     */
+    private static List<Path> installed() {
+        String programFiles = System.getenv().getOrDefault("ProgramFiles", "C:\\Program Files");
+        List<String> roots = WINDOWS
+                ? List.of(programFiles + "\\Eclipse Adoptium", programFiles + "\\Java",
+                          programFiles + "\\Microsoft", programFiles + "\\Zulu",
+                          programFiles + "\\Amazon Corretto")
+                : List.of("/usr/lib/jvm", "/usr/java", "/opt/java", "/opt/jdk",
+                          "/Library/Java/JavaVirtualMachines",
+                          System.getProperty("user.home", ".") + "/.sdkman/candidates/java");
+        List<Path> found = new ArrayList<>();
+        for (String root : roots) {
+            Path dir = Path.of(root);
+            if (!Files.isDirectory(dir)) {
+                continue;
+            }
+            try (java.util.stream.Stream<Path> children = Files.list(dir)) {
+                children.filter(Files::isDirectory).forEach(home -> {
+                    // macOS buries the JDK inside the bundle.
+                    Path bundle = home.resolve("Contents").resolve("Home");
+                    found.add(Files.isDirectory(bundle) ? bundle : home);
+                });
+            } catch (java.io.IOException e) {
+                // An unreadable directory is simply not a place we found a JDK.
+            }
+        }
+        // Newest first, so java-21 wins over java-17 when both are present.
+        found.sort(java.util.Comparator.comparing(Path::toString).reversed());
+        return found;
     }
 
     /** A JDK that can compile: it has javac. */

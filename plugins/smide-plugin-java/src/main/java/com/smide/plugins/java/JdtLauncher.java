@@ -209,7 +209,13 @@ public final class JdtLauncher implements LanguageServerLauncher {
            things. With the runtime declared, the sources are simply there. */
         Map<String, Object> configuration = new HashMap<>();
         configuration.put("updateBuildConfiguration", "automatic");
-        configuration.put("runtimes", List.of(runtime(ide)));
+        /* Only when there is a real JDK to name. smIDE ships with a runtime of its own -
+           a jlink image with no javac - and naming that gets the whole block rejected:
+           "Invalid runtime for JavaSE-21: the path does not point to a JDK", after which
+           there is no source attachment at all. Sending nothing leaves JDT on its own
+           defaults, which is worse than a JDK and better than an invalid one. */
+        JavaTools.jdk(ide).ifPresent(home ->
+                configuration.put("runtimes", List.of(runtime(ide))));
         java.put("configuration", configuration);
         /* Source jars come from the same repository the build already uses, so a
            declaration inside a dependency opens as source instead of sending JDT off to
