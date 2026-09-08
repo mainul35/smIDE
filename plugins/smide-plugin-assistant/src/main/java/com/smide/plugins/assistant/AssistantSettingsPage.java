@@ -19,16 +19,22 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Settings &gt; Tools &gt; Assistant: which model answers, and what it is allowed to see.
  *
- * <p>Two different kinds of setting sit here, and they are kept apart. Provider and model
- * are preferences, staged like everything else in this dialog and written on Apply. The
- * address, the key and the host permission are written straight into
- * {@code ~/.smide/ai.properties} by the button that changes them - they are not the
- * dialog's to hold, and a key that appears to be saved because OK has not been pressed yet
- * is a bad way to find out otherwise.
+ * <p>Two different kinds of setting sit here, and they go to two different places.
+ * Provider and model are preferences, staged like everything else in this dialog and
+ * written to the IDE's settings on Apply. The address, the key and the host permission
+ * belong to {@code ~/.smide/ai.properties}, which the assistant and MDViewer both read.
+ *
+ * <p>Both are saved by OK, and by the Save now button for somebody who wants to test the
+ * connection before closing the dialog. They did not used to be: the key was written only
+ * by the button, and only with a tick that lived three sections away among the
+ * permissions, so the ordinary case - type a key, press OK - kept the key in memory and
+ * lost it at the next restart. A setting that appears to have been saved and was not is
+ * worse than one that refuses to save at all.
  *
  * <p>Allowing a host is its own tick, deliberately. Choosing a provider is a preference;
  * letting it receive this codebase is not, and one control doing both would make the
@@ -71,7 +77,17 @@ final class AssistantSettingsPage implements SettingsPage {
         model.setMaxWidth(Double.MAX_VALUE);
         PasswordField key = new PasswordField();
         key.setPromptText("leave empty to keep whatever is set");
-        CheckBox saveKey = new CheckBox("Write this key into " + config.file().getFileName());
+        /* Remembering it is the default, and the tick sits under the field it is about.
+           It used to be off, and three sections further down among the permissions, which
+           made the ordinary case - type a key, press OK, use the assistant - the one that
+           silently did not survive a restart. Somebody who wants a key to live only as
+           long as the process is running can still say so; nobody wants to be told that
+           by a 401 the next morning. */
+        CheckBox saveKey = new CheckBox("Remember this key on this machine");
+        saveKey.setSelected(true);
+        saveKey.setTooltip(new javafx.scene.control.Tooltip(
+                "Writes the key into " + config.file() + " as text. Untick to keep it only"
+                        + " until the IDE closes."));
         CheckBox allowHost = new CheckBox("Allow this host to receive code from this IDE");
         Label result = new Label();
         result.getStyleClass().add("settings-note");
@@ -102,29 +118,56 @@ final class AssistantSettingsPage implements SettingsPage {
         model.valueProperty().addListener((o, was, now) ->
                 editor.staged().set(AssistantConfig.MODEL_KEY, now == null ? "" : now.strip()));
 
-        Button saveEndpoint = new Button("Save address");
-        saveEndpoint.setOnAction(e -> {
+        /* Writes the address, the key and the host permission, and says what it did.
+           Both the button and OK run it. The trap otherwise is a key typed into the field
+           and OK pressed: the dialog closes looking exactly as it does when it worked, and
+           the first anybody hears of it is a 401 after the next restart. */
+        Supplier<String> persist = () -> {
             String name = provider.getValue();
             if (name == null) {
-                return;
+                return "";
             }
-            boolean ok = ai.saveEndpoint(name, baseUrl.getText(), model.getValue());
-            if (ok && !key.getText().isBlank()) {
+            String address = baseUrl.getText() == null ? "" : baseUrl.getText().strip();
+            String chosen = model.getValue() == null ? "" : model.getValue().strip();
+            AiConfig.Endpoint stored = ai.endpoint(name);
+            boolean ok = true;
+            if (!stored.baseUrl().equals(address) || !stored.model().equals(chosen)) {
+                ok = ai.saveEndpoint(name, address, chosen);
+            }
+            String typed = key.getText();
+            String note;
+            if (typed != null && !typed.isBlank()) {
                 if (saveKey.isSelected()) {
-                    ai.saveKey(name, key.getText());
+                    ok = ai.saveKey(name, typed) && ok;
+                    note = "Key written to " + config.file() + ".";
                 } else {
-                    ai.setRuntimeKey(name, key.getText());
+                    ai.setRuntimeKey(name, typed);
+                    note = "Key kept for this session only; it is gone when the IDE closes.";
                 }
-                key.clear();
+            } else {
+                note = ai.hasKey(name) ? "A key is set for this provider."
+                        : "No key is set for this provider.";
             }
             /* The host follows the address, and never the other way round: an address
                edited to point somewhere new is not permission to send anything there. */
-            if (allowHost.isSelected()) {
-                ai.saveAllowedHost(baseUrl.getText());
+            if (allowHost.isSelected() && !ai.isAllowed(address)) {
+                ai.saveAllowedHost(address);
             }
-            result.setText(ok ? "Saved to " + config.file() : "Could not write " + config.file());
+            return (ok ? "Saved " + name + ". " : "Could not write " + config.file() + ". ") + note;
+        };
+
+        Button saveEndpoint = new Button("Save now");
+        saveEndpoint.setTooltip(new javafx.scene.control.Tooltip(
+                "Writes the address, the key and the host permission straight away."
+                        + " OK saves them too; this is for testing the connection first."));
+        saveEndpoint.setOnAction(e -> {
+            String said = persist.get();
             load.run();
+            result.setText(said);
         });
+
+        // OK and Apply save what was typed here, the same as the button does.
+        editor.onApply(persist::get);
 
         Button fetchModels = new Button("List models");
         fetchModels.setTooltip(new javafx.scene.control.Tooltip(
@@ -175,6 +218,7 @@ final class AssistantSettingsPage implements SettingsPage {
         modelRow.setAlignment(Pos.CENTER_LEFT);
         grid.addRow(2, new Label("Model"), modelRow);
         grid.addRow(3, new Label("API key"), key);
+        grid.addRow(4, new Label(""), saveKey);
 
         HBox buttons = new HBox(8, saveEndpoint, test);
         buttons.setAlignment(Pos.CENTER_LEFT);
@@ -185,10 +229,12 @@ final class AssistantSettingsPage implements SettingsPage {
         Label permissions = new Label("WHAT IT MAY SEE");
         permissions.getStyleClass().add("settings-section");
 
-        Label endpointNote = new Label("Provider and model apply on OK. The address, the key"
-                + " and the host permission are written to " + config.file()
-                + " when Save address is pressed. A key can also be left in the environment:"
-                + " put ${env:NAME} in that file instead of the key itself.");
+        Label endpointNote = new Label("OK saves all of this: provider, model, address, key and"
+                + " host permission. The address, the key and the host permission go into "
+                + config.file() + ", which is a text file on this machine - the key is not"
+                + " encrypted there. To keep it out of the file entirely, untick Remember and"
+                + " retype it each session, or put ${env:NAME} in that file and set that"
+                + " environment variable instead.");
         endpointNote.getStyleClass().add("settings-note");
         endpointNote.setWrapText(true);
 
@@ -210,7 +256,7 @@ final class AssistantSettingsPage implements SettingsPage {
         scopeNote.setWrapText(true);
 
         VBox box = new VBox(8, section, grid, buttons, endpointNote,
-                permissions, allowHost, saveKey, hostNote, scope, scopeNote, result);
+                permissions, allowHost, hostNote, scope, scopeNote, result);
         box.setFillWidth(true);
         return box;
     }
