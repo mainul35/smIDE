@@ -138,7 +138,26 @@ public final class Assistant {
         if (lower.contains("401") || lower.contains("api key") || lower.contains("unauthorized")) {
             text += "\n\nThis provider has no key. Press **Configure** to add one, or set"
                     + " the environment variable named against it in " + config.file() + ".";
+        } else if (gatewayGaveUp(lower)) {
+            /* 524 is Cloudflare's, and it says nothing anybody can act on. What it means
+               is that the proxy in front of the model waited its limit and heard nothing,
+               which for a large model that has just been asked its first question in a
+               while is ordinary - it is still being loaded. Saying so is the difference
+               between trying again and concluding the assistant is broken. */
+            text += "\n\nThat is the proxy in front of the model giving up, not the IDE and"
+                    + " not your request: nothing came back within its time limit. Usually"
+                    + " the model is still loading on the server, or is busy with somebody"
+                    + " else. Try again in a minute; if it keeps happening, choose a smaller"
+                    + " model in Settings > Tools > Assistant, or point the assistant at one"
+                    + " running on this machine, which has no proxy in front of it.";
         }
         return text;
+    }
+
+    /** Whether a failure is something in front of the model timing out rather than answering. */
+    private static boolean gatewayGaveUp(String lower) {
+        return lower.contains("524") || lower.contains("504") || lower.contains("502")
+                || lower.contains("503") || lower.contains("timed out")
+                || lower.contains("timeout") || lower.contains("gateway");
     }
 }
