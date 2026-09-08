@@ -108,7 +108,20 @@ public final class RustPlugin implements Plugin {
         }
 
         private static Optional<Path> locate() {
-            String exe = WINDOWS ? "rust-analyzer.exe" : "rust-analyzer";
+            return onPathOrInCargo(WINDOWS ? "rust-analyzer.exe" : "rust-analyzer");
+        }
+
+        /**
+         * A rustup-installed executable, by ~/.cargo/bin first and PATH second.
+         *
+         * <p>PATH second on purpose. rustup puts its bin directory on the PATH of a login
+         * shell, and an application started from a desktop menu does not have one - so an
+         * IDE launched by clicking its icon cannot see rust-analyzer or rustup at all,
+         * while the same IDE launched from a terminal can. Looking where rustup actually
+         * puts things is the difference between the Install button working and it
+         * reporting that rustup is not installed on a machine that has it.
+         */
+        private static Optional<Path> onPathOrInCargo(String exe) {
             Path cargo = Path.of(System.getProperty("user.home", "."), ".cargo", "bin", exe);
             if (Files.isRegularFile(cargo)) {
                 return Optional.of(cargo);
@@ -140,7 +153,12 @@ public final class RustPlugin implements Plugin {
 
                 @Override
                 public void run(Ide ide, ProgressReporter progress) throws IOException {
-                    String rustup = WINDOWS ? "rustup.exe" : "rustup";
+                    String rustup = onPathOrInCargo(WINDOWS ? "rustup.exe" : "rustup")
+                            .map(Path::toString)
+                            .orElseThrow(() -> new IOException(
+                                    "rustup is not installed. rust-analyzer is a component of a"
+                                    + " rustup toolchain: install Rust from https://rustup.rs"
+                                    + " and try again."));
                     progress.progress("rustup component add rust-analyzer", -1);
                     ide.downloads().runTool(List.of(rustup, "component", "add", "rust-analyzer"),
                             ide.downloads().toolsDir(), progress);
