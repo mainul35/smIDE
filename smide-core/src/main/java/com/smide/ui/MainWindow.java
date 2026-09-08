@@ -51,6 +51,8 @@ public final class MainWindow {
     private final ExecutionService execution;
     private final BorderPane root = new BorderPane();
     private final StackPane overlay = new StackPane();
+    /** Ctrl+plus and Ctrl+minus, scaling the whole window. Always 100% at startup. */
+    private final Zoom zoom = new Zoom();
     private final HBox toolbar = new HBox();
     private final MenuButton runChooser = new MenuButton();
     private final StackPane center = new StackPane();
@@ -128,11 +130,15 @@ public final class MainWindow {
         }
 
         boolean restored = width > 0 && height > 0;
-        scene = restored ? new Scene(overlay) : new Scene(overlay, w, h);
+        // The scene's root is the holder that scales; everything else is inside it.
+        javafx.scene.layout.Pane zoomed = zoom.wrap(overlay);
+        scene = restored ? new Scene(zoomed) : new Scene(zoomed, w, h);
         scene.getStylesheets().add(ide.theme().stylesheet());
+        ide.theme().style(zoomed);
         ide.theme().style(overlay);
         ide.actionManager().attach(scene);
         installDoubleShift(scene);
+        installZoom(scene);
 
         stage.setTitle("smIDE");
         stage.setScene(scene);
@@ -191,6 +197,54 @@ public final class MainWindow {
 
     public Scene scene() {
         return scene;
+    }
+
+    /**
+     * Ctrl+plus, Ctrl+minus and Ctrl+0.
+     *
+     * <p>Three keys for zooming in, because "Ctrl and +" is a different key on almost
+     * every keyboard: the plus on the number row is Shift+equals, the numeric keypad has
+     * its own, and a layout that has a bare plus reports that. Binding one of them is how
+     * a shortcut comes to work on the author's keyboard and nowhere else.
+     *
+     * <p>A filter rather than an accelerator: the editor has the focus most of the time
+     * and consumes the keys it handles, and an accelerator never fires for a key that was
+     * consumed before the scene got to it.
+     */
+    private void installZoom(Scene scene) {
+        scene.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+            if (!e.isShortcutDown() || e.isAltDown()) {
+                return;
+            }
+            switch (e.getCode()) {
+                case EQUALS, PLUS, ADD -> {
+                    zoom.in();
+                    announceZoom();
+                    e.consume();
+                }
+                case MINUS, SUBTRACT -> {
+                    zoom.out();
+                    announceZoom();
+                    e.consume();
+                }
+                case DIGIT0, NUMPAD0 -> {
+                    zoom.reset();
+                    announceZoom();
+                    e.consume();
+                }
+                default -> {
+                }
+            }
+        });
+    }
+
+    private void announceZoom() {
+        ide.statusBar().message("Zoom " + zoom.percent() + "   (Ctrl+0 for 100%)");
+    }
+
+    /** The window's zoom, for anything that needs to know how large things are drawn. */
+    public Zoom zoom() {
+        return zoom;
     }
 
     private void installDoubleShift(Scene scene) {
