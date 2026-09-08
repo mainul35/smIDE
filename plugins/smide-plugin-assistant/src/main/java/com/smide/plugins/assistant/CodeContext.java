@@ -102,6 +102,13 @@ final class CodeContext {
      * @param maxFiles   how many neighbours at most
      * @param perFile    characters of any one neighbour
      */
+    /** Said once, before the first code block, because every block is numbered. */
+    private static final String MARGIN_NOTE =
+            "Every code block below carries the file's line numbers in the left margin, as"
+            + " `  12| code`. The number and the bar are not part of the file; they are"
+            + " there so that a finding can cite a line without anyone having to count."
+            + " Cite the number you can see. Never guess one.\n\n";
+
     static Result of(Path root, Path file, String text, int budget, int maxFiles, int perFile) {
         StringBuilder prompt = new StringBuilder();
         List<Source> included = new ArrayList<>();
@@ -117,6 +124,7 @@ final class CodeContext {
         if (root == null) {
             prompt.append("The file under review is `").append(name).append("`.")
                     .append(" There is no project open, so nothing around it could be read.\n\n")
+                    .append(MARGIN_NOTE)
                     .append(fence(file, head)).append('\n');
             included.add(new Source(file, name, "the file under review"));
             return new Result(prompt.toString(), included, skipped);
@@ -127,6 +135,7 @@ final class CodeContext {
         prompt.append("PROJECT: ").append(root.getFileName()).append("  (")
                 .append(files.size()).append(" source files)\n");
         prompt.append("FILE UNDER REVIEW: ").append(relative).append("\n\n");
+        prompt.append(MARGIN_NOTE);
 
         // The map: every file, and what it declares, on a line each. It is what lets the
         // model say where something lives that it was not handed the text of.
@@ -356,8 +365,32 @@ final class CodeContext {
 
     /** A fenced block tagged with the language, so the model reads it as code. */
     private static String fence(Path file, String body) {
-        return "```" + fenceLanguage(file) + "\n" + body
-                + (body.endsWith("\n") ? "" : "\n") + "```\n";
+        return "```" + fenceLanguage(file) + "\n" + numbered(body) + "```\n";
+    }
+
+    /**
+     * The same text with each line's number in front of it.
+     *
+     * <p>Without this a review cites lines by counting them, which is a thing language
+     * models are bad at: the finding is about a real line and the number in front of it is
+     * invented, and then the whole review is suspect because the one part a reader can
+     * check immediately turns out to be wrong. Six characters a line buys a citation that
+     * can be clicked.
+     */
+    private static String numbered(String body) {
+        String[] lines = body.split("\n", -1);
+        int last = lines.length;
+        while (last > 0 && lines[last - 1].isEmpty()) {
+            last--;
+        }
+        int width = String.valueOf(Math.max(1, last)).length();
+        StringBuilder out = new StringBuilder(body.length() + last * (width + 2));
+        for (int i = 0; i < last; i++) {
+            String number = String.valueOf(i + 1);
+            out.append(" ".repeat(width - number.length())).append(number)
+                    .append("| ").append(lines[i]).append('\n');
+        }
+        return out.toString();
     }
 
     /** Fence tags, where the extension is not the name the fence wants. */
