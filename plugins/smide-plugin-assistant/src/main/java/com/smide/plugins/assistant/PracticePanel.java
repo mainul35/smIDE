@@ -90,7 +90,7 @@ final class PracticePanel extends BorderPane {
     PracticePanel(Assistant assistant) {
         this.assistant = assistant;
         this.ide = assistant.ide();
-        this.view = new MarkdownPane();
+        this.view = new MarkdownPane(ide);
         this.answer = new AnswerEditor(ide);
         this.waiting = new Waiting(status);
 

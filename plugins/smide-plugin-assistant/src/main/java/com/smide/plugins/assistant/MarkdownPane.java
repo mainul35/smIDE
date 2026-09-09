@@ -1,5 +1,7 @@
 package com.smide.plugins.assistant;
 
+import com.smide.api.lang.Highlighter;
+import com.smide.api.lang.Token;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -50,9 +52,12 @@ final class MarkdownPane extends ScrollPane {
     private static final Parser PARSER = Parser.builder().build();
 
     private final VBox content = new VBox(2);
+    /** For the colouring of fenced blocks; the IDE's own language plugins do it. */
+    private final com.smide.api.Ide ide;
     private boolean follow = true;
 
-    MarkdownPane() {
+    MarkdownPane(com.smide.api.Ide ide) {
+        this.ide = ide;
         content.getStyleClass().add("md-pane");
         content.setPadding(new Insets(10, 12, 18, 12));
         content.setFillWidth(true);
@@ -105,10 +110,10 @@ final class MarkdownPane extends ScrollPane {
             return flow;
         }
         if (node instanceof FencedCodeBlock code) {
-            return code(code.getLiteral());
+            return code(code.getLiteral(), code.getInfo());
         }
         if (node instanceof IndentedCodeBlock code) {
-            return code(code.getLiteral());
+            return code(code.getLiteral(), "");
         }
         if (node instanceof BulletList || node instanceof OrderedList) {
             return list(node);
@@ -132,18 +137,124 @@ final class MarkdownPane extends ScrollPane {
         return flow.getChildren().isEmpty() ? null : flow;
     }
 
-    /** A fenced block: monospace, its own ground, and scrolling sideways rather than wrapping. */
-    private Node code(String literal) {
-        Label text = new Label(literal.stripTrailing());
-        text.getStyleClass().add("md-code-text");
-        ScrollPane sideways = new ScrollPane(text);
+    /**
+     * A fenced block: coloured by the language it says it is, and named.
+     *
+     * <p>The colouring is the IDE's own - the same {@code Highlighter} a plugin gives the
+     * editor, and the same {@code tok-} style classes - so a SQL statement in an answer
+     * reads the way SQL reads in the file next door, in whichever theme is on. The name in
+     * the corner is there because a block of code with no label is a guess: half the
+     * snippets in a tutorial are the language being taught and half are the shell you run
+     * it with, and they look identical in monospace.
+     */
+    private Node code(String literal, String info) {
+        String body = literal.stripTrailing();
+        String[] classes = colouring(body, Fences.highlighter(ide, info));
+        VBox lines = new VBox();
+        lines.getStyleClass().add("md-code-body");
+        int offset = 0;
+        for (String line : body.split("\n", -1)) {
+            TextFlow flow = new TextFlow();
+            flow.getStyleClass().add("md-code-line");
+            for (Text run : runs(line, classes, offset)) {
+                flow.getChildren().add(run);
+            }
+            lines.getChildren().add(flow);
+            offset += line.length() + 1;
+        }
+
+        ScrollPane sideways = new ScrollPane(lines);
         sideways.getStyleClass().add("md-code");
         sideways.setFitToWidth(false);
         sideways.setHbarPolicy(ScrollBarPolicy.AS_NEEDED);
         sideways.setVbarPolicy(ScrollBarPolicy.NEVER);
-        // Tall enough for the block, so the outer view scrolls rather than each snippet.
-        sideways.setPrefHeight(Math.min(400, 20 + 17.0 * (literal.split("\n").length + 1)));
-        return sideways;
+        /* Tall enough for the block and no taller, so the outer view scrolls rather than
+           each snippet: a line and a half of leading over the rows themselves. */
+        int rows = body.isEmpty() ? 1 : body.split("\n", -1).length;
+        sideways.setPrefHeight(Math.min(400, 20 + 16.5 * rows));
+
+        String label = Fences.label(ide, info);
+        if (label.isEmpty()) {
+            return sideways;
+        }
+        Label name = new Label(label);
+        name.getStyleClass().add("md-code-lang");
+        VBox block = new VBox(name, sideways);
+        block.getStyleClass().add("md-code-block");
+        return block;
+    }
+
+    /**
+     * The style class for every character of the block, or null where there is none.
+     *
+     * <p>The whole block is tokenized at once and the answer kept per character, because
+     * the drawing is per line and the colouring is not: a block comment or a triple-quoted
+     * string runs across lines, and a highlighter handed one line at a time would end it
+     * at every newline.
+     */
+    private static String[] colouring(String body, Highlighter highlighter) {
+        String[] classes = new String[body.length()];
+        if (highlighter == Highlighter.NONE || body.isEmpty()) {
+            return classes;
+        }
+        List<Token> tokens;
+        try {
+            tokens = highlighter.tokenize(body);
+        } catch (RuntimeException e) {
+            // A tokenizer that trips over a snippet leaves it uncoloured, which is the
+            // correct amount of consequence for that.
+            return classes;
+        }
+        for (Token token : tokens) {
+            String styleClass = token.type().styleClass();
+            for (int at = Math.max(0, token.start());
+                    at < Math.min(body.length(), token.end()); at++) {
+                classes[at] = styleClass;
+            }
+        }
+        return classes;
+    }
+
+    /**
+     * One line as coloured runs.
+     *
+     * <p>Line by line rather than one flow for the whole block, because a {@code TextFlow}
+     * asked how wide it wants to be answers with the sum of everything in it - one very
+     * long line - and the block would then scroll sideways into empty space.
+     */
+    private static List<Text> runs(String line, String[] classes, int offset) {
+        List<Text> runs = new ArrayList<>();
+        if (line.isEmpty()) {
+            // Something, or the line has no height and the block loses its shape.
+            runs.add(run(" "));
+            return runs;
+        }
+        int at = 0;
+        while (at < line.length()) {
+            String styleClass = classAt(classes, offset + at);
+            int end = at + 1;
+            while (end < line.length()
+                    && java.util.Objects.equals(classAt(classes, offset + end), styleClass)) {
+                end++;
+            }
+            Text text = run(line.substring(at, end));
+            if (styleClass != null) {
+                text.getStyleClass().add(styleClass);
+            }
+            runs.add(text);
+            at = end;
+        }
+        return runs;
+    }
+
+    private static String classAt(String[] classes, int at) {
+        return at >= 0 && at < classes.length ? classes[at] : null;
+    }
+
+    private static Text run(String literal) {
+        Text text = new Text(literal);
+        text.getStyleClass().add("md-code-run");
+        return text;
     }
 
     private Node list(org.commonmark.node.Node listNode) {

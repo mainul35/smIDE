@@ -1344,6 +1344,56 @@
     -fx-padding: 8 10 8 10;
 }
 
+/* A fenced block is coloured by the same highlighters the editor uses, so the rules
+   below are the editor's own tokens again against Text nodes rather than a CodeArea's
+   spans. The language goes in a tag above the block: without it, the shell command and
+   the language being taught are the same grey monospace. */
+
+.md-code-block {
+    -fx-padding: 4 0 4 0;
+}
+
+.md-code-lang {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 10px;
+    -fx-padding: 0 0 2 2;
+}
+
+.md-code-body {
+    -fx-padding: 8 10 8 10;
+}
+
+.md-code-run {
+    -fx-font-family: "JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace;
+    -fx-font-size: 11.5px;
+    -fx-fill: -smide-text;
+}
+
+.md-code-line .tok-keyword { -fx-fill: -tok-keyword; -fx-font-weight: bold; }
+.md-code-line .tok-type { -fx-fill: -tok-type; }
+.md-code-line .tok-string { -fx-fill: -tok-string; }
+.md-code-line .tok-number { -fx-fill: -tok-number; }
+.md-code-line .tok-comment { -fx-fill: -tok-comment; -fx-font-style: italic; }
+.md-code-line .tok-doc-comment { -fx-fill: -tok-doc; -fx-font-style: italic; }
+.md-code-line .tok-annotation { -fx-fill: -tok-annotation; }
+.md-code-line .tok-operator { -fx-fill: -tok-operator; }
+.md-code-line .tok-punctuation { -fx-fill: -tok-punct; }
+.md-code-line .tok-function { -fx-fill: -tok-function; }
+.md-code-line .tok-variable { -fx-fill: -tok-variable; }
+.md-code-line .tok-constant { -fx-fill: -tok-constant; }
+.md-code-line .tok-tag { -fx-fill: -tok-tag; }
+.md-code-line .tok-attribute { -fx-fill: -tok-attribute; }
+.md-code-line .tok-preprocessor { -fx-fill: -tok-preproc; }
+.md-code-line .tok-escape { -fx-fill: -tok-escape; }
+.md-code-line .tok-regex { -fx-fill: -tok-regex; }
+.md-code-line .tok-heading { -fx-fill: -tok-heading; -fx-font-weight: bold; }
+.md-code-line .tok-bold { -fx-font-weight: bold; }
+.md-code-line .tok-italic { -fx-font-style: italic; }
+.md-code-line .tok-link { -fx-fill: -tok-link; -fx-underline: true; }
+.md-code-line .tok-code { -fx-fill: -tok-string; }
+.md-code-line .tok-invalid { -fx-fill: -tok-invalid; }
+.md-code-line .tok-text { -fx-fill: -smide-text; }
+
 .md-list {
     -fx-padding: 2 0 2 6;
 }

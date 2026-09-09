@@ -129,7 +129,7 @@ final class ReviewPanel extends BorderPane {
     ReviewPanel(Assistant assistant) {
         this.assistant = assistant;
         this.ide = assistant.ide();
-        this.view = new MarkdownPane();
+        this.view = new MarkdownPane(ide);
 
         fileLabel.getStyleClass().add("assistant-file");
         status.getStyleClass().add("muted-small");
