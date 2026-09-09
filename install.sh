@@ -87,16 +87,43 @@ shell_rc() {
     esac
 }
 
+# Whether one of the files a shell reads at startup already puts a directory on the
+# PATH. Ubuntu's stock ~/.profile adds ~/.local/bin the moment that directory exists,
+# and other distributions and shells do the same in their own files; a second line
+# saying what one of those already says is litter in somebody's home directory. The
+# directory is looked for written out, as $HOME/... and as ~/..., because those are the
+# three ways it is ever written.
+mentioned_in_startup_files() {
+    local dir="$1" relative file pattern
+    relative="${dir#"$HOME"/}"
+    for file in "$(shell_rc)" "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.zprofile"; do
+        [ -f "$file" ] || continue
+        for pattern in "$dir" "\$HOME/$relative" "~/$relative"; do
+            [ "$relative" = "$dir" ] && [ "$pattern" != "$dir" ] && continue
+            if grep -Fq "$pattern" "$file"; then
+                echo "$file"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
 # Puts a directory on the PATH of shells started from now on.
 #
-# 0 written, 1 already on the PATH, 2 the line is already in the file. This cannot
-# change the PATH of the shell running the installer - a child process cannot - so what
-# it reports is what will be true in the next terminal.
+# 0 written, 1 already on the PATH, 2 the line is already in the file, 3 one of the
+# startup files already adds it. This cannot change the PATH of the shell running the
+# installer - a child process cannot - so what it reports is what will be true in the
+# next terminal.
 add_to_path() {
     local dir="$1" rc
     case ":$PATH:" in *":$dir:"*) return 1 ;; esac
     rc="$(shell_rc)"
     if [ -f "$rc" ] && grep -Fq "$PATH_MARKER" "$rc"; then return 2; fi
+    if mentioned_in_startup_files "$dir" >/dev/null; then
+        mentioned_in_startup_files "$dir"
+        return 3
+    fi
     mkdir -p "$(dirname "$rc")"
     if [ "$(basename "$rc")" = "config.fish" ]; then
         printf '\n%s\nfish_add_path %s\n' "$PATH_MARKER" "$dir" >> "$rc"
@@ -489,6 +516,8 @@ DESKTOP
             1) green "$BIN_DIR is already on your PATH" ;;
             2) green "$BIN_DIR is already added by smIDE in $(shell_rc)"
                echo "  Not on this shell's PATH yet; open a new terminal." ;;
+            3) green "$BIN_DIR is already put on the PATH by $rc"
+               echo "  Nothing added. Not on this shell's PATH yet; open a new terminal." ;;
         esac
     fi
 fi
