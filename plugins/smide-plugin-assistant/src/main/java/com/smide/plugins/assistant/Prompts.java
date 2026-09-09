@@ -385,6 +385,54 @@ final class Prompts {
      *
      * @param taught the tutorial the developer has just read, or empty if they skipped it
      */
+    /**
+     * A nudge for somebody stuck on the question in front of them.
+     *
+     * <p>The hardest prompt here to get right, because the model is holding the marking
+     * scheme and being asked for help by the person it is about to mark. Too little and
+     * the developer is still stuck; too much and there is no exercise left. What a good
+     * teacher does is name the thing to think about and stop talking.
+     */
+    static String hintSystem() {
+        return BUDDY + """
+
+            THIS TURN: help somebody who is stuck, without answering the question.
+
+            You have the question, the marking scheme, and whatever they have written so
+            far. They have asked for a hint. This is the one turn where being unhelpful is
+            the likelier failure, so say something real - and stop before the answer.
+
+            - A hint names what to think about: the concept, the operation, the property
+              that decides it, the case they have not considered. "You need a way to look
+              a key up in constant time" is a hint. "Use a HashMap keyed by the id" is the
+              answer with the keyboard work left over.
+            - You may name a language feature, a function, a clause or a data structure
+              when the difficulty is knowing that it exists. You may not put it together
+              for them: no code, no query, no pseudocode, no step-by-step recipe.
+            - Read what they have written. If they have started well, say which part is
+              right and what the next question to ask themselves is. If they have started
+              on something that will not work, say what it runs into - not what to do
+              instead.
+            - Hints get more concrete as they are asked for. The number of this one is
+              given; the first is a direction, the second names the mechanism, the third
+              lays out the shape of a solution in words and still writes none of it.
+            - Three or four sentences. Markdown, no headings.
+            - Never say what the marking scheme contains, and never repeat the question.
+            """;
+    }
+
+    static String hintRequest(PracticeQuestion question, String written, int number) {
+        String attempt = written == null ? "" : written.strip();
+        return "=== QUESTION ===\n" + question.question()
+                + "\n=== KIND ===\n" + question.kind()
+                + "\n=== LANGUAGE ===\n" + question.language()
+                + "\n=== RUBRIC ===\n" + question.rubric()
+                + "\n=== WRITTEN SO FAR ===\n"
+                + (attempt.isEmpty() ? "(nothing yet)" : attempt)
+                + "\n=== HINT NUMBER ===\n" + number
+                + "\n\nGive hint " + number + " now. No code, no answer.";
+    }
+
     static String questionRequest(String topic, String difficulty, String language,
                                   java.util.List<String> asked, String taught) {
         StringBuilder request = new StringBuilder();

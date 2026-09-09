@@ -77,6 +77,7 @@ final class PracticePanel extends BorderPane {
     private final Button start = new Button("Start session");
     private final Button next = new Button("Next question");
     private final Button submit = new Button("Submit answer");
+    private final Button hint = new Button("Hint");
     private final Button stop = new Button("Stop");
     private final Button understood = new Button("I have read this - start practice");
     private final Button skip = new Button("Skip the tutorial");
@@ -103,6 +104,12 @@ final class PracticePanel extends BorderPane {
     /** The tutorial just read, carried into every question so the exercise is not a copy. */
     private String taught = "";
     private PracticeQuestion question;
+    /** The question and any hints given on it: what the view is showing. */
+    private String onScreen = "";
+    /** Hints asked for on this question, so they can get more concrete. */
+    private int hints;
+    /** Set when a submission looked like a command, so pressing again sends it anyway. */
+    private boolean submitAnyway;
     private Assistant.Turn turn;
     private StringBuilder streaming;
     private long lastRender;
@@ -169,6 +176,9 @@ final class PracticePanel extends BorderPane {
         start.setOnAction(e -> startSession());
         next.setOnAction(e -> askQuestion());
         submit.setOnAction(e -> submit());
+        hint.setOnAction(e -> askHint());
+        hint.setTooltip(new Tooltip("A nudge, not the answer. Ask again for a"
+                + " bigger one. Typing /hint in the answer does the same."));
         stop.setOnAction(e -> cancel());
         understood.setOnAction(e -> beginPractice());
         /* Skipping is for the third session on the same topic, not for the first. It stays
@@ -178,6 +188,7 @@ final class PracticePanel extends BorderPane {
         skip.setOnAction(e -> beginPractice());
         next.setDisable(true);
         submit.setDisable(true);
+        hint.setDisable(true);
         stop.setDisable(true);
 
         /* The topic on one row and the buttons on the next. All of this on one row fits a
@@ -190,7 +201,7 @@ final class PracticePanel extends BorderPane {
         subject.setAlignment(Pos.CENTER_LEFT);
         HBox options = new HBox(8, difficulty, language);
         options.setAlignment(Pos.CENTER_LEFT);
-        for (Button button : new Button[]{start, next, stop, submit}) {
+        for (Button button : new Button[]{start, next, stop, submit, hint}) {
             button.setMinWidth(Region.USE_PREF_SIZE);
         }
         HBox buttons = new HBox(8, start, next, stop, spacer(), score);
@@ -198,7 +209,7 @@ final class PracticePanel extends BorderPane {
         VBox bar = new VBox(6, subject, options, buttons);
         bar.setPadding(new Insets(6, 8, 6, 8));
 
-        HBox answerBar = new HBox(8, answerLabel, spacer(), submit);
+        HBox answerBar = new HBox(8, answerLabel, spacer(), hint, submit);
         answerBar.setAlignment(Pos.CENTER_LEFT);
         answerBar.setPadding(new Insets(4, 8, 4, 8));
 
@@ -364,6 +375,9 @@ final class PracticePanel extends BorderPane {
                 code works, and where it goes wrong. Read it, then press **I have read this**
                 and the questions start.
 
+                Stuck is allowed: **Hint** - or `/hint` in the answer box - asks for a
+                nudge rather than the answer, and asking again gives a bigger one.
+
                 A question arrives one at a time; write your answer below and press
                 **Submit answer** (Ctrl+Enter) to have it marked, with what was right, what
                 was missing, and what to do differently. Questions are set against what the
@@ -526,21 +540,124 @@ final class PracticePanel extends BorderPane {
                     asked.add(question.title());
                     // After the title is recorded: Next is enabled by there being a
                     // session, and the session begins with its first question.
+                    hints = 0;
+                    submitAnyway = false;
+                    onScreen = question.markdown();
                     setBusy(false);
-                    view.show(question.markdown());
+                    view.show(onScreen);
+                    hint.setDisable(false);
                     answerLabel.setText(question.isTheory()
                             ? "Your answer  (Markdown)" : "Your answer  (" + question.language() + ")");
                     answer.reset(question.isTheory() ? "markdown" : question.language(), "");
                     answer.setEditable(true);
                     answer.area().requestFocus();
                     submit.setDisable(false);
-                    waiting.stop("Question " + asked.size() + ". Ctrl+Enter submits.");
+                    waiting.stop("Question " + asked.size() + ". Ctrl+Enter submits, /hint if you are stuck.");
                 },
                 error -> {
                     turn = null;
                     setBusy(false);
                     view.show("> " + error);
                     waiting.stop("No question was set. Press Next question to try again.");
+                });
+    }
+
+    // --------------------------------------------------------------- being stuck
+
+    /**
+     * Whether what was submitted was somebody asking for help rather than answering.
+     *
+     * <p>Somebody stuck typed {@code /help} into the answer box, on the reasonable
+     * assumption that a box in an IDE knows what a slash command is, and had it marked
+     * nought out of ten for not being a Dockerfile. Being stuck is the moment a practice
+     * session either teaches something or loses the person, and the least it can do is
+     * recognise the word.
+     *
+     * <p>Anything else beginning with a slash gets one warning rather than a mark: paths
+     * and regular expressions start that way too, so the second press sends it as the
+     * answer.
+     */
+    private boolean command(String submission) {
+        String text = submission.strip();
+        if (!text.startsWith("/") || text.contains("\n")) {
+            submitAnyway = false;
+            return false;
+        }
+        String word = text.split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
+        if (word.equals("/hint") || word.equals("/help") || word.equals("/h")
+                || word.equals("/?")) {
+            answer.reset(question.isTheory() ? "markdown" : question.language(), "");
+            askHint();
+            return true;
+        }
+        if (submitAnyway) {
+            submitAnyway = false;
+            return false;
+        }
+        submitAnyway = true;
+        status.setText(word + " is not a command. /hint asks for one; press Submit again"
+                + " to send this as your answer.");
+        return true;
+    }
+
+    /**
+     * Asks for a nudge on the question in front of them.
+     *
+     * <p>The hint goes under the question rather than replacing it, and the next one is
+     * more concrete than the last: a first hint that gives the game away is no better
+     * than no hint at all, and one that says nothing wastes the only thing somebody stuck
+     * has left to try.
+     */
+    private void askHint() {
+        if (question == null || busy()) {
+            return;
+        }
+        if (!assistant.config().ready()) {
+            status.setText(assistant.config().whyNotReady());
+            return;
+        }
+        hints++;
+        setBusy(true);
+        hint.setDisable(true);
+        submit.setDisable(true);
+        waiting.start("Thinking of a hint");
+        streaming = new StringBuilder();
+        lastRender = 0;
+        String heading = onScreen + "\n\n---\n\n#### Hint " + hints + "\n\n";
+        view.setFollow(true);
+        view.show(heading + "*thinking...*");
+
+        turn = assistant.ask(
+                List.of(new ChatProvider.Message("system", Prompts.hintSystem()),
+                        new ChatProvider.Message("user",
+                                Prompts.hintRequest(question, answer.text(), hints))),
+                fragment -> {
+                    streaming.append(fragment);
+                    long now = System.currentTimeMillis();
+                    if (now - lastRender > 350) {
+                        lastRender = now;
+                        view.show(heading + streaming);
+                    }
+                },
+                whole -> {
+                    turn = null;
+                    onScreen = heading + whole.strip();
+                    setBusy(false);
+                    view.show(onScreen);
+                    submit.setDisable(false);
+                    hint.setDisable(false);
+                    answer.setEditable(true);
+                    answer.area().requestFocus();
+                    waiting.stop("Hint " + hints + ". Ask again for a bigger one.");
+                },
+                error -> {
+                    turn = null;
+                    hints--;
+                    setBusy(false);
+                    view.show(onScreen);
+                    submit.setDisable(false);
+                    hint.setDisable(false);
+                    waiting.stop("No hint came back. Press Hint to try again.");
                 });
     }
 
@@ -555,13 +672,17 @@ final class PracticePanel extends BorderPane {
             status.setText("Write something first - an empty answer teaches nobody anything.");
             return;
         }
+        if (command(submission)) {
+            return;
+        }
         setBusy(true);
         submit.setDisable(true);
+        hint.setDisable(true);
         answer.setEditable(false);
         waiting.start("Marking");
         streaming = new StringBuilder();
         lastRender = 0;
-        String heading = question.markdown() + "\n\n---\n\n## Marking\n\n";
+        String heading = onScreen + "\n\n---\n\n## Marking\n\n";
         view.setFollow(true);
         view.show(heading + "*marking...*");
 
@@ -653,6 +774,8 @@ final class PracticePanel extends BorderPane {
         stop.setDisable(!busy);
         topic.setDisable(busy);
         difficulty.setDisable(busy);
+        language.setDisable(busy);
+        hint.setDisable(busy || question == null);
     }
 
     void dispose() {
