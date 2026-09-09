@@ -94,6 +94,9 @@ final class ReviewPanel extends BorderPane {
         /** Wanted, from pressing Review or Ask until it lands, fails, or is stopped. */
         boolean running;
 
+        /** When the current attempt started, so the status line can count. */
+        long startedAt;
+
         /** Null while the project is still being read, and again once the reply is in. */
         Assistant.Turn turn;
 
@@ -119,6 +122,9 @@ final class ReviewPanel extends BorderPane {
     private final Map<Path, Session> sessions = new LinkedHashMap<>();
 
     private Path current;
+
+    /** Repaints the counting status line while anything is in flight; null when nothing is. */
+    private javafx.animation.Timeline ticker;
 
     ReviewPanel(Assistant assistant) {
         this.assistant = assistant;
@@ -332,6 +338,16 @@ final class ReviewPanel extends BorderPane {
         ask.setDisable(!askable);
 
         String text = session == null ? "" : session.status;
+        if (busy) {
+            /* Counted, because a line that has said "Reviewing..." for ninety seconds is
+               read as a button that did nothing - and a large model behind a proxy really
+               can take that long to say its first word. */
+            int seconds = (int) ((System.currentTimeMillis() - session.startedAt) / 1000);
+            text = text + "  " + seconds + "s";
+            if (seconds >= 20) {
+                text += "  -  a large model can take a while to start answering.";
+            }
+        }
         int others = 0;
         for (Map.Entry<Path, Session> entry : sessions.entrySet()) {
             if (!entry.getKey().equals(current) && entry.getValue().running) {
@@ -345,6 +361,26 @@ final class ReviewPanel extends BorderPane {
                     + (others == 1 ? "" : "s") + " still running.";
         }
         status.setText(text);
+        tick(busy || others > 0);
+    }
+
+    /**
+     * Keeps the second counter moving while anything is in flight, and stops it after.
+     *
+     * <p>One timer for the panel rather than one per file: the only thing it does is
+     * repaint a line of text that is only ever about the file on screen.
+     */
+    private void tick(boolean wanted) {
+        if (wanted && ticker == null) {
+            ticker = new javafx.animation.Timeline(
+                    new javafx.animation.KeyFrame(javafx.util.Duration.seconds(1),
+                            event -> refresh()));
+            ticker.setCycleCount(javafx.animation.Animation.INDEFINITE);
+            ticker.play();
+        } else if (!wanted && ticker != null) {
+            ticker.stop();
+            ticker = null;
+        }
     }
 
     /** Records a session's status; the panel only shows the current file's. */
@@ -388,12 +424,13 @@ final class ReviewPanel extends BorderPane {
         Path root = wholeProject.isSelected() && workspace != null ? workspace.root() : null;
 
         session.running = true;
+        session.startedAt = System.currentTimeMillis();
         session.turn = null;
         session.streaming = null;
         session.generation++;
         int generation = session.generation;
         session.note = "Reading the project...";
-        setStatus(session, "Reading the project around " + file.getFileName() + "...");
+        setStatus(session, "Reading the project around " + file.getFileName());
         if (session.transcript == null) {
             showIfCurrent(file, session);
         }
@@ -419,7 +456,7 @@ final class ReviewPanel extends BorderPane {
         session.pending = "";
         session.note = "Reviewing...";
         session.lastRender = 0;
-        setStatus(session, "Reviewing with " + assistant.config().model() + "...");
+        setStatus(session, "Reviewing with " + assistant.config().model());
         if (isCurrent(file)) {
             view.setFollow(true);
         }
@@ -520,7 +557,8 @@ final class ReviewPanel extends BorderPane {
         session.note = "";
         session.lastRender = 0;
         session.running = true;
-        setStatus(session, "Thinking...");
+        session.startedAt = System.currentTimeMillis();
+        setStatus(session, "Thinking");
         if (isCurrent(file)) {
             view.setFollow(true);
             view.show(before + "*thinking...*");

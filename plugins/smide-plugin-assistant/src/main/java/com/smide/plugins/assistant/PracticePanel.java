@@ -67,6 +67,9 @@ final class PracticePanel extends BorderPane {
 
     private final MarkdownPane view;
     private final AnswerEditor answer;
+    /* A model behind a proxy can take a minute to say its first word. A status line that
+       does not move for a minute is read as a button that did nothing. */
+    private final Waiting waiting;
     private SplitPane split;
     private VBox answerBox;
 
@@ -89,6 +92,7 @@ final class PracticePanel extends BorderPane {
         this.ide = assistant.ide();
         this.view = new MarkdownPane();
         this.answer = new AnswerEditor(ide);
+        this.waiting = new Waiting(status);
 
         topic.getItems().setAll(TOPICS);
         topic.setEditable(true);
@@ -292,7 +296,7 @@ final class PracticePanel extends BorderPane {
         showAcknowledge(false);
         showAnswerBox(false);
         setBusy(true);
-        status.setText("Writing a tutorial on " + subject + "...");
+        waiting.start("Writing a tutorial on " + subject);
         view.setFollow(true);
         view.show("> Writing a tutorial on **" + subject + "**...");
 
@@ -318,14 +322,14 @@ final class PracticePanel extends BorderPane {
                     setBusy(false);
                     view.show(whole);
                     showAcknowledge(true);
-                    status.setText("Read it, then press I have read this.");
+                    waiting.stop("Read it, then press I have read this.");
                 },
                 error -> {
                     turn = null;
                     stage = Stage.IDLE;
                     setBusy(false);
                     view.show("> " + error);
-                    status.setText("");
+                    waiting.stop("No tutorial came back. Press Start session to try again.");
                 });
     }
 
@@ -382,7 +386,7 @@ final class PracticePanel extends BorderPane {
         answer.reset("text", "");
         answer.setEditable(false);
         setBusy(true);
-        status.setText("Setting a question on " + subject + "...");
+        waiting.start("Setting a question on " + subject);
         view.show("> Writing a question on **" + subject + "**...");
 
         streaming = new StringBuilder();
@@ -417,13 +421,13 @@ final class PracticePanel extends BorderPane {
                     answer.setEditable(true);
                     answer.area().requestFocus();
                     submit.setDisable(false);
-                    status.setText("Question " + asked.size() + ". Ctrl+Enter submits.");
+                    waiting.stop("Question " + asked.size() + ". Ctrl+Enter submits.");
                 },
                 error -> {
                     turn = null;
                     setBusy(false);
                     view.show("> " + error);
-                    status.setText("");
+                    waiting.stop("No question was set. Press Next question to try again.");
                 });
     }
 
@@ -441,7 +445,7 @@ final class PracticePanel extends BorderPane {
         setBusy(true);
         submit.setDisable(true);
         answer.setEditable(false);
-        status.setText("Marking...");
+        waiting.start("Marking");
         streaming = new StringBuilder();
         lastRender = 0;
         String heading = question.markdown() + "\n\n---\n\n## Marking\n\n";
@@ -469,7 +473,7 @@ final class PracticePanel extends BorderPane {
                     }
                     score.setText(correct + " of " + answered + " correct");
                     view.show(heading + "**" + marking.label() + "**\n\n" + marking.feedback());
-                    status.setText("Marked. Press Next question when you are ready.");
+                    waiting.stop("Marked. Press Next question when you are ready.");
                     answer.setEditable(true);
                     submit.setDisable(false);
                 },
@@ -479,7 +483,7 @@ final class PracticePanel extends BorderPane {
                     view.show(heading + "> " + error);
                     answer.setEditable(true);
                     submit.setDisable(false);
-                    status.setText("");
+                    waiting.stop("The marking did not come back. Press Submit answer again.");
                 });
     }
 
@@ -510,7 +514,7 @@ final class PracticePanel extends BorderPane {
         turn.cancel();
         turn = null;
         setBusy(false);
-        status.setText("Stopped.");
+        waiting.stop("Stopped.");
         if (stage == Stage.TUTORIAL) {
             /* Whatever arrived before Stop is what was taught, and the gate opens on it:
                somebody who has read enough and pressed Stop wants the questions, not to
@@ -518,7 +522,7 @@ final class PracticePanel extends BorderPane {
             if (streaming != null && !streaming.isEmpty()) {
                 taught = streaming.toString();
                 showAcknowledge(true);
-                status.setText("Stopped. Press I have read this to start the questions.");
+                waiting.stop("Stopped. Press I have read this to start the questions.");
             } else {
                 stage = Stage.IDLE;
             }
