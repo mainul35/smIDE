@@ -46,6 +46,7 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
     private final ExtensionRegistry registry;
     private final LanguageRegistry languages;
     private final TreeView<Path> tree = new TreeView<>();
+    private final ContextMenu contextMenu = new ContextMenu();
     private final TreeItem<Path> hiddenRoot = new TreeItem<>();
     private final Consumer<Set<Path>> onDirectoriesChanged;
     private FileWatchService watcher;
@@ -90,8 +91,29 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
                 e.consume();
             }
         });
-        tree.setContextMenu(new ContextMenu());
-        tree.getContextMenu().setOnShowing(e -> buildContextMenu(tree.getContextMenu()));
+        /* Built when the menu is asked for, and shown by hand.
+           It used to be filled in the menu's own onShowing handler, which never ran:
+           ContextMenu.show() returns before firing it when the menu has no items, and an
+           empty menu is exactly what a menu that fills itself on showing starts as. So
+           right-clicking the tree did nothing at all - no rename, no delete, no new file.
+
+           Right-clicking a row selects it first, the way every file tree behaves: the
+           actions read the selection, and a menu that acts on some other row is worse
+           than no menu. A right click on empty space keeps whatever was selected. */
+        tree.setOnContextMenuRequested(e -> {
+            selectUnderCursor(e.getPickResult().getIntersectedNode());
+            buildContextMenu(contextMenu);
+            if (!contextMenu.getItems().isEmpty()) {
+                contextMenu.show(tree, e.getScreenX(), e.getScreenY());
+            }
+            e.consume();
+        });
+        // Any click puts it away again; the auto-hide only covers clicks outside the tree.
+        tree.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, e -> {
+            if (contextMenu.isShowing()) {
+                contextMenu.hide();
+            }
+        });
 
         try {
             watcher = new FileWatchService(changed -> {
@@ -295,6 +317,28 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
             }
         }
         return false;
+    }
+
+    /**
+     * Selects the row a right click landed on, unless it is already part of the selection.
+     *
+     * <p>Already part of it matters: right-clicking one of five selected files to delete
+     * all five should not quietly reduce the selection to one.
+     */
+    private void selectUnderCursor(javafx.scene.Node picked) {
+        javafx.scene.Node node = picked;
+        while (node != null && !(node instanceof javafx.scene.control.TreeCell)) {
+            node = node.getParent();
+        }
+        if (!(node instanceof javafx.scene.control.TreeCell<?> cell) || cell.isEmpty()) {
+            return;
+        }
+        TreeItem<?> item = cell.getTreeItem();
+        int index = tree.getRow((TreeItem<Path>) item);
+        if (index < 0 || tree.getSelectionModel().getSelectedIndices().contains(index)) {
+            return;
+        }
+        tree.getSelectionModel().clearAndSelect(index);
     }
 
     private void buildContextMenu(ContextMenu menu) {
