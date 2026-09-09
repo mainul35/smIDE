@@ -32,6 +32,11 @@ Either one checks what it needs, fetches or builds MDViewer, compiles the sixtee
 modules, packages them with a runtime, and installs to `~/.local/opt/smide` (or
 `%LOCALAPPDATA%\Programs\smIDE`) with a `smide` command and a menu entry.
 
+The directory holding that command is put on your PATH if it is not there already: on
+Windows in your own environment variables, elsewhere as two marked lines in the startup
+file of whichever shell you run. **Open a new terminal afterwards** — the one you
+installed from keeps the PATH it started with. Uninstalling takes both back out again.
+
 | | |
 |---|---|
 | `--check` / `-Check` | report what is missing and stop |
@@ -39,6 +44,7 @@ modules, packages them with a runtime, and installs to `~/.local/opt/smide` (or
 | `--prefix DIR` / `-Prefix DIR` | install somewhere else |
 | `--mdviewer PATH` / `-MdViewer PATH` | build MDViewer from a checkout you have |
 | `--no-desktop` / `-NoShortcut` | no launcher, no menu entry |
+| `--no-path` / `-NoPath` | leave the PATH alone |
 
 **To build it you need a JDK 21, Maven 3.8 and Git.** To *run* what comes out you need
 none of them — that is the difference the packaging makes. A JDK is still worth having on
