@@ -16,12 +16,14 @@
     .\install.ps1
     .\install.ps1 -Check
     .\install.ps1 -Prefix D:\Apps
+    .\install.ps1 -NoPath
     .\install.ps1 -Uninstall
 #>
 param(
     [string]$Prefix = "$env:LOCALAPPDATA\Programs",
     [string]$MdViewer = "",
     [switch]$NoShortcut,
+    [switch]$NoPath,
     [switch]$Check,
     [switch]$Uninstall
 )
@@ -40,6 +42,82 @@ function Stop-With($text)  { Write-Bad $text; exit 1 }
 
 $LogDir = Join-Path ([IO.Path]::GetTempPath()) ("smide-install-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+
+# ------------------------------------------------------------------ the PATH
+
+<#
+    Reads the user's own PATH the way it is actually stored.
+
+    Not [Environment]::GetEnvironmentVariable("PATH", "User"), which expands %VAR%
+    references, so writing the result back would freeze someone's %JAVA_HOME%\bin into
+    whatever it pointed at today. And never $env:PATH, which is machine + user + this
+    session: writing that into the user scope copies every machine entry into the user's
+    own, and the PATH doubles every time anybody does it.
+#>
+function Get-UserPath {
+    $key = Get-Item -Path "HKCU:\Environment"
+    if ($key.GetValueNames() -notcontains "Path") {
+        return [pscustomobject]@{ Value = ""; Kind = "ExpandString" }
+    }
+    [pscustomobject]@{
+        Value = [string]$key.GetValue("Path", "", "DoNotExpandEnvironmentNames")
+        Kind  = $key.GetValueKind("Path")
+    }
+}
+
+function Test-OnUserPath($directory) {
+    $wanted = $directory.TrimEnd('\')
+    foreach ($entry in (Get-UserPath).Value -split ';') {
+        if ($entry.Trim().TrimEnd('\') -ieq $wanted) { return $true }
+    }
+    return $false
+}
+
+# Tells everything already running that the environment changed. Without it, a terminal
+# opened from the Explorer window that is already up still has the old PATH, and the
+# install looks as though it did nothing.
+function Publish-EnvironmentChange {
+    try {
+        if (-not ("Win32.Env" -as [type])) {
+            Add-Type -Namespace Win32 -Name Env -MemberDefinition @"
+[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, UIntPtr wParam,
+        string lParam, uint flags, uint timeout, out UIntPtr result);
+"@
+        }
+        $answer = [UIntPtr]::Zero
+        [void][Win32.Env]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero,
+            "Environment", 2, 5000, [ref]$answer)
+    } catch {
+        # Cosmetic: a new terminal reads the registry anyway.
+    }
+}
+
+# Appended rather than prepended: this directory holds one shim, and nothing here is
+# worth putting in front of the tools somebody already has.
+function Add-ToUserPath($directory) {
+    if (Test-OnUserPath $directory) { return $false }
+    $path = Get-UserPath
+    $updated = if ($path.Value.Trim()) { $path.Value.TrimEnd(';') + ";" + $directory }
+               else { $directory }
+    Set-ItemProperty -Path "HKCU:\Environment" -Name Path -Value $updated -Type $path.Kind
+    $env:PATH = "$env:PATH;$directory"
+    Publish-EnvironmentChange
+    return $true
+}
+
+# Uninstall takes back what install added, and leaves everything else in the variable
+# exactly as it was - including the order.
+function Remove-FromUserPath($directory) {
+    if (-not (Test-OnUserPath $directory)) { return $false }
+    $path = Get-UserPath
+    $wanted = $directory.TrimEnd('\')
+    $kept = @($path.Value -split ';' | Where-Object { $_.Trim().TrimEnd('\') -ine $wanted })
+    Set-ItemProperty -Path "HKCU:\Environment" -Name Path -Value ($kept -join ';') `
+        -Type $path.Kind
+    Publish-EnvironmentChange
+    return $true
+}
 
 # Runs a command, showing that it is still going and what it is doing.
 #
@@ -124,6 +202,12 @@ if ($Uninstall) {
                         (Join-Path $ShimDir "smide.cmd"),
                         (Join-Path ([Environment]::GetFolderPath('Programs')) "smIDE.lnk"))) {
         if (Test-Path $path) { Remove-Item -Recurse -Force $path; Write-Ok "removed $path" }
+    }
+    # Only if the directory is now empty: it is a shared bin directory, and something
+    # else may well be living in it.
+    if ((Test-Path $ShimDir) -and -not (Get-ChildItem -Force $ShimDir)) {
+        Remove-Item -Force $ShimDir
+        if (Remove-FromUserPath $ShimDir) { Write-Ok "removed $ShimDir from your PATH" }
     }
     Write-Host ""
     Write-Host "Your settings, sessions and downloaded language servers are still in ~\.smide."
@@ -337,12 +421,15 @@ if (-not $NoShortcut) {
     $shortcut.Save()
     Write-Ok (Join-Path $startMenu "smIDE.lnk")
 
-    $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-    if ($userPath -notlike "*$ShimDir*") {
-        Write-Host ""
-        Write-Bad "$ShimDir is not on your PATH."
-        Write-Host "  Add it:  [Environment]::SetEnvironmentVariable('PATH', `"$ShimDir;`$env:PATH`", 'User')"
-        Write-Host "  Then open a new terminal."
+    if ($NoPath) {
+        if (-not (Test-OnUserPath $ShimDir)) {
+            Write-Host "  $ShimDir is not on your PATH, and -NoPath said to leave it alone."
+        }
+    } elseif (Add-ToUserPath $ShimDir) {
+        Write-Ok "$ShimDir added to your PATH"
+        Write-Host "  Terminals already open still have the old one; new ones will have it."
+    } else {
+        Write-Ok "$ShimDir already on your PATH"
     }
 }
 

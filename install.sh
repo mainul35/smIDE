@@ -7,6 +7,7 @@
 #   ./install.sh --prefix DIR       install under DIR (default ~/.local)
 #   ./install.sh --mdviewer PATH    build MDViewer from a checkout you have
 #   ./install.sh --no-desktop       no launcher, no menu entry
+#   ./install.sh --no-path          do not touch your shell's startup file
 #   ./install.sh --no-java-server   do not fetch the Java language server
 #   ./install.sh --uninstall        remove what this installed
 #
@@ -28,6 +29,7 @@ CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/smide"
 
 mdviewer_path=""
 make_desktop=true
+touch_path=true
 java_server=true
 check_only=false
 uninstall=false
@@ -37,6 +39,7 @@ while [ $# -gt 0 ]; do
         --prefix)     PREFIX="${2:?--prefix needs a directory}"; shift 2 ;;
         --mdviewer)   mdviewer_path="${2:?--mdviewer needs a path}"; shift 2 ;;
         --no-desktop) make_desktop=false; shift ;;
+        --no-path)    touch_path=false; shift ;;
         --no-java-server) java_server=false; shift ;;
         --check)      check_only=true; shift ;;
         --uninstall)  uninstall=true; shift ;;
@@ -66,6 +69,59 @@ fail()  { red "$*"; exit 1; }
 
 LOG_DIR="$(mktemp -d)"
 trap 'printf "\033[?25h"; rm -rf "$LOG_DIR"' EXIT
+
+# ---------------------------------------------------------------------- PATH
+
+# The marker the two lines below are found by later. Anything this script writes into a
+# file somebody else owns has to be findable again, exactly, or uninstalling means
+# telling them to go and edit it themselves.
+PATH_MARKER="# added by smIDE so that 'smide' resolves"
+
+# Which file a login shell of theirs actually reads.
+shell_rc() {
+    case "$(basename "${SHELL:-/bin/bash}")" in
+        zsh)  echo "${ZDOTDIR:-$HOME}/.zshrc" ;;
+        fish) echo "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish" ;;
+        bash) echo "$HOME/.bashrc" ;;
+        *)    echo "$HOME/.profile" ;;
+    esac
+}
+
+# Puts a directory on the PATH of shells started from now on.
+#
+# 0 written, 1 already on the PATH, 2 the line is already in the file. This cannot
+# change the PATH of the shell running the installer - a child process cannot - so what
+# it reports is what will be true in the next terminal.
+add_to_path() {
+    local dir="$1" rc
+    case ":$PATH:" in *":$dir:"*) return 1 ;; esac
+    rc="$(shell_rc)"
+    if [ -f "$rc" ] && grep -Fq "$PATH_MARKER" "$rc"; then return 2; fi
+    mkdir -p "$(dirname "$rc")"
+    if [ "$(basename "$rc")" = "config.fish" ]; then
+        printf '\n%s\nfish_add_path %s\n' "$PATH_MARKER" "$dir" >> "$rc"
+    else
+        printf '\n%s\nexport PATH="%s:$PATH"\n' "$PATH_MARKER" "$dir" >> "$rc"
+    fi
+    echo "$rc"
+}
+
+# Takes those two lines back out, and nothing else: the marker line, and the one line
+# after it if that is the one this script wrote. A startup file is somebody's own work,
+# and an installer is not entitled to reformat it on the way out.
+remove_from_path() {
+    local rc temp
+    rc="$(shell_rc)"
+    [ -f "$rc" ] || return 1
+    grep -Fq "$PATH_MARKER" "$rc" || return 1
+    temp="$LOG_DIR/rc.$$"
+    awk -v marker="$PATH_MARKER" '
+        $0 == marker { skip = 2; next }
+        skip == 2 && ($0 ~ /^export PATH=/ || $0 ~ /^fish_add_path /) { skip = 0; next }
+        { skip = 0; print }
+    ' "$rc" > "$temp" && cat "$temp" > "$rc"
+    echo "$rc"
+}
 
 # Runs a command, showing that it is still going and what it is doing.
 #
@@ -156,6 +212,12 @@ if $uninstall; then
             green "removed $path"
         fi
     done
+    set +e
+    removed_rc="$(remove_from_path)"
+    set -e
+    if [ -n "$removed_rc" ]; then
+        green "removed the PATH line from $removed_rc"
+    fi
     printf '\n'
     echo "Your settings, sessions and downloaded language servers are still in ~/.smide."
     echo "Delete that too if you want nothing left:  rm -rf ~/.smide"
@@ -408,11 +470,27 @@ DESKTOP
             && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
     fi
 
-    case ":$PATH:" in
-        *":$BIN_DIR:"*) ;;
-        *) printf '\n'; red "$BIN_DIR is not on your PATH."
-           echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc" ;;
-    esac
+    if ! $touch_path; then
+        case ":$PATH:" in
+            *":$BIN_DIR:"*) ;;
+            *) printf '\n'; red "$BIN_DIR is not on your PATH, and --no-path said to leave"
+               red "your shell's startup file alone."
+               echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> $(shell_rc)" ;;
+        esac
+    else
+        set +e
+        rc="$(add_to_path "$BIN_DIR")"
+        added=$?
+        set -e
+        case $added in
+            0) green "$BIN_DIR added to your PATH in $rc"
+               echo "  This shell still has the old one; new terminals will have it."
+               echo "  Here and now:  export PATH=\"$BIN_DIR:\$PATH\"" ;;
+            1) green "$BIN_DIR is already on your PATH" ;;
+            2) green "$BIN_DIR is already added by smIDE in $(shell_rc)"
+               echo "  Not on this shell's PATH yet; open a new terminal." ;;
+        esac
+    fi
 fi
 
 # ------------------------------------------------- the Java language server
