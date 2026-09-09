@@ -26,8 +26,15 @@
             when a user hit the feature: jdk.jdi is the debugger, jdk.crypto.ec is TLS,
             jdk.zipfs is reading a jar as a filesystem, jdk.localedata is every locale but
             English. A runtime missing one of these fails at the user rather than here.
+
+            jdk.jsobject is not reflection but JNI, and it fails harder than the rest.
+            WebView's native WebKit looks netscape.javascript.JSObject up with FindClass
+            to hand back what a script evaluated; a runtime without it returns null,
+            which the caller does not check, and the JVM dies on the spot in
+            GetStaticFieldID. That is every Markdown preview and every assistant answer,
+            so nothing here may drop it.
         -->
-        <app.modules>java.base,java.compiler,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.sql,java.xml,java.xml.crypto,jdk.attach,jdk.charsets,jdk.compiler,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.dynalink,jdk.httpserver,jdk.jdi,jdk.jdwp.agent,jdk.localedata,jdk.management,jdk.unsupported,jdk.zipfs</app.modules>
+        <app.modules>java.base,java.compiler,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.sql,java.xml,java.xml.crypto,jdk.attach,jdk.charsets,jdk.compiler,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.dynalink,jdk.httpserver,jdk.jdi,jdk.jdwp.agent,jdk.jsobject,jdk.localedata,jdk.management,jdk.unsupported,jdk.zipfs</app.modules>
     </properties>
 
     <dependencies>
