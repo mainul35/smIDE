@@ -26,6 +26,7 @@ PREFIX="${PREFIX:-$HOME/.local}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MDVIEWER_REPO="https://github.com/mainul35/markdown-viewer.git"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/smide"
+FAILURE_LOG="$CACHE_DIR/last-failure.log"
 
 mdviewer_path=""
 make_desktop=true
@@ -187,8 +188,15 @@ run_step() {
         printf '\033[?25l'                       # hide the cursor while it spins
         while kill -0 "$pid" 2>/dev/null; do
             # The most recent thing Maven said it was building, if it said anything.
-            detail=$(grep -oE '^\[INFO\] Building [^0-9]*' "$log" 2>/dev/null \
-                     | tail -1 | sed 's/^\[INFO\] Building //;s/ *$//')
+            # Two things this has to survive. Maven colours [INFO] even when its output
+            # is a file, so the escapes are stripped before the tag is matched - the ESC
+            # is written out because BSD sed has no \x1b. And grep finds nothing until
+            # Maven reaches its first module, so the pipeline fails on the early ticks;
+            # under `set -e` with `pipefail` a bare assignment from it ends the install
+            # right here, silently. Hence `|| detail=`.
+            detail=$(sed $'s/\033\[[0-9;]*m//g' "$log" 2>/dev/null \
+                     | grep -oE '^\[INFO\] Building [^0-9]*' | tail -1 \
+                     | sed 's/^\[INFO\] Building //;s/ *$//') || detail=""
             width=$(( ${COLUMNS:-80} - 24 ))
             [ ${#detail} -gt "$width" ] && detail="${detail:0:$width}..."
             printf '\r\033[K  %s %s  %ds  %s' \
@@ -207,6 +215,12 @@ run_step() {
         red "  $message failed after $((SECONDS - start))s"
         printf '\n'
         cat "$log"
+        # $LOG_DIR goes with the trap on the way out, so the log somebody needs in
+        # order to say what happened would go with it. A copy outlives the install.
+        if mkdir -p "$CACHE_DIR" 2>/dev/null && cp "$log" "$FAILURE_LOG" 2>/dev/null; then
+            printf '\n'
+            red "The above is also in $FAILURE_LOG"
+        fi
         exit "$status"
     fi
     green "  $message - $((SECONDS - start))s"
@@ -379,7 +393,10 @@ install_jdk_source() {
         return 0
     fi
     echo "  $package provides it. Install it now with sudo? [y/N]"
-    read -r answer
+    # `|| answer=n` because `set -e` would otherwise end the install here whenever
+    # there is nobody to ask - piped into bash, or run from CI - rather than taking
+    # the no that a closed stdin plainly means.
+    read -r answer || answer=n
     case "$answer" in
         [yY]*) ;;
         *) echo "  Left alone. Only Ctrl+click into JDK classes suffers."; return 0 ;;
