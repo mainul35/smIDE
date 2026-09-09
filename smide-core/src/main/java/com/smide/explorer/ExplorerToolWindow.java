@@ -62,9 +62,20 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
         tree.getStyleClass().add("file-tree");
         tree.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
         tree.setCellFactory(v -> new PathCell());
+        /* Double click opens a file. It does not touch a folder, and that is the fix:
+           the tree's own cells already expand a folder on a double click, and this
+           handler was toggling it a second time - open and shut inside the one gesture,
+           which from the outside is a double click that does nothing at all. Only the
+           disclosure arrow worked, and that is the part of the row nobody aims for.
+           (Consuming the event does not help: the cells act on the press, not the
+           click.) Enter still toggles, because nothing else does it for us there. */
         tree.setOnMouseClicked(e -> {
-            if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2) {
-                openSelected();
+            if (e.getButton() != MouseButton.PRIMARY || e.getClickCount() != 2) {
+                return;
+            }
+            TreeItem<Path> item = tree.getSelectionModel().getSelectedItem();
+            if (item instanceof PathTreeItem p && !p.isDirectory()) {
+                ide.editors().open(p.getValue());
             }
         });
         tree.setOnKeyPressed(e -> {
