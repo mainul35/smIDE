@@ -202,11 +202,32 @@ final class Prompts {
             """;
     }
 
-    static String tutorialRequest(String topic, String difficulty) {
+    static String tutorialRequest(String topic, String difficulty, String language) {
         return "Topic: " + topic + "\n"
                 + "The practice that follows will be at " + difficulty + " difficulty, so"
-                + " pitch the tutorial at somebody about to attempt that.\n\n"
-                + "Write the tutorial now, in Markdown, under the headings given.";
+                + " pitch the tutorial at somebody about to attempt that.\n"
+                + languageLine(language)
+                + "\nWrite the tutorial now, in Markdown, under the headings given.";
+    }
+
+    /**
+     * The language the developer has chosen to work in, said the same way to every turn.
+     *
+     * <p>Empty when they have not chosen one - in which case nothing is said at all,
+     * rather than something a model reads as permission to pick its favourite. Most of
+     * these topics are not about a language: data structures, algorithms, REST, system
+     * design. Somebody working through those is usually learning a language alongside
+     * them, and a session that answers every question in Java is no use to them.
+     */
+    private static String languageLine(String language) {
+        if (language == null || language.isBlank()) {
+            return "";
+        }
+        return "The developer is working in " + language.strip() + ". Write your examples"
+                + " in it, and set code questions to be answered in it - LANGUAGE is "
+                + language.strip().toLowerCase(java.util.Locale.ROOT) + ". If this topic is"
+                + " itself about another language, the topic wins and you say so in one"
+                + " clause; if it is about none in particular, use theirs.\n";
     }
 
     static String questionSystem() {
@@ -248,7 +269,10 @@ final class Prompts {
             === LANGUAGE ===
             the language or notation the answer is written in, lower case, one word:
             sql, java, python, css, javascript, typescript, kotlin, go, bash, text.
-            Use text for a theory question.
+            Use text for a theory question. If the developer said which language they are
+            working in, a code question is in that one - a queue, a binary search and a
+            rate limiter are the same exercise in any of them, and the language they are
+            learning is the one worth writing it in.
             === DIFFICULTY ===
             easy, medium or hard
             === QUESTION ===
@@ -361,11 +385,12 @@ final class Prompts {
      *
      * @param taught the tutorial the developer has just read, or empty if they skipped it
      */
-    static String questionRequest(String topic, String difficulty, java.util.List<String> asked,
-                                  String taught) {
+    static String questionRequest(String topic, String difficulty, String language,
+                                  java.util.List<String> asked, String taught) {
         StringBuilder request = new StringBuilder();
         request.append("Topic: ").append(topic).append('\n');
         request.append("Difficulty: ").append(difficulty).append('\n');
+        request.append(languageLine(language));
         if (asked.isEmpty()) {
             request.append("This is the first question of the session.\n");
         } else {

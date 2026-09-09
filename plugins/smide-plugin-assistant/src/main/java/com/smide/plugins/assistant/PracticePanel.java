@@ -40,12 +40,30 @@ import java.util.Locale;
  */
 final class PracticePanel extends BorderPane {
 
+    /** The language choice that means "whatever suits the question". */
+    private static final String ANY_LANGUAGE = "Any language";
+
+    /** Where the choice is remembered between sessions. */
+    private static final String LANGUAGE_KEY = "assistant.practiceLanguage";
+
     /** Starting points, not a menu: the box is editable and anything typed is a topic. */
     private static final List<String> TOPICS = List.of(
             "SQL queries", "SQL schema design", "Data structures", "Algorithms",
             "Java Stream API", "Java generics", "Java concurrency", "Spring Boot",
             "Kafka", "REST API design", "Python", "CSS", "JavaScript", "TypeScript",
             "Regular expressions", "Git", "Docker", "System design", "Security");
+
+    /**
+     * What a code answer may be written in.
+     *
+     * <p>Half the topics here - data structures, algorithms, system design, REST - are
+     * not about any one language, and somebody working through them is usually learning a
+     * language at the same time. Left to itself the assistant picks whatever it likes,
+     * which is Java about four times in five.
+     */
+    private static final List<String> LANGUAGES = List.of(
+            ANY_LANGUAGE, "Java", "Python", "JavaScript", "TypeScript", "Kotlin", "Go",
+            "Rust", "C#", "C++", "C", "SQL", "Bash", "CSS", "HTML", "PHP", "Ruby", "Scala");
 
     private final Assistant assistant;
     private final Ide ide;
@@ -55,6 +73,7 @@ final class PracticePanel extends BorderPane {
 
     private final ComboBox<String> topic = new ComboBox<>();
     private final ChoiceBox<String> difficulty = new ChoiceBox<>();
+    private final ChoiceBox<String> language = new ChoiceBox<>();
     private final Button start = new Button("Start session");
     private final Button next = new Button("Next question");
     private final Button submit = new Button("Submit answer");
@@ -136,6 +155,13 @@ final class PracticePanel extends BorderPane {
         topic.getEditor().textProperty().addListener((o, was, now) -> filterTopics(now));
         difficulty.getItems().setAll("easy", "medium", "hard", "mixed");
         difficulty.setValue("medium");
+        language.getItems().setAll(LANGUAGES);
+        language.setValue(ide.settings().get(LANGUAGE_KEY, ANY_LANGUAGE));
+        language.setTooltip(new Tooltip("What code answers are written in. Topics that are"
+                + " about one language - Java generics, CSS - keep their own."));
+        // Remembered: somebody learning Go is learning Go next week as well.
+        language.valueProperty().addListener((o, was, now) ->
+                ide.settings().set(LANGUAGE_KEY, now == null ? ANY_LANGUAGE : now));
         score.getStyleClass().add("muted-small");
         status.getStyleClass().add("muted-small");
         answerLabel.getStyleClass().add("assistant-file");
@@ -159,14 +185,17 @@ final class PracticePanel extends BorderPane {
         HBox.setHgrow(topic, Priority.ALWAYS);
         topic.setMaxWidth(Double.MAX_VALUE);
         difficulty.setMinWidth(Region.USE_PREF_SIZE);
-        HBox subject = new HBox(8, topic, difficulty);
+        language.setMinWidth(Region.USE_PREF_SIZE);
+        HBox subject = new HBox(8, topic);
         subject.setAlignment(Pos.CENTER_LEFT);
+        HBox options = new HBox(8, difficulty, language);
+        options.setAlignment(Pos.CENTER_LEFT);
         for (Button button : new Button[]{start, next, stop, submit}) {
             button.setMinWidth(Region.USE_PREF_SIZE);
         }
         HBox buttons = new HBox(8, start, next, stop, spacer(), score);
         buttons.setAlignment(Pos.CENTER_LEFT);
-        VBox bar = new VBox(6, subject, buttons);
+        VBox bar = new VBox(6, subject, options, buttons);
         bar.setPadding(new Insets(6, 8, 6, 8));
 
         HBox answerBar = new HBox(8, answerLabel, spacer(), submit);
@@ -232,6 +261,12 @@ final class PracticePanel extends BorderPane {
      * pressed the button beside - which is most of how a box with a free-text field gets
      * used.
      */
+    /** The language asked for, or empty when the assistant may choose. */
+    private String chosenLanguage() {
+        String chosen = language.getValue();
+        return chosen == null || ANY_LANGUAGE.equals(chosen) ? "" : chosen;
+    }
+
     private String topicText() {
         String typed = topic.getEditor() == null ? null : topic.getEditor().getText();
         if (typed != null && !typed.isBlank()) {
@@ -383,7 +418,7 @@ final class PracticePanel extends BorderPane {
         turn = assistant.ask(
                 List.of(new ChatProvider.Message("system", Prompts.tutorialSystem()),
                         new ChatProvider.Message("user",
-                                Prompts.tutorialRequest(subject, difficulty.getValue()))),
+                                Prompts.tutorialRequest(subject, difficulty.getValue(), chosenLanguage()))),
                 fragment -> {
                     // Shown as it arrives: a tutorial has nothing hidden in it, and reading
                     // can start at the top while the rest is still coming.
@@ -472,7 +507,7 @@ final class PracticePanel extends BorderPane {
         turn = assistant.ask(
                 List.of(new ChatProvider.Message("system", Prompts.questionSystem()),
                         new ChatProvider.Message("user", Prompts.questionRequest(subject,
-                                difficulty.getValue(), asked, taught))),
+                                difficulty.getValue(), chosenLanguage(), asked, taught))),
                 fragment -> {
                     streaming.append(fragment);
                     long now = System.currentTimeMillis();
