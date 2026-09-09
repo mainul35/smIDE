@@ -4,6 +4,7 @@ import com.smide.ui.Icons;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -11,6 +12,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -48,6 +50,8 @@ public final class QuickPopup {
     private final VBox panel;
     private String currentTab;
     private int generation;
+    /** The filter that redirects typing into the field while the popup is open. */
+    private javafx.event.EventHandler<KeyEvent> capturing;
 
     public QuickPopup(String title, List<String> tabNames, String hintText, Provider provider) {
         this.provider = provider;
@@ -214,7 +218,52 @@ public final class QuickPopup {
         popup.show(owner, Math.max(0, x), Math.max(0, y));
         field.requestFocus();
         field.selectAll();
+        // Again after the window exists. A popup asked for focus in the same breath as it
+        // is shown does not always get it, and the request is not queued: it is lost, the
+        // window behind keeps the keyboard, and the search box sits there with a caret in
+        // it swallowing nothing while what you type goes into the editor underneath.
+        Platform.runLater(() -> {
+            if (popup.isShowing()) {
+                field.requestFocus();
+                field.selectAll();
+            }
+        });
+        captureTyping(owner);
         refresh();
+    }
+
+    /**
+     * Sends the keyboard to the search box for as long as the popup is open.
+     *
+     * <p>Belt and braces over the focus request above, and the difference between a bug
+     * that is rare and one that cannot happen: whatever the window manager decides about
+     * which window is focused, a key pressed while this popup is showing belongs to it.
+     * Without this the keystrokes do not vanish - they go into whatever was focused
+     * before, which is usually the file you were reading.
+     */
+    private void captureTyping(Window owner) {
+        Scene scene = owner.getScene();
+        if (scene == null || capturing != null) {
+            return;
+        }
+        capturing = event -> {
+            if (!popup.isShowing()) {
+                return;
+            }
+            Object target = event.getTarget();
+            if (target instanceof Node node && node.getScene() == popup.getScene()) {
+                return; // Already where it belongs.
+            }
+            field.fireEvent(event.copyFor(field, field));
+            event.consume();
+        };
+        scene.addEventFilter(KeyEvent.ANY, capturing);
+        popup.setOnHidden(e -> {
+            if (capturing != null) {
+                scene.removeEventFilter(KeyEvent.ANY, capturing);
+                capturing = null;
+            }
+        });
     }
 
     public void selectTab(String name) {

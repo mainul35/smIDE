@@ -58,8 +58,11 @@ public final class MainWindow {
     private final StackPane center = new StackPane();
     private final WelcomeView welcome;
     private Scene scene;
-    private long lastShiftRelease;
-    private boolean otherKeySinceShift;
+    /** Double-Shift: the last completed tap, and what the Shift now down has been used for. */
+    private long lastShiftTap;
+    private boolean shiftDown;
+    private boolean shiftUsedWithAnotherKey;
+    private long shiftPressedAt;
 
     public MainWindow(IdeImpl ide, Stage stage, ExtensionRegistry registry, WorkspaceManager workspaces,
                       ExecutionService execution, ToolWindowManager toolWindows, StatusBarView statusBar,
@@ -247,25 +250,58 @@ public final class MainWindow {
         return zoom;
     }
 
+    /** How long a Shift may be held and still count as a tap rather than a modifier. */
+    private static final long SHIFT_TAP = 400;
+
+    /** How long the second tap may take to arrive. */
+    private static final long SHIFT_GAP = 350;
+
+    /**
+     * Search Everywhere on two taps of Shift, and on nothing else.
+     *
+     * <p>The rule is stricter than it looks, because every part of it was a way of
+     * opening a dialog nobody asked for. A Shift held down to type a capital is a
+     * modifier and not a tap, however briefly it is held; a Shift held for a while and
+     * then let go is not a tap either, which is what typing an uppercase word does; and
+     * any other key in between forgets a first tap, because two capitals a moment apart
+     * are two modifiers rather than a gesture. What is left is what somebody means: two
+     * deliberate taps of Shift on its own, one after the other.
+     */
     private void installDoubleShift(Scene scene) {
         scene.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
-            if (e.getCode() != KeyCode.SHIFT) {
-                otherKeySinceShift = true;
+            if (e.getCode() == KeyCode.SHIFT) {
+                if (!shiftDown) {
+                    // The first press. Holding it repeats the event; that is still one press.
+                    shiftDown = true;
+                    shiftUsedWithAnotherKey = false;
+                    shiftPressedAt = System.currentTimeMillis();
+                }
+                return;
             }
+            shiftUsedWithAnotherKey = true;
+            lastShiftTap = 0;
         });
         scene.addEventFilter(KeyEvent.KEY_RELEASED, e -> {
             if (e.getCode() != KeyCode.SHIFT) {
                 return;
             }
             long now = System.currentTimeMillis();
-            if (!otherKeySinceShift && now - lastShiftRelease < 350) {
-                lastShiftRelease = 0;
+            boolean tapped = shiftDown && !shiftUsedWithAnotherKey
+                    && !e.isControlDown() && !e.isAltDown() && !e.isMetaDown()
+                    && now - shiftPressedAt <= SHIFT_TAP;
+            shiftDown = false;
+            shiftUsedWithAnotherKey = false;
+            if (!tapped) {
+                lastShiftTap = 0;
+                return;
+            }
+            if (lastShiftTap != 0 && now - lastShiftTap <= SHIFT_GAP) {
+                lastShiftTap = 0;
                 ide.showSearchEverywhere("");
                 e.consume();
             } else {
-                lastShiftRelease = now;
+                lastShiftTap = now;
             }
-            otherKeySinceShift = false;
         });
     }
 
