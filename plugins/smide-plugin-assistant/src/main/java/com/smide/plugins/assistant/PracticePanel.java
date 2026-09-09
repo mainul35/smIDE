@@ -78,6 +78,8 @@ final class PracticePanel extends BorderPane {
     private final Button next = new Button("Next question");
     private final Button submit = new Button("Submit answer");
     private final Button hint = new Button("Hint");
+    private final Button ask = new Button("Ask");
+    private final javafx.scene.control.TextField askField = new javafx.scene.control.TextField();
     private final Button stop = new Button("Stop");
     private final Button understood = new Button("I have read this - start practice");
     private final Button skip = new Button("Skip the tutorial");
@@ -108,6 +110,8 @@ final class PracticePanel extends BorderPane {
     private String onScreen = "";
     /** Hints asked for on this question, so they can get more concrete. */
     private int hints;
+    /** Questions asked and answered on this question, so a follow-up follows something. */
+    private final List<String> exchanges = new ArrayList<>();
     /** Set when a submission looked like a command, so pressing again sends it anyway. */
     private boolean submitAnyway;
     private Assistant.Turn turn;
@@ -179,6 +183,14 @@ final class PracticePanel extends BorderPane {
         hint.setOnAction(e -> askHint());
         hint.setTooltip(new Tooltip("A nudge, not the answer. Ask again for a"
                 + " bigger one. Typing /hint in the answer does the same."));
+        ask.setOnAction(e -> askAbout(askField.getText()));
+        ask.setTooltip(new Tooltip("Ask about the subject - what a clause does, why a"
+                + " structure behaves that way. It answers the question without answering"
+                + " the exercise."));
+        askField.setPromptText("Ask about this - what a clause does, why something behaves"
+                + " that way. Enter asks.");
+        askField.getStyleClass().add("assistant-question");
+        askField.setOnAction(e -> askAbout(askField.getText()));
         stop.setOnAction(e -> cancel());
         understood.setOnAction(e -> beginPractice());
         /* Skipping is for the third session on the same topic, not for the first. It stays
@@ -189,6 +201,8 @@ final class PracticePanel extends BorderPane {
         next.setDisable(true);
         submit.setDisable(true);
         hint.setDisable(true);
+        ask.setDisable(true);
+        askField.setDisable(true);
         stop.setDisable(true);
 
         /* The topic on one row and the buttons on the next. All of this on one row fits a
@@ -201,7 +215,7 @@ final class PracticePanel extends BorderPane {
         subject.setAlignment(Pos.CENTER_LEFT);
         HBox options = new HBox(8, difficulty, language);
         options.setAlignment(Pos.CENTER_LEFT);
-        for (Button button : new Button[]{start, next, stop, submit, hint}) {
+        for (Button button : new Button[]{start, next, stop, submit, hint, ask}) {
             button.setMinWidth(Region.USE_PREF_SIZE);
         }
         HBox buttons = new HBox(8, start, next, stop, spacer(), score);
@@ -213,7 +227,16 @@ final class PracticePanel extends BorderPane {
         answerBar.setAlignment(Pos.CENTER_LEFT);
         answerBar.setPadding(new Insets(4, 8, 4, 8));
 
-        VBox answerBox = new VBox(answerBar, answer);
+        /* A question is not an answer, so it has its own box. Sharing the answer editor
+           would mean somebody with half a query written having to delete it to ask what a
+           clause does. */
+        HBox.setHgrow(askField, Priority.ALWAYS);
+        askField.setMaxWidth(Double.MAX_VALUE);
+        HBox askBar = new HBox(8, askField, ask);
+        askBar.setAlignment(Pos.CENTER_LEFT);
+        askBar.setPadding(new Insets(0, 8, 4, 8));
+
+        VBox answerBox = new VBox(answerBar, askBar, answer);
         VBox.setVgrow(answer, Priority.ALWAYS);
         this.answerBox = answerBox;
 
@@ -376,7 +399,10 @@ final class PracticePanel extends BorderPane {
                 and the questions start.
 
                 Stuck is allowed: **Hint** - or `/hint` in the answer box - asks for a
-                nudge rather than the answer, and asking again gives a bigger one.
+                nudge rather than the answer, and asking again gives a bigger one. The
+                **Ask** box under your answer is for the subject rather than the exercise:
+                what a clause does, why something behaves that way. It answers the question
+                without answering the question you are on.
 
                 A question arrives one at a time; write your answer below and press
                 **Submit answer** (Ctrl+Enter) to have it marked, with what was right, what
@@ -541,6 +567,8 @@ final class PracticePanel extends BorderPane {
                     // After the title is recorded: Next is enabled by there being a
                     // session, and the session begins with its first question.
                     hints = 0;
+                    exchanges.clear();
+                    askField.clear();
                     submitAnyway = false;
                     onScreen = question.markdown();
                     setBusy(false);
@@ -552,7 +580,8 @@ final class PracticePanel extends BorderPane {
                     answer.setEditable(true);
                     answer.area().requestFocus();
                     submit.setDisable(false);
-                    waiting.stop("Question " + asked.size() + ". Ctrl+Enter submits, /hint if you are stuck.");
+                    waiting.stop("Question " + asked.size() + ". Ctrl+Enter submits, /hint if you"
+                            + " are stuck, Ask for anything else.");
                 },
                 error -> {
                     turn = null;
@@ -583,11 +612,21 @@ final class PracticePanel extends BorderPane {
             submitAnyway = false;
             return false;
         }
-        String word = text.split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
+        String[] parts = text.split("\\s+", 2);
+        String word = parts[0].toLowerCase(Locale.ROOT);
         if (word.equals("/hint") || word.equals("/help") || word.equals("/h")
                 || word.equals("/?")) {
             answer.reset(question.isTheory() ? "markdown" : question.language(), "");
             askHint();
+            return true;
+        }
+        if (word.equals("/ask") || word.equals("/a")) {
+            if (parts.length < 2 || parts[1].isBlank()) {
+                status.setText("Type the question after /ask, or use the Ask box below.");
+                return true;
+            }
+            answer.reset(question.isTheory() ? "markdown" : question.language(), "");
+            askAbout(parts[1]);
             return true;
         }
         if (submitAnyway) {
@@ -658,6 +697,75 @@ final class PracticePanel extends BorderPane {
                     submit.setDisable(false);
                     hint.setDisable(false);
                     waiting.stop("No hint came back. Press Hint to try again.");
+                });
+    }
+
+    /**
+     * Answers a question asked in the middle of the exercise.
+     *
+     * <p>A hint is about the exercise; this is about the subject, and the two are worth
+     * keeping apart. Somebody halfway through a query who wants to know what {@code IS
+     * NULL} does to an index is not asking to be told the query, and answering them
+     * properly is the part of a session that teaches anything at all.
+     */
+    private void askAbout(String asked) {
+        if (question == null || busy()) {
+            return;
+        }
+        String text = asked == null ? "" : asked.strip();
+        if (text.isEmpty()) {
+            askField.requestFocus();
+            status.setText("Ask about the subject - what a clause does, why something"
+                    + " behaves that way.");
+            return;
+        }
+        if (!assistant.config().ready()) {
+            status.setText(assistant.config().whyNotReady());
+            return;
+        }
+        askField.clear();
+        setBusy(true);
+        submit.setDisable(true);
+        waiting.start("Answering");
+        streaming = new StringBuilder();
+        lastRender = 0;
+        String heading = onScreen + "\n\n---\n\n#### You asked\n\n" + text + "\n\n";
+        view.setFollow(true);
+        view.show(heading + "*thinking...*");
+
+        turn = assistant.ask(
+                List.of(new ChatProvider.Message("system", Prompts.askSystem()),
+                        new ChatProvider.Message("user", Prompts.askRequest(
+                                question, answer.text(), exchanges, text))),
+                fragment -> {
+                    streaming.append(fragment);
+                    long now = System.currentTimeMillis();
+                    if (now - lastRender > 350) {
+                        lastRender = now;
+                        view.show(heading + streaming);
+                    }
+                },
+                whole -> {
+                    turn = null;
+                    exchanges.add("They asked: " + text);
+                    exchanges.add("You answered: " + whole.strip());
+                    onScreen = heading + whole.strip();
+                    setBusy(false);
+                    view.show(onScreen);
+                    submit.setDisable(false);
+                    answer.setEditable(true);
+                    answer.area().requestFocus();
+                    waiting.stop("Answered. Ask again, or write your answer.");
+                },
+                error -> {
+                    turn = null;
+                    // Back in the box: retyping a question is not the developer's job
+                    // when the endpoint was the thing that failed.
+                    askField.setText(text);
+                    setBusy(false);
+                    view.show(onScreen);
+                    submit.setDisable(false);
+                    waiting.stop("No answer came back. Press Ask to try again.");
                 });
     }
 
@@ -776,6 +884,8 @@ final class PracticePanel extends BorderPane {
         difficulty.setDisable(busy);
         language.setDisable(busy);
         hint.setDisable(busy || question == null);
+        ask.setDisable(busy || question == null);
+        askField.setDisable(busy || question == null);
     }
 
     void dispose() {

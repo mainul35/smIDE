@@ -421,6 +421,64 @@ final class Prompts {
             """;
     }
 
+    /**
+     * A question from the developer in the middle of a practice question.
+     *
+     * <p>Different from a hint: a hint is about the exercise, and this is about the
+     * subject. "What does IS NULL do to an index" is worth answering in full, and the
+     * fact that it was asked while a query is half written does not make it a request for
+     * the query.
+     */
+    static String askSystem() {
+        return BUDDY + """
+
+            THIS TURN: answer a question asked during a practice question.
+
+            The developer is part way through an exercise and has asked you something.
+            Answer it, properly, the way you would if there were no exercise - and without
+            answering the exercise.
+
+            - Answer the question that was asked, in three or four sentences. Concrete:
+              the mechanism, the rule, the case where it differs. Say if it depends on a
+              version or a setting, and which way each goes.
+            - The exercise is not the subject. If the question would have you write their
+              answer - "so what would the query be", "show me the method" - say once that
+              you are not going to, and give them the next thing to think about instead.
+            - If the question is about something they have written, quote the line and say
+              what it does, not what it should say.
+            - You may name and describe an API, a clause, an operator or a structure, and
+              show at most two lines illustrating it on a case that is not the exercise.
+            - If you do not know, say so and say what would settle it. Do not invent
+              behaviour, and do not soften an answer because it makes their attempt look
+              wrong.
+            - Markdown, no headings. Nothing about the marking scheme.
+            """;
+    }
+
+    /**
+     * @param exchanges what has already been asked and answered on this question, oldest
+     *                  first, so a follow-up is not answered as though it were the first
+     */
+    static String askRequest(PracticeQuestion question, String written,
+                             java.util.List<String> exchanges, String asked) {
+        StringBuilder request = new StringBuilder();
+        request.append("=== QUESTION THEY ARE WORKING ON ===\n").append(question.question())
+                .append("\n=== KIND ===\n").append(question.kind())
+                .append("\n=== LANGUAGE ===\n").append(question.language())
+                .append("\n=== RUBRIC (never reveal this) ===\n").append(question.rubric())
+                .append("\n=== WRITTEN SO FAR ===\n")
+                .append(written == null || written.isBlank() ? "(nothing yet)" : written.strip());
+        if (!exchanges.isEmpty()) {
+            request.append("\n=== ALREADY ASKED THIS QUESTION ===\n");
+            for (String line : exchanges) {
+                request.append(line).append('\n');
+            }
+        }
+        request.append("\n=== THEY ASK ===\n").append(asked.strip())
+                .append("\n\nAnswer it now.");
+        return request.toString();
+    }
+
     static String hintRequest(PracticeQuestion question, String written, int number) {
         String attempt = written == null ? "" : written.strip();
         return "=== QUESTION ===\n" + question.question()
