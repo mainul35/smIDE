@@ -60,6 +60,16 @@ function Invoke-Step {
     $proc = Start-Process -FilePath $File -ArgumentList $Arguments `
         -WorkingDirectory $WorkingDirectory -NoNewWindow -PassThru `
         -RedirectStandardOutput $out -RedirectStandardError $err
+    <#
+        Reading the handle here is what makes the exit code readable later. Windows
+        PowerShell 5.1 - which is what `powershell` still is, and what most people will
+        run this with - hands back a Process object that has let go of the process by the
+        time it has exited, and $proc.ExitCode is then $null however long you wait. Null
+        is not zero, so every step "failed" while Maven was printing BUILD SUCCESS.
+        Touching .Handle while the process is alive keeps the handle open, and the exit
+        code with it. PowerShell 7 never had the problem.
+    #>
+    $null = $proc.Handle
 
     $frames = @('-', '', '|', '/')
     $i = 0
@@ -86,8 +96,10 @@ function Invoke-Step {
     }
     if ($interactive) { Write-Host ("`r" + (" " * [Math]::Max(20, [Console]::WindowWidth - 1)) + "`r") -NoNewline }
 
+    $proc.WaitForExit()
+    $code = $proc.ExitCode
     $seconds = [int]$clock.Elapsed.TotalSeconds
-    if ($proc.ExitCode -eq 0) {
+    if ($code -eq 0) {
         Write-Ok "  $Message - ${seconds}s"
         return $true
     }
@@ -97,9 +109,11 @@ function Invoke-Step {
     }
     Write-Bad "  $Message failed after ${seconds}s"
     Write-Host ""
-    if (Test-Path $out) { Get-Content $out }
-    if (Test-Path $err) { Get-Content $err }
-    exit $proc.ExitCode
+    # All of it, both streams: a build that fails on line four hundred of Maven's output
+    # is not diagnosable from the last twenty lines.
+    if (Test-Path $out) { Get-Content $out | Write-Host }
+    if (Test-Path $err) { Get-Content $err | Write-Host }
+    exit ($(if ($null -eq $code) { 1 } else { $code }))
 }
 
 # ------------------------------------------------------------------ uninstall
@@ -120,9 +134,33 @@ if ($Uninstall) {
 # --------------------------------------------------------------- prerequisites
 
 function Get-JavaMajor($javaExe) {
-    # "openjdk version "21.0.12"" and the 1.8 form both appear; take the first number.
-    $line = & $javaExe -version 2>&1 | Select-Object -First 1
-    if ($line -match '"(\d+)') { return [int]$Matches[1] }
+    <#
+        java prints its version banner on stderr - it always has - and PowerShell turns a
+        native command's stderr into error records. With $ErrorActionPreference = "Stop"
+        that makes the harmless question "which Java is this?" end the whole install:
+
+            java.exe : openjdk version "21.0.12" 2026-07-21 LTS
+            + CategoryInfo : NotSpecified: (...) [], RemoteException
+
+        Nothing failed there; that is the answer, reported as a catastrophe. So the
+        preference is relaxed for the length of the call and put back afterwards, and the
+        records are turned into plain strings before anything looks at them.
+    #>
+    if (-not (Test-Path $javaExe)) { return 0 }
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $lines = & $javaExe -version 2>&1 | ForEach-Object { "$_" }
+    } catch {
+        return 0
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    foreach ($line in $lines) {
+        # "openjdk version "21.0.12"" and the old ""1.8.0_392"" form both appear.
+        if ($line -match 'version "1\.(\d+)') { return [int]$Matches[1] }
+        if ($line -match 'version "(\d+)')    { return [int]$Matches[1] }
+    }
     return 0
 }
 
