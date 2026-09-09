@@ -232,6 +232,12 @@ final class Prompts {
               answer - "what does a consumer do when it misses a heartbeat" - not an
               invitation to write an essay.
 
+            The subject does not decide this; the answer does. "What happens if you reuse a
+            stream after a terminal operation" is a theory question whose LANGUAGE is text,
+            even though it is about Java - it is answered in a sentence, not in code.
+            Tagging it `code` puts the developer in front of an editor expecting a program
+            and gets their explanation marked as one.
+
             Answer with these fields in this exact order, each on its own line as shown,
             and nothing else at all - no preamble, no closing remark:
 
@@ -291,6 +297,39 @@ final class Prompts {
               that describes the mechanism correctly in plain words is right even without
               the standard term - though it is worth naming the term afterwards.
 
+            THEORY ANSWERS ARE MARKED ON THE GIST.
+
+            A written answer is not an exam script and you are not counting the points it
+            hit. Ask one question: has this person understood the thing? Then:
+
+            - correct - the central claim is right. Short, informal and incomplete is still
+              right. "It throws, because the stream was already consumed" is a correct
+              answer to what happens when a stream is reused: they know. Missing the name of
+              the exception, the wording of its message or the mechanism underneath is not a
+              deduction - it is the next paragraph of your feedback.
+            - partially correct - part of what was said is wrong, or the half of the
+              question that carries the meaning was not answered at all.
+            - incorrect - the central claim is wrong, or nothing was attempted.
+
+            Score follows the verdict rather than a checklist: 8 to 10 for correct, 4 to 7
+            for partially correct, 0 to 3 for incorrect. Marking a right answer down to 6
+            for being brief teaches nothing except to write more words.
+
+            When the verdict is correct, the feedback does not list what was left out as
+            though each were a failure. It says what they had right, and then it teaches:
+            the exact name, the exact message, the reason underneath, the case where it
+            behaves differently. Same facts, and the difference between somebody learning
+            something and somebody being marked down.
+
+            This applies to any question whose answer is prose, whatever the KIND field
+            says. Questions get mistagged - a "what happens when..." question about Java
+            comes back as KIND code with LANGUAGE java - and the developer then writes the
+            sentence the question asked for into an editor expecting a program. Mark what
+            the question actually asked for.
+
+            Code answers are marked as before: what compiles and does the job is correct,
+            and a bug is a bug.
+
             Answer with these fields in this exact order, each on its own line as shown,
             and nothing else:
 
@@ -299,10 +338,18 @@ final class Prompts {
             === SCORE ===
             a whole number out of 10, written as n/10
             === FEEDBACK ===
-            Markdown. What is right, in one line. Then what is wrong or missing, each with
-            the reason it matters. Then, under a bold `What to do differently`, the change
-            in words. Then, if it helps, one line naming what to read or practise next.
-            Keep it to what a person will actually read: under 250 words.
+            Markdown, under 250 words, and written to be read by the person who wrote the
+            answer.
+
+            When the verdict is correct: one line saying what they got right, then a bold
+            `To be exact` and the precision they did not have - the term, the message, the
+            reason, what changes it. Nothing phrased as a fault.
+
+            Otherwise: one line on what is right, then what is wrong or missing with the
+            reason it matters, then a bold `What to do differently` and the change in
+            words. Never the corrected answer itself.
+
+            Either way, if it helps, one last line naming what to read or practise next.
             """;
     }
 
@@ -363,6 +410,15 @@ final class Prompts {
                 + "\n=== SUBMISSION ===\n"
                 + "This, between the fences, is the whole of what the developer wrote:\n\n"
                 + "```" + fence + "\n" + submitted + "\n```\n"
+                /* Said here as well as in the system prompt, because it is the rule most
+                   easily forgotten by the time a model has read a rubric listing six
+                   things and is looking at two sentences that mention three of them. */
+                + (question.isTheory()
+                        ? "\nThis is a written answer: mark the gist. If they have"
+                                + " understood the thing, the verdict is correct, and what"
+                                + " they left out belongs in the teaching part of your"
+                                + " feedback rather than in the mark.\n"
+                        : "")
                 + "\nMark it now, in the field format.";
     }
 }
