@@ -23,6 +23,7 @@ import javafx.scene.layout.VBox;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * A test session: one problem at a time, answered in the IDE, marked when submitted.
@@ -77,6 +78,8 @@ final class PracticePanel extends BorderPane {
     private final List<String> asked = new ArrayList<>();
     /** The topic the session is actually on, which the box is not allowed to contradict. */
     private String chosenTopic;
+    /** True while the box is being rewritten, so its own edits are not read as typing. */
+    private boolean filtering;
     private Stage stage = Stage.IDLE;
     /** The tutorial just read, carried into every question so the exercise is not a copy. */
     private String taught = "";
@@ -101,7 +104,10 @@ final class PracticePanel extends BorderPane {
         topic.setTooltip(new Tooltip("Anything you want to practise. Type your own."));
         chosenTopic = topic.getValue();
         topic.valueProperty().addListener((o, was, now) -> {
-            if (now != null && !now.isBlank()) {
+            // Not while the box is filtering itself: the value it sets there is the half
+            // word being typed, and taking that as the subject would leave Escape with
+            // nothing better to restore than the half word.
+            if (!filtering && now != null && !now.isBlank()) {
                 chosenTopic = now.strip();
             }
         });
@@ -122,6 +128,12 @@ final class PracticePanel extends BorderPane {
             event.consume();
             restoreTopic();
         });
+        /* Typing narrows the list. Nineteen suggestions is more than anybody reads, and
+           the box being editable made it worse rather than better: the list stayed at
+           nineteen while what you typed had nothing to do with any of them. What is typed
+           is still a topic in its own right - "Java" narrows to three and "Kafka consumer
+           groups" narrows to nothing and is asked anyway. */
+        topic.getEditor().textProperty().addListener((o, was, now) -> filterTopics(now));
         difficulty.getItems().setAll("easy", "medium", "hard", "mixed");
         difficulty.setValue("medium");
         score.getStyleClass().add("muted-small");
@@ -234,11 +246,77 @@ final class PracticePanel extends BorderPane {
         if (chosenTopic == null || chosenTopic.isBlank()) {
             return;
         }
-        if (!chosenTopic.equals(topic.getValue())) {
-            topic.setValue(chosenTopic);
+        applyTopic(chosenTopic);
+        /* And again on the next pulse. Putting the whole list back is an items change,
+           and the skin answers an items change by rewriting the editor - after this
+           method has returned, so doing it once left the box empty. */
+        javafx.application.Platform.runLater(() -> applyTopic(chosenTopic));
+    }
+
+    /** Puts one subject in the box, list and all, without it counting as typing. */
+    private void applyTopic(String subject) {
+        filtering = true;
+        try {
+            if (!TOPICS.equals(topic.getItems())) {
+                topic.getItems().setAll(TOPICS);
+            }
+            if (!subject.equals(topic.getValue())) {
+                topic.setValue(subject);
+            }
+            if (topic.getEditor() != null && !subject.equals(topic.getEditor().getText())) {
+                topic.getEditor().setText(subject);
+                topic.getEditor().positionCaret(subject.length());
+            }
+        } finally {
+            filtering = false;
         }
-        if (topic.getEditor() != null && !chosenTopic.equals(topic.getEditor().getText())) {
-            topic.getEditor().setText(chosenTopic);
+    }
+
+    /**
+     * Narrows the suggestions to what has been typed.
+     *
+     * <p>Replacing the items empties the editor - the skin treats it as the value having
+     * gone - so what was being typed is put back, with the caret where it was. Without
+     * that the box eats every second character and the whole thing reads as broken.
+     */
+    private void filterTopics(String typed) {
+        if (filtering || topic.getEditor() == null) {
+            return;
+        }
+        String text = typed == null ? "" : typed.strip().toLowerCase(Locale.ROOT);
+        List<String> matches = text.isEmpty() ? TOPICS : TOPICS.stream()
+                .filter(candidate -> candidate.toLowerCase(Locale.ROOT).contains(text))
+                .toList();
+        /* The list never goes empty, and the value is kept equal to what is in the box.
+           Both are about the same skin behaviour: when the items change and the value is
+           no longer one of them, the selection is cleared and the editor is emptied with
+           it - not always in the same breath, so putting the text back immediately is not
+           enough. Typing "kafka consumer groups" lost its first six characters that way,
+           at the keystroke where the matches ran out. */
+        List<String> shown = matches.isEmpty() ? TOPICS : matches;
+        filtering = true;
+        try {
+            String editing = topic.getEditor().getText();
+            int caret = topic.getEditor().getCaretPosition();
+            if (!shown.equals(topic.getItems())) {
+                topic.getItems().setAll(shown);
+            }
+            topic.setValue(editing);
+            if (!java.util.Objects.equals(editing, topic.getEditor().getText())) {
+                topic.getEditor().setText(editing);
+            }
+            topic.getEditor().positionCaret(Math.min(caret,
+                    editing == null ? 0 : editing.length()));
+        } finally {
+            filtering = false;
+        }
+        if (matches.isEmpty()) {
+            // A topic of their own. Nothing to show, and nothing wrong with it.
+            topic.hide();
+            return;
+        }
+        if (!text.isEmpty() && topic.getEditor().isFocused() && !topic.isShowing()) {
+            topic.show();
         }
     }
 
