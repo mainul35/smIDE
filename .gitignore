@@ -5,3 +5,9 @@ target/
 .smide/
 app/
 hs_err_pid*.log
+
+# Written by the Java language server when it imports this project into a workspace.
+# Per-machine, regenerated on demand, and ours: smIDE creates them by opening itself.
+.classpath
+.project
+.settings/
