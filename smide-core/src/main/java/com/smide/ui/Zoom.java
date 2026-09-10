@@ -1,10 +1,17 @@
 package com.smide.ui;
 
+import javafx.application.Platform;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
+import javafx.collections.ListChangeListener;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
 import javafx.scene.transform.Scale;
+import javafx.stage.Window;
+
+import java.util.List;
 
 /**
  * Ctrl+plus and Ctrl+minus, applied to the whole window.
@@ -25,8 +32,10 @@ import javafx.scene.transform.Scale;
  * tired eyes at the end of the day - and finding the IDE at 200% a week later with no
  * memory of having asked for it is worse than pressing Ctrl+plus twice again.
  *
- * <p>Windows the IDE opens for itself, and popup menus, are separate scenes and are not
- * scaled by this.
+ * <p>Menus, dialogs and popups are windows of their own with scenes of their own, which
+ * a transform on this scene cannot reach. {@link #followEverything} scales those as they
+ * open, so a context menu is the same size as the tree it was opened from. Native windows
+ * - a file chooser, the desktop's own dialogs - belong to the desktop and are left alone.
  */
 public final class Zoom {
 
@@ -76,6 +85,123 @@ public final class Zoom {
         scale.setX(f);
         scale.setY(f);
         content.resizeRelocate(0, 0, holder.getWidth() / f, holder.getHeight() / f);
+    }
+
+    // ------------------------------------------------------- everything else
+
+    /**
+     * Scales every other window this application opens, to match this one.
+     *
+     * <p>A menu, a dialog and a completion list are each a window of their own with a
+     * scene of their own, and a transform on this window's scene does not reach them: at
+     * 120% the editor grew and its context menu did not, which reads as the menu being
+     * broken rather than as two different scales. Rather than finding every place a popup
+     * is created - most of them are inside JavaFX's own skins and cannot be reached at all
+     * - this watches the list of open windows and scales each one as it appears.
+     *
+     * <p>Native windows are left alone: a file chooser belongs to the desktop, not to us.
+     */
+    public void followEverything(Window main) {
+        Window.getWindows().addListener((ListChangeListener<Window>) change -> {
+            while (change.next()) {
+                for (Window opened : change.getAddedSubList()) {
+                    if (opened != main) {
+                        Platform.runLater(() -> scale(opened));
+                    }
+                }
+            }
+        });
+        factor.addListener((o, was, now) -> {
+            for (Window open : List.copyOf(Window.getWindows())) {
+                if (open != main) {
+                    scale(open);
+                }
+            }
+        });
+    }
+
+    /** Puts one window's scene inside a scaling holder, or updates the one it has. */
+    private void scale(Window window) {
+        Scene scene = window.getScene();
+        if (scene == null || scene.getRoot() == null) {
+            return;
+        }
+        if (scene.getRoot() instanceof ScaledRoot scaled) {
+            scaled.setFactor(factor.get());
+            resize(window);
+            return;
+        }
+        scene.setRoot(new ScaledRoot(scene.getRoot(), factor.get()));
+        resize(window);
+    }
+
+    /**
+     * Grows the window to fit what is now inside it.
+     *
+     * <p>A popup has already sized itself to its content by the time it appears, and the
+     * content has just become a fifth larger; without this the menu is scaled and then
+     * cut off at the old width.
+     */
+    private static void resize(Window window) {
+        if (window instanceof javafx.stage.PopupWindow || window instanceof javafx.stage.Stage) {
+            window.sizeToScene();
+        }
+    }
+
+    /**
+     * A scene root that draws its content scaled and reports the scaled size.
+     *
+     * <p>Reporting the size is the half that matters for a popup: windows size themselves
+     * from the root's preferred size, and a transform alone changes what is drawn without
+     * changing what is asked for, so the menu would be drawn large inside a window built
+     * for the small one.
+     */
+    private static final class ScaledRoot extends Pane {
+
+        private final Parent content;
+        private final Scale transform = new Scale();
+
+        ScaledRoot(Parent content, double factor) {
+            this.content = content;
+            content.setManaged(false);
+            content.getTransforms().add(transform);
+            getChildren().setAll(content);
+            setFactor(factor);
+        }
+
+        void setFactor(double factor) {
+            transform.setX(factor);
+            transform.setY(factor);
+            requestLayout();
+            // The parent window asks the scene for its size, which asks this.
+            autosize();
+        }
+
+        @Override
+        protected double computePrefWidth(double height) {
+            return content.prefWidth(height) * transform.getX();
+        }
+
+        @Override
+        protected double computePrefHeight(double width) {
+            return content.prefHeight(width) * transform.getY();
+        }
+
+        @Override
+        protected double computeMinWidth(double height) {
+            return content.minWidth(height) * transform.getX();
+        }
+
+        @Override
+        protected double computeMinHeight(double width) {
+            return content.minHeight(width) * transform.getY();
+        }
+
+        @Override
+        protected void layoutChildren() {
+            double f = transform.getX();
+            content.resizeRelocate(0, 0, getWidth() / f, getHeight() / f);
+        }
     }
 
     public void in() {

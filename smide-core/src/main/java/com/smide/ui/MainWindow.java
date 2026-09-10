@@ -142,6 +142,8 @@ public final class MainWindow {
         ide.actionManager().attach(scene);
         installDoubleShift(scene);
         installZoom(scene);
+        // Menus, dialogs and completion lists are windows of their own; they follow.
+        zoom.followEverything(stage);
 
         stage.setTitle("smIDE");
         stage.setScene(scene);
