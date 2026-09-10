@@ -245,7 +245,7 @@ public final class MainWindow {
 
     private void announceZoom() {
         ide.statusBar().message("Zoom " + zoom.percent() + "   (Ctrl+0 for "
-                + Math.round(Zoom.DEFAULT * 100) + "%)");
+                + Zoom.percent(Zoom.DEFAULT) + ")");
     }
 
     /** The window's zoom, for anything that needs to know how large things are drawn. */

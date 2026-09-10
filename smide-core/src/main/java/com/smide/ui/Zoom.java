@@ -41,6 +41,15 @@ public final class Zoom {
 
     public static final double MIN = 0.5;
     public static final double MAX = 3.0;
+
+    /**
+     * Percentage points to a factor: 1.2 is 120%.
+     *
+     * <p>Named because it appears in both directions - rounding a factor to whole points,
+     * and writing one out for the status bar - and a bare 100 in either place is a number
+     * whose job has to be worked out from the arithmetic around it.
+     */
+    private static final double PERCENT = 100;
     /** One press. Ten per cent is small enough to aim with and large enough to notice. */
     public static final double STEP = 0.1;
 
@@ -219,7 +228,7 @@ public final class Zoom {
     /** Clamped, and rounded so repeated steps do not drift to 1.2000000000000002. */
     public void set(double value) {
         double clamped = Math.max(MIN, Math.min(MAX, value));
-        factor.set(Math.round(clamped * 100) / 100.0);
+        factor.set(Math.round(clamped * PERCENT) / PERCENT);
     }
 
     public double factor() {
@@ -232,6 +241,11 @@ public final class Zoom {
 
     /** "110%", for the status bar. */
     public String percent() {
-        return Math.round(factor.get() * 100) + "%";
+        return percent(factor.get());
+    }
+
+    /** The same, for a factor nobody is holding - the default, in a message about it. */
+    public static String percent(double factor) {
+        return Math.round(factor * PERCENT) + "%";
     }
 }
