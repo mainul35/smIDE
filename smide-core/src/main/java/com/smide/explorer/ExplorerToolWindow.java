@@ -101,16 +101,18 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
            actions read the selection, and a menu that acts on some other row is worse
            than no menu. A right click on empty space keeps whatever was selected. */
         tree.setOnContextMenuRequested(e -> {
-            selectUnderCursor(e.getPickResult().getIntersectedNode());
-            buildContextMenu(contextMenu);
-            if (!contextMenu.getItems().isEmpty()) {
-                contextMenu.show(tree, e.getScreenX(), e.getScreenY());
-            }
+            showContextMenu(e.getPickResult().getIntersectedNode(), e.getScreenX(), e.getScreenY());
             e.consume();
         });
-        // Any click puts it away again; the auto-hide only covers clicks outside the tree.
+        // Press and hold, for the machines where the tree is touched rather than clicked.
+        // Nothing turns a long press into a context-menu request on its own.
+        com.smide.ui.LongPress.install(tree, this::showContextMenu);
+        /* Any click puts it away again; the auto-hide only covers clicks outside the tree.
+           Not a synthesized one, though: a touch that has just held long enough to open
+           the menu ends with a synthetic press, and closing the menu with the gesture
+           that opened it is the same as never opening it. */
         tree.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, e -> {
-            if (contextMenu.isShowing()) {
+            if (contextMenu.isShowing() && !e.isSynthesized()) {
                 contextMenu.hide();
             }
         });
@@ -317,6 +319,15 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
             }
         }
         return false;
+    }
+
+    /** Opens the menu where the gesture happened, on the row it happened on. */
+    private void showContextMenu(javafx.scene.Node picked, double screenX, double screenY) {
+        selectUnderCursor(picked);
+        buildContextMenu(contextMenu);
+        if (!contextMenu.getItems().isEmpty()) {
+            contextMenu.show(tree, screenX, screenY);
+        }
     }
 
     /**
