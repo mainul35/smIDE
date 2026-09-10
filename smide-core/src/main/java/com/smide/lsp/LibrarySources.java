@@ -49,6 +49,9 @@ final class LibrarySources {
 
     private static final String CENTRAL = "https://repo1.maven.org/maven2/";
 
+    /** Where a chosen src.zip is remembered, so the question is asked once. */
+    private static final String JDK_SOURCES_KEY = "java.sourcesZip";
+
     private LibrarySources() {
     }
 
@@ -146,6 +149,11 @@ final class LibrarySources {
             return false;
         }
         Artifact artifact = found.get();
+        String attached = ide.settings().get(attachmentKey(artifact), "");
+        if (!attached.isBlank() && Files.isRegularFile(Path.of(attached))
+                && openFromJar(ide, Path.of(attached), type.get(), artifact.label(), open)) {
+            return true;
+        }
         if (Files.isRegularFile(artifact.localPath())) {
             openFromJar(ide, artifact.localPath(), type.get(), artifact.label(), open);
             reconfigureQuietly(session, fileInProject);
@@ -175,6 +183,7 @@ final class LibrarySources {
                     ide.notifications().error("No sources for " + artifact.label(),
                             "Maven Central has no sources jar for this version, or it could not be"
                                     + " fetched: " + e.getMessage());
+                    attachLibrarySources(ide, artifact, type.get(), open);
                 });
             }
         });
@@ -182,50 +191,197 @@ final class LibrarySources {
     }
 
     /** Pulls one file out of a sources jar, writes it where it can be opened, and opens it. */
-    private static void openFromJar(Ide ide, Path jar, Type type, String label, Consumer<Path> open) {
+    private static boolean openFromJar(Ide ide, Path jar, Type type, String label, Consumer<Path> open) {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             ZipEntry entry = zip.getEntry(type.entryPath());
             if (entry == null) {
                 ide.statusBar().message(label + " has no source for " + type.simpleName());
-                return;
+                return false;
             }
             try (InputStream in = zip.getInputStream(entry)) {
                 write(ide, type, new String(in.readAllBytes(), StandardCharsets.UTF_8), open);
             }
+            return true;
         } catch (IOException e) {
             ide.notifications().error("Cannot read " + jar.getFileName(), e.getMessage());
+            return false;
         }
     }
 
-    /** The same, for a class in the JDK, whose sources ship as {@code lib/src.zip}. */
+    /** Where a sources jar chosen by hand for one dependency is remembered. */
+    private static String attachmentKey(Artifact artifact) {
+        return "library.sources." + artifact.groupId() + ":" + artifact.artifactId();
+    }
+
+    /**
+     * Offers to be told where a dependency's sources are.
+     *
+     * <p>Reached when Maven Central has no sources jar for that version, which is
+     * ordinary for anything published in-house: the jar exists on somebody's disk or
+     * behind a private repository, and the IDE has no way to guess it. Asking is the only
+     * thing left that beats "no source attached".
+     */
+    private static void attachLibrarySources(Ide ide, Artifact artifact, Type type, Consumer<Path> open) {
+        boolean choose = ide.window().confirm("No sources for " + artifact.artifactId(),
+                artifact.label() + " has no sources jar that could be fetched.\n\n"
+                        + "If you have one - built locally, or from a private repository -\n"
+                        + "choose it now and smIDE will use it for this dependency from now on.\n\n"
+                        + "Expected file: " + artifact.sourcesJar());
+        if (!choose) {
+            return;
+        }
+        Optional<Path> chosen = ide.window().chooseFile("Choose " + artifact.sourcesJar(),
+                artifact.localPath().getParent());
+        if (chosen.isEmpty()) {
+            return;
+        }
+        if (openFromJar(ide, chosen.get(), type, artifact.label(), open)) {
+            remember(ide, attachmentKey(artifact), chosen.get());
+            ide.notifications().info("Sources attached",
+                    chosen.get().getFileName() + " will be used for " + artifact.label() + ".");
+        }
+    }
+
+    /**
+     * The same, for a class in the JDK, whose sources ship as {@code lib/src.zip}.
+     *
+     * <p>Every JDK on the machine is worth looking in, not just the one this process is
+     * running on: the installed smIDE runs on a jlink image that has no sources at all,
+     * and a desktop launcher passes no {@code JAVA_HOME}, so looking only at those two is
+     * how Ctrl+click into {@code IOException} ends at "no source attached" on a machine
+     * that has the sources sitting in {@code /usr/lib/jvm}.
+     */
     private static boolean fromJdk(Ide ide, String module, Type type, Consumer<Path> open) {
-        for (String home : List.of(System.getProperty("java.home", ""),
-                System.getenv("JAVA_HOME") == null ? "" : System.getenv("JAVA_HOME"))) {
-            if (home.isBlank()) {
-                continue;
-            }
-            Path zip = Path.of(home).resolve("lib").resolve("src.zip");
-            if (!Files.isRegularFile(zip)) {
-                continue;
-            }
-            try (ZipFile sources = new ZipFile(zip.toFile())) {
-                // Since Java 9 the sources are laid out by module.
-                ZipEntry entry = sources.getEntry(module + "/" + type.entryPath());
-                if (entry == null) {
-                    entry = sources.getEntry(type.entryPath());
-                }
-                if (entry == null) {
-                    continue;
-                }
-                try (InputStream in = sources.getInputStream(entry)) {
-                    write(ide, type, new String(in.readAllBytes(), StandardCharsets.UTF_8), open);
-                }
+        for (Path zip : sourceZips(ide)) {
+            if (openFromZip(ide, zip, module, type, open)) {
+                remember(ide, JDK_SOURCES_KEY, zip);
                 return true;
-            } catch (IOException ignored) {
-                // Try the next JDK.
             }
         }
-        return false;
+        return attachJdkSources(ide, module, type, open);
+    }
+
+    /** Reads one class out of a {@code src.zip}, if that zip has it. */
+    private static boolean openFromZip(Ide ide, Path zip, String module, Type type,
+                                       Consumer<Path> open) {
+        if (!Files.isRegularFile(zip)) {
+            return false;
+        }
+        try (ZipFile sources = new ZipFile(zip.toFile())) {
+            // Since Java 9 the sources are laid out by module.
+            ZipEntry entry = sources.getEntry(module + "/" + type.entryPath());
+            if (entry == null) {
+                entry = sources.getEntry(type.entryPath());
+            }
+            if (entry == null) {
+                return false;
+            }
+            try (InputStream in = sources.getInputStream(entry)) {
+                write(ide, type, new String(in.readAllBytes(), StandardCharsets.UTF_8), open);
+            }
+            return true;
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Every {@code src.zip} worth trying, best first.
+     *
+     * <p>What was chosen by hand before comes first, then the runtime, then whatever is
+     * installed on the machine. A JDK without sources is skipped rather than reported:
+     * having four runtimes and sources in one of them is the ordinary case.
+     */
+    private static List<Path> sourceZips(Ide ide) {
+        List<Path> zips = new java.util.ArrayList<>();
+        String remembered = ide.settings().get(JDK_SOURCES_KEY, "");
+        if (!remembered.isBlank()) {
+            zips.add(Path.of(remembered));
+        }
+        for (String home : List.of(System.getProperty("java.home", ""),
+                System.getenv("JAVA_HOME") == null ? "" : System.getenv("JAVA_HOME"))) {
+            if (!home.isBlank()) {
+                zips.add(Path.of(home).resolve("lib").resolve("src.zip"));
+            }
+        }
+        for (Path root : jdkRoots()) {
+            try (java.util.stream.Stream<Path> children = Files.list(root)) {
+                children.filter(Files::isDirectory).forEach(jdk -> {
+                    zips.add(jdk.resolve("lib").resolve("src.zip"));
+                    // macOS keeps the JDK a level further in.
+                    zips.add(jdk.resolve("Contents").resolve("Home")
+                            .resolve("lib").resolve("src.zip"));
+                });
+            } catch (IOException | RuntimeException ignored) {
+                // A root that cannot be listed simply has nothing to offer.
+            }
+        }
+        return zips.stream().distinct().filter(Files::isRegularFile).toList();
+    }
+
+    /** The places a JDK is installed, per platform. */
+    private static List<Path> jdkRoots() {
+        List<Path> roots = new java.util.ArrayList<>(List.of(
+                Path.of("/usr/lib/jvm"),
+                Path.of("/usr/java"),
+                Path.of("/Library/Java/JavaVirtualMachines"),
+                Path.of(System.getProperty("user.home", "."), ".sdkman", "candidates", "java")));
+        String programFiles = System.getenv("ProgramFiles");
+        if (programFiles != null) {
+            for (String vendor : List.of("Eclipse Adoptium", "Java", "Zulu", "Amazon Corretto",
+                    "Microsoft", "BellSoft", "Semeru")) {
+                roots.add(Path.of(programFiles, vendor));
+            }
+        }
+        return roots.stream().filter(Files::isDirectory).toList();
+    }
+
+    /**
+     * Says what is missing, and offers to be told where it is.
+     *
+     * <p>This is the end of the road that used to read "the declaration is in a library
+     * with no source attached" and stop. It is a fixable state - the sources are a
+     * download or a package away - so the message says which JDK was looked in, what the
+     * package is called, and offers a file chooser for a {@code src.zip} that is already
+     * on the machine. What is chosen is remembered, so this is asked once.
+     */
+    private static boolean attachJdkSources(Ide ide, String module, Type type, Consumer<Path> open) {
+        String runtime = System.getProperty("java.home", "unknown");
+        boolean choose = ide.window().confirm("No sources for the JDK",
+                "The JDK class " + type.simpleName() + " is compiled, and no source is attached.\n\n"
+                        + "smIDE looked for lib/src.zip in every JDK it could find, starting with\n"
+                        + runtime + "\nand found none that contains " + module + ".\n\n"
+                        + "Most JDK downloads ship src.zip; Linux packages usually split it out\n"
+                        + "(openjdk-21-source on Debian and Ubuntu, java-21-openjdk-src on Fedora).\n\n"
+                        + "Choose a src.zip now?");
+        if (!choose) {
+            ide.statusBar().message("No source attached for " + type.simpleName()
+                    + " - Ctrl+click again to attach one");
+            return true;
+        }
+        Optional<Path> chosen = ide.window().chooseFile("Choose the JDK's src.zip",
+                Path.of(runtime).resolve("lib"));
+        if (chosen.isEmpty()) {
+            return true;
+        }
+        if (openFromZip(ide, chosen.get(), module, type, open)) {
+            remember(ide, JDK_SOURCES_KEY, chosen.get());
+            ide.notifications().info("Sources attached",
+                    chosen.get() + " will be used for JDK classes from now on.");
+            return true;
+        }
+        ide.notifications().error("Not the sources for this JDK",
+                chosen.get().getFileName() + " has no " + module + "/" + type.entryPath()
+                        + " in it. A src.zip from a different Java version will not have"
+                        + " the same modules; pick the one beside the JDK being compiled against.");
+        return true;
+    }
+
+    /** Keeps a chosen archive, so the question is asked once rather than every time. */
+    private static void remember(Ide ide, String key, Path archive) {
+        if (!archive.toString().equals(ide.settings().get(key, ""))) {
+            ide.settings().set(key, archive.toString());
+        }
     }
 
     /** Writes the source somewhere real, because every editor feature wants a file. */
