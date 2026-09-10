@@ -132,7 +132,7 @@ docs/          the plan, the plugin guide
 | F9, F8, F7, Shift+F8 | Resume, step over, step into, step out |
 | Alt+1..9 | Tool windows |
 | Ctrl+plus / Ctrl+minus | Zoom the whole interface by 10% |
-| Ctrl+0 | Back to 100% |
+| Ctrl+0 | Back to the default, 120% |
 
 Every shortcut is editable in Settings → Keymap.
 

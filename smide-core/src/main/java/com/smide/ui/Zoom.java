@@ -20,10 +20,10 @@ import javafx.scene.transform.Scale;
  * two-thirds of the window's width and wraps, ellipsises and lays out accordingly, rather
  * than being drawn oversized and clipped.
  *
- * <p>Not remembered between runs. Every start is 100%: a zoom is usually a reaction to
- * the moment - a screen share, a projector, tired eyes at the end of the day - and
- * finding the IDE at 150% a week later with no memory of having asked for it is worse
- * than pressing Ctrl+plus twice again.
+ * <p>Every start is {@link #DEFAULT}, and not whatever was left behind last time: a zoom
+ * beyond the default is usually a reaction to the moment - a screen share, a projector,
+ * tired eyes at the end of the day - and finding the IDE at 200% a week later with no
+ * memory of having asked for it is worse than pressing Ctrl+plus twice again.
  *
  * <p>Windows the IDE opens for itself, and popup menus, are separate scenes and are not
  * scaled by this.
@@ -35,7 +35,18 @@ public final class Zoom {
     /** One press. Ten per cent is small enough to aim with and large enough to notice. */
     public static final double STEP = 0.1;
 
-    private final DoubleProperty factor = new SimpleDoubleProperty(1.0);
+    /**
+     * Where every window starts, and where Ctrl+0 goes back to.
+     *
+     * <p>120% rather than 100%. The IDE is read for hours at a time on laptop panels
+     * whose pixels are smaller than the desktop monitors this was laid out against, and
+     * on those the honest size for a tree row is a fifth larger than the toolkit's idea
+     * of one. It is a default and not a decision: Ctrl+minus takes it back down in two
+     * presses, and one of those is 110%.
+     */
+    public static final double DEFAULT = 1.2;
+
+    private final DoubleProperty factor = new SimpleDoubleProperty(DEFAULT);
     private final Scale scale = new Scale(1, 1, 0, 0);
     private final Pane holder = new Pane();
     private Region content;
@@ -76,7 +87,7 @@ public final class Zoom {
     }
 
     public void reset() {
-        set(1.0);
+        set(DEFAULT);
     }
 
     /** Clamped, and rounded so repeated steps do not drift to 1.2000000000000002. */

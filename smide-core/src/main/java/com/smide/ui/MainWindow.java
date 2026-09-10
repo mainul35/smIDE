@@ -51,7 +51,7 @@ public final class MainWindow {
     private final ExecutionService execution;
     private final BorderPane root = new BorderPane();
     private final StackPane overlay = new StackPane();
-    /** Ctrl+plus and Ctrl+minus, scaling the whole window. Always 100% at startup. */
+    /** Ctrl+plus and Ctrl+minus, scaling the whole window. Starts at Zoom.DEFAULT. */
     private final Zoom zoom = new Zoom();
     private final HBox toolbar = new HBox();
     private final MenuButton runChooser = new MenuButton();
@@ -242,7 +242,8 @@ public final class MainWindow {
     }
 
     private void announceZoom() {
-        ide.statusBar().message("Zoom " + zoom.percent() + "   (Ctrl+0 for 100%)");
+        ide.statusBar().message("Zoom " + zoom.percent() + "   (Ctrl+0 for "
+                + Math.round(Zoom.DEFAULT * 100) + "%)");
     }
 
     /** The window's zoom, for anything that needs to know how large things are drawn. */
