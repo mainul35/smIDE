@@ -57,10 +57,20 @@ public final class DebugToolWindow implements ToolWindowFactory {
         frames.getStyleClass().add("debug-frames");
         frames.getSelectionModel().selectedItemProperty().addListener((o, a, frame) -> {
             showVariables(frame);
-            if (frame != null && frame.file() != null && Files.isRegularFile(frame.file())) {
+            if (frame == null) {
+                return;
+            }
+            if (frame.file() != null && Files.isRegularFile(frame.file())) {
                 ide.editors().open(frame.file(), frame.line(), 0);
                 mark(frame);
+                return;
             }
+            /* Said rather than ignored. A frame whose source is not on this machine -
+               a JDK class, a dependency, a module nobody has opened - used to answer a
+               double click with nothing at all, which is indistinguishable from the list
+               being dead. */
+            ide.statusBar().message("No source for " + frame.description()
+                    + " - it is in a library, or its module is not in an open workspace.");
         });
         variables.setRoot(variablesRoot);
         variables.setShowRoot(false);

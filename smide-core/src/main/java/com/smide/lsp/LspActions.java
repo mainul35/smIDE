@@ -106,9 +106,17 @@ public final class LspActions {
                         return;
                     }
                     List<Target> targets = targets(result);
-                    if (targets.isEmpty()) {
-                        ide.statusBar().message("No declaration found");
-                    } else if (targets.size() == 1) {
+                    /* Standing on the declaration already, which is where the answer to
+                       "go to the declaration" is the line the caret is on. What somebody
+                       wants there is the other direction: who calls this. A server that
+                       answers with the declaration itself and one that answers with
+                       nothing both mean the same thing, so both go the same way. */
+                    if (targets.isEmpty() || atCaret(targets, editor)) {
+                        ide.statusBar().message("Already at the declaration - finding usages...");
+                        findUsages(ide, manager, editor);
+                        return;
+                    }
+                    if (targets.size() == 1) {
                         open(ide, session, targets.get(0), editor.path());
                     } else {
                         choose(ide, session, "Declarations", targets);
@@ -318,6 +326,22 @@ public final class LspActions {
         });
         popup.applyTheme(ide.theme());
         popup.show(ide.window().stage(), "");
+    }
+
+    /**
+     * Whether the one place the server points at is the line the caret is on.
+     *
+     * <p>By line rather than by column: the caret is somewhere inside the name, and the
+     * declaration's range starts at the first character of it. Two declarations of the
+     * same name on one line is not a case worth carrying weight for.
+     */
+    private static boolean atCaret(List<Target> targets, CodeEditor editor) {
+        if (targets.size() != 1) {
+            return false;
+        }
+        Target only = targets.get(0);
+        return only.file() != null && only.file().equals(editor.path())
+                && only.line() == editor.caretLine();
     }
 
     // ---------------------------------------------------------------- usages

@@ -278,6 +278,10 @@ public final class JdiSession implements DebugSession {
         return suspendedThread != null;
     }
 
+    /** What a source path resolved to last time, so stepping does not look again. */
+    private final java.util.Map<String, java.util.Optional<Path>> sources =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     @Override
     public List<StackFrameInfo> frames() {
         ThreadReference thread = suspendedThread;
@@ -299,22 +303,21 @@ public final class JdiSession implements DebugSession {
         return out;
     }
 
-    /** The file a location came from, looked for in the open workspaces. */
+    /**
+     * The file a location came from, looked for in the open workspaces.
+     *
+     * <p>Cached, misses included: the frame list is rebuilt on every step, and a frame
+     * from a library will not be found however many times it is looked for.
+     */
     private Path sourceOf(Location location) {
+        String path;
         try {
-            String path = location.sourcePath().replace('\\', '/');
-            for (com.smide.api.workspace.Workspace w : ide.workspaces().all()) {
-                for (String root : List.of("src/main/java", "src/test/java", "src", "")) {
-                    Path candidate = w.root().resolve(root).resolve(path);
-                    if (Files.isRegularFile(candidate)) {
-                        return candidate;
-                    }
-                }
-            }
+            path = location.sourcePath();
         } catch (AbsentInformationException | RuntimeException e) {
             return null;
         }
-        return null;
+        return sources.computeIfAbsent(path,
+                p -> SourceLookup.find(ide.workspaces().all(), p)).orElse(null);
     }
 
     @Override

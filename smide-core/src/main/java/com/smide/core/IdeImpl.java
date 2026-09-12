@@ -258,6 +258,23 @@ public final class IdeImpl implements Ide {
                 notifications.error("Plugin failed to start", p.descriptor().name() + ": " + p.error());
             }
         }
+        if (plugins.loaded().stream().noneMatch(PluginManager.LoadedPlugin::isStarted)) {
+            /* Nearly everything is a plugin: every language, the version control, the
+               build tools, the terminal, the assistant. With none of them the window
+               still opens and every file is plain text with no navigation - which looks
+               like a dozen broken features rather than one missing class path. It
+               happens when smIDE is started from a module that does not depend on the
+               plugins, which is what running com.smide.Launcher out of smide-core does. */
+            Path dir = pluginsDir();
+            notifications.warn("No plugins loaded",
+                    "Syntax highlighting, code navigation, version control, build tools and"
+                            + " the assistant are all plugins, and none were found"
+                            + (dir == null ? " on the class path." : " on the class path or in " + dir + ".")
+                            + "\n\nRunning smIDE from source? Set the run configuration's"
+                            + " \"Classpath of module\" to the module that depends on the"
+                            + " plugins - in this repository, smide-dist. A main class run"
+                            + " from smide-core alone gets smide-core alone.");
+        }
     }
 
     private void registerToolWindowActions() {

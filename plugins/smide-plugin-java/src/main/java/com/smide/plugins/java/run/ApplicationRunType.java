@@ -88,12 +88,17 @@ public final class ApplicationRunType implements RunConfigurationType {
         Forms.combo(grid, 0, "Main class", c, "mainClass", mains);
         Forms.text(grid, 1, "Program arguments", c, "args", "");
         Forms.text(grid, 2, "VM options", c, "vmArgs", "-Xmx512m");
-        Forms.text(grid, 3, "Module (relative)", c, "module", "root module");
+        Forms.text(grid, 3, "Classpath of module", c, "module", "root module");
         Forms.directory(grid, 4, "Working directory", c, "workingDir", ide);
         Forms.text(grid, 5, "Environment (K=V;K=V)", c, "env", "");
         Forms.text(grid, 6, "Debug port", c, "debugPort", "5005");
         Forms.check(grid, 7, "Build before run", c, "build", true);
-        return new VBox(8, grid, Forms.note("Debug starts the program with a JDWP agent on the port above and waits for the IDE to attach, so a breakpoint on the first line is honoured."));
+        return new VBox(8, grid, Forms.note("Debug starts the program with a JDWP agent on the port above and waits for the IDE to attach, so a breakpoint on the first line is honoured."),
+                Forms.note("Classpath of module is the module whose dependencies the program runs with,"
+                        + " relative to the workspace root. It defaults to the module the main class is in,"
+                        + " which is right until the program needs something that module does not depend on"
+                        + " - an application assembled by an aggregator module, for instance, which is how"
+                        + " smIDE itself is put together."));
     }
 
     private final class Config extends BaseRunConfiguration {
