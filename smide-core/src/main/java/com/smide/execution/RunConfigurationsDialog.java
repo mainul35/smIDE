@@ -148,12 +148,35 @@ public final class RunConfigurationsDialog {
     }
 
     private Node hint() {
-        Label label = new Label(ide.execution().configurationTypes().isEmpty()
-                ? "No run configuration types are installed. The Java plugin provides Application, JUnit, Spring Boot and Maven."
-                : "Press Add to create a configuration.");
+        Label label = new Label(message());
         label.getStyleClass().add("empty-hint");
         label.setWrapText(true);
         return label;
+    }
+
+    /**
+     * What to say when there is nothing to add.
+     *
+     * <p>An empty Add menu is a dead end, and "the Java plugin provides Application"
+     * only helps somebody who knows why the Java plugin is not there. When nothing at
+     * all has loaded - no languages either - the reason is the class path, and the
+     * window that can fix it is the one that started this one.
+     */
+    private String message() {
+        if (!ide.execution().configurationTypes().isEmpty()) {
+            return "Press Add to create a configuration.";
+        }
+        if (ide.languages().all().isEmpty()) {
+            return "Nothing to add: no plugins are loaded in this window, and run"
+                    + " configuration types come from plugins - Application, JUnit, Spring"
+                    + " Boot and Maven all come from the Java plugin.\n\n"
+                    + "If another smIDE started this one, the configuration to change is"
+                    + " that one's: Run > Edit Configurations > Classpath of module ="
+                    + " the module that depends on the plugins (smide-dist in this"
+                    + " repository).";
+        }
+        return "No run configuration types are installed. The Java plugin provides"
+                + " Application, JUnit, Spring Boot and Maven.";
     }
 
     private void showForm(RunConfiguration c) {
