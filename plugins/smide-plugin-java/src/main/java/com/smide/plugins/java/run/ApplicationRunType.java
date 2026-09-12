@@ -72,7 +72,13 @@ public final class ApplicationRunType implements RunConfigurationType {
             Config c = new Config(workspace);
             c.setName(rc.simpleName());
             c.set("mainClass", rc.fqn());
-            c.set("module", Forms.relative(workspace.root(), rc.moduleRoot()));
+            /* The class path is the assembly's when there is one. A main class in a
+               module that the application is assembled from - smIDE's own Launcher, in
+               a reactor whose plugins it does not depend on - runs with its module's
+               class path and comes up missing everything the assembly adds. */
+            Path classpathModule = AssemblyModule.of(info.get().model(), rc.moduleRoot())
+                    .orElse(rc.moduleRoot());
+            c.set("module", Forms.relative(workspace.root(), classpathModule));
             c.temporary();
             out.add(c);
         }

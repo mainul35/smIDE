@@ -265,7 +265,8 @@ public final class MavenImporter implements ProjectImporter {
         return dir.resolve(value).normalize();
     }
 
-    static Model read(Path pom) throws IOException {
+    /** Reads one pom. Public because the run configurations read them too. */
+    public static Model read(Path pom) throws IOException {
         try (Reader reader = Files.newBufferedReader(pom, StandardCharsets.UTF_8)) {
             MavenXpp3Reader xpp = new MavenXpp3Reader();
             xpp.setAddDefaultEntities(false);
