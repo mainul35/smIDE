@@ -14,10 +14,12 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.SplitPane;
+import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -26,7 +28,11 @@ import javafx.scene.layout.StackPane;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The Debug tool window: frames on the left, variables on the right, and the buttons
@@ -46,6 +52,14 @@ public final class DebugToolWindow implements ToolWindowFactory {
     private final Label status = new Label("No debug session.");
     private final StackPane pane = new StackPane();
     private final HBox controls = new HBox(2);
+    /** Expressions the reader asked for, shown above the variables and re-read on every stop. */
+    private final List<String> watches = new ArrayList<>();
+    /** Which rows those are, so a watch can be told from a local at a glance. */
+    private final Set<TreeItem<DebugSession.VariableInfo>> watchItems =
+            Collections.newSetFromMap(new IdentityHashMap<>());
+    private final TextField expression = new TextField();
+    private final Label evaluationError = new Label();
+    private final HBox evaluateBar = new HBox(6);
     private BorderPane root;
     private ToolWindowContext context;
     private DebugSession session;
@@ -97,6 +111,10 @@ public final class DebugToolWindow implements ToolWindowFactory {
         boolean live = session != null && session.isRunning();
         boolean suspended = live && session.isSuspended();
         controls.setDisable(!live);
+        // Nothing can be read out of a program that is running; the field says so by greying.
+        evaluateBar.setDisable(!suspended);
+        // The complaint was about the last place it stopped; the program has moved on.
+        showError(null);
         for (Node node : controls.getChildren()) {
             if (node instanceof Button b && b.getUserData() instanceof String action) {
                 // Stop works whenever the session is alive; the rest need it stopped somewhere.
@@ -143,9 +161,86 @@ public final class DebugToolWindow implements ToolWindowFactory {
         if (session == null || frame == null || !session.isSuspended()) {
             return;
         }
+        /* Watched expressions first, and read again for this frame. An answer that
+           disappeared on the next step would have to be retyped every line, which is most
+           of the reason to watch something in the first place. */
+        watchItems.clear();
+        for (String watch : watches) {
+            TreeItem<DebugSession.VariableInfo> item = node(evaluated(watch, frame));
+            watchItems.add(item);
+            variablesRoot.getChildren().add(item);
+        }
         for (DebugSession.VariableInfo variable : session.variables(frame)) {
             variablesRoot.getChildren().add(node(variable));
         }
+    }
+
+    /** A watched expression as a row: its value, or the reason there is not one. */
+    private DebugSession.VariableInfo evaluated(String watch, DebugSession.StackFrameInfo frame) {
+        DebugSession.Evaluation result = session.evaluate(frame, watch);
+        return result.ok() ? result.value()
+                : new DebugSession.VariableInfo(watch, "", result.error(), false, null);
+    }
+
+    /**
+     * Reads the expression in the frame on show, and keeps it if it means anything.
+     *
+     * <p>A failure stays next to the field rather than becoming a row: a typo is something
+     * to correct in place, not something to watch.
+     */
+    private void evaluate() {
+        String text = expression.getText() == null ? "" : expression.getText().strip();
+        DebugSession.StackFrameInfo frame = frames.getSelectionModel().getSelectedItem();
+        if (text.isEmpty() || session == null || !session.isSuspended() || frame == null) {
+            return;
+        }
+        DebugSession.Evaluation result = session.evaluate(frame, text);
+        if (!result.ok()) {
+            showError(result.error());
+            return;
+        }
+        showError(null);
+        watches.remove(text);
+        watches.add(0, text);
+        showVariables(frame);
+        if (!variablesRoot.getChildren().isEmpty()) {
+            variables.getSelectionModel().select(variablesRoot.getChildren().get(0));
+            variables.scrollTo(0);
+        }
+        expression.selectAll();
+    }
+
+    private void showError(String message) {
+        evaluationError.setText(message == null ? "" : message);
+        evaluationError.setVisible(message != null);
+        evaluationError.setManaged(message != null);
+    }
+
+    /** Drops the watch under the cursor; the locals below it are the session's, not ours. */
+    private void removeSelectedWatch() {
+        TreeItem<DebugSession.VariableInfo> selected = variables.getSelectionModel().getSelectedItem();
+        int index = selected == null ? -1 : variablesRoot.getChildren().indexOf(selected);
+        if (index >= 0 && index < watches.size()) {
+            watches.remove(index);
+            showVariables(frames.getSelectionModel().getSelectedItem());
+        }
+    }
+
+    /**
+     * Brings the window up with the caret in the expression field.
+     *
+     * @param initial what to start from - the editor's selection, usually - or null
+     */
+    public void focusEvaluate(String initial) {
+        if (context != null) {
+            context.show();
+        }
+        if (initial != null && !initial.isBlank() && !initial.contains("\n")) {
+            expression.setText(initial.strip());
+        }
+        showError(null);
+        expression.requestFocus();
+        expression.selectAll();
     }
 
     /** A variable node that fetches its children the first time it is opened. */
@@ -186,6 +281,28 @@ public final class DebugToolWindow implements ToolWindowFactory {
             markedEditor.setExecutionLine(-1);
             markedEditor = null;
         }
+    }
+
+    /** The row along the bottom: type an expression, press Enter, see it in the tree above. */
+    private Node evaluateRow() {
+        expression.setPromptText("Evaluate an expression - a name, a field, list.size(), args[0]");
+        expression.getStyleClass().add("debug-evaluate");
+        expression.setOnAction(e -> evaluate());
+        HBox.setHgrow(expression, Priority.ALWAYS);
+        Button go = Icons.button("fth-corner-down-left", "Evaluate (Enter)", this::evaluate);
+        evaluationError.getStyleClass().add("error-text");
+        evaluationError.setWrapText(true);
+        showError(null);
+        evaluateBar.getChildren().addAll(new Label("Evaluate"), expression, go, evaluationError);
+        evaluateBar.setAlignment(Pos.CENTER_LEFT);
+        evaluateBar.setPadding(new Insets(4, 8, 6, 6));
+        // Delete on a watched row drops it, the way Remove works in the other lists.
+        variables.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.DELETE) {
+                removeSelectedWatch();
+            }
+        });
+        return evaluateBar;
     }
 
     private Button control(String icon, String tip, String action, Runnable run) {
@@ -253,6 +370,7 @@ public final class DebugToolWindow implements ToolWindowFactory {
             split.setDividerPositions(0.42);
             root = new BorderPane(split);
             root.setTop(bar);
+            root.setBottom(evaluateRow());
             pane.getChildren().add(root);
         }
         refresh();
@@ -274,14 +392,20 @@ public final class DebugToolWindow implements ToolWindowFactory {
         }
     }
 
-    private static final class VariableCell extends TreeCell<DebugSession.VariableInfo> {
+    private final class VariableCell extends TreeCell<DebugSession.VariableInfo> {
         @Override
         protected void updateItem(DebugSession.VariableInfo variable, boolean empty) {
             super.updateItem(variable, empty);
+            getStyleClass().remove("debug-watch");
             if (empty || variable == null) {
                 setText(null);
                 setGraphic(null);
                 return;
+            }
+            // A watched expression is the reader's own row, not one of the frame's.
+            boolean watched = watchItems.contains(getTreeItem());
+            if (watched) {
+                getStyleClass().add("debug-watch");
             }
             Label name = new Label(variable.name());
             Label value = new Label(variable.value());
@@ -289,6 +413,9 @@ public final class DebugToolWindow implements ToolWindowFactory {
             Label type = new Label(variable.type() == null ? "" : variable.type());
             type.getStyleClass().add("debug-type");
             HBox row = new HBox(8, name, new Label("="), value, type);
+            if (watched) {
+                row.getChildren().add(0, Icons.of("fth-eye", 11));
+            }
             row.setAlignment(Pos.CENTER_LEFT);
             setText(null);
             setGraphic(row);

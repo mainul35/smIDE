@@ -30,6 +30,18 @@ public interface DebugSession {
     /** Children of a variable that has them: fields of an object, elements of an array. */
     List<VariableInfo> children(VariableInfo variable);
 
+    /**
+     * Works out what an expression means where the program is stopped.
+     *
+     * <p>Optional, because not every runtime can: one that cannot says so and the window
+     * shows the reason rather than an empty box. What a debugger is asked at a breakpoint
+     * is nearly always a name, a field of one, an element of one or a getter, so a session
+     * that answers only those is worth far more than one that answers nothing.
+     */
+    default Evaluation evaluate(StackFrameInfo frame, String expression) {
+        return Evaluation.failed("This debugger cannot evaluate expressions.");
+    }
+
     void resume();
 
     void stepOver();
@@ -43,6 +55,22 @@ public interface DebugSession {
 
     /** Called whenever the session suspends, resumes or ends, on the JavaFX thread. */
     void addListener(Consumer<DebugSession> listener);
+
+    /** What an expression came to, or why it came to nothing. */
+    record Evaluation(VariableInfo value, String error) {
+
+        public static Evaluation of(VariableInfo value) {
+            return new Evaluation(value, null);
+        }
+
+        public static Evaluation failed(String why) {
+            return new Evaluation(null, why);
+        }
+
+        public boolean ok() {
+            return value != null;
+        }
+    }
 
     /** One frame of the call stack. */
     record StackFrameInfo(String description, Path file, int line, int index) {

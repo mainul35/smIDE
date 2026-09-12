@@ -659,6 +659,20 @@
     -fx-font-size: 11px;
 }
 
+.debug-evaluate {
+    -fx-font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono", monospace;
+    -fx-font-size: 12px;
+}
+
+.debug-variables .debug-watch {
+    -fx-font-style: italic;
+}
+
+.error-text {
+    -fx-text-fill: -smide-danger;
+    -fx-font-size: 11px;
+}
+
 .code-area .paragraph-box:has-caret {
     -fx-background-color: -smide-current-line;
 }

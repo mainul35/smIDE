@@ -226,6 +226,13 @@ public final class CoreActions {
         add.accept(Action.of("debug.stepOut", "Step Out").menu("Run").shortcut("shift+F8").order(43)
                 .enabledWhen(ctx -> suspended(ide))
                 .perform(ctx -> ide.debugWindow().session().stepOut()));
+        /* Alt+F8 on the selection, as every other debugger does it: the thing you are
+           staring at in the editor is nearly always the thing you want the value of. */
+        add.accept(Action.of("debug.evaluate", "Evaluate Expression...").menu("Run")
+                .shortcut("alt+F8").order(44)
+                .enabledWhen(ctx -> suspended(ide))
+                .perform(ctx -> ide.debugWindow()
+                        .focusEvaluate(code(ctx).map(CodeEditor::selectedText).orElse(null))));
 
         // ---------------------------------------------------------------- Run
         add.accept(Action.of("run.run", "Run").menu("Run").shortcut("shift+F10").icon("fth-play").toolbar("run")

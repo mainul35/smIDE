@@ -375,6 +375,30 @@ public final class JdiSession implements DebugSession {
         return out;
     }
 
+    @Override
+    public Evaluation evaluate(StackFrameInfo frame, String expression) {
+        ThreadReference thread = suspendedThread;
+        if (thread == null) {
+            return Evaluation.failed("The program is running; stop it at a breakpoint first.");
+        }
+        try {
+            Value value = JdiEvaluator.evaluate(thread, frame == null ? 0 : frame.index(), expression);
+            /* The handle is the JDI value itself, so the result expands in the variables
+               tree exactly like a local does - the point of evaluating an object is
+               usually to look inside it. */
+            return Evaluation.of(new VariableInfo(expression.strip(), typeOf(value), render(value),
+                    expandable(value), value));
+        } catch (JdiEvaluator.EvalException e) {
+            return Evaluation.failed(e.getMessage());
+        } catch (com.sun.jdi.VMDisconnectedException e) {
+            running = false;
+            notifyListeners();
+            return Evaluation.failed("The program has exited.");
+        } catch (RuntimeException e) {
+            return Evaluation.failed("Could not evaluate: " + e);
+        }
+    }
+
     private static boolean expandable(Value value) {
         return value instanceof ArrayReference
                 || (value instanceof ObjectReference && !(value instanceof StringReference));

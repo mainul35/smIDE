@@ -27,8 +27,10 @@ and editable. A Maven tool window lists lifecycle phases, plugin goals and profi
 
 **Debugging.** Click the gutter to set a breakpoint. Debug attaches over JDWP with JDI and
 stops there: call stack, variables (objects and arrays expandable), step over/into/out,
-resume, and an execution arrow in the gutter. Breakpoints are kept in
-`<project>/.smide/breakpoints.json`.
+resume, and an execution arrow in the gutter. Alt+F8 evaluates an expression in the frame
+you are stopped in - names, fields, array elements, method calls, literals, arithmetic and
+comparisons - and keeps it above the variables, re-read on every step until Delete drops
+it. Breakpoints are kept in `<project>/.smide/breakpoints.json`.
 
 **Deployment.** A Deploy tool window: package, run the built artifact, generate a
 multi-stage Dockerfile, build/run/push an image, compose up, build an installer with
@@ -130,6 +132,7 @@ docs/          the plan, the plugin guide
 | Ctrl+F8 | Toggle breakpoint |
 | Shift+F10 / Shift+F9 | Run / Debug |
 | F9, F8, F7, Shift+F8 | Resume, step over, step into, step out |
+| Alt+F8 | Evaluate expression |
 | Alt+1..9 | Tool windows |
 | Ctrl+plus / Ctrl+minus | Zoom the whole interface by 10% |
 | Ctrl+0 | Back to the default, 120% |
