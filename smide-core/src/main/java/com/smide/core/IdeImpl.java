@@ -265,15 +265,14 @@ public final class IdeImpl implements Ide {
                like a dozen broken features rather than one missing class path. It
                happens when smIDE is started from a module that does not depend on the
                plugins, which is what running com.smide.Launcher out of smide-core does. */
-            Path dir = pluginsDir();
+            /* Short on purpose: the notification is clipped at 420 characters, and the
+               half worth keeping is the half that says what to do about it. */
             notifications.warn("No plugins loaded",
-                    "Syntax highlighting, code navigation, version control, build tools and"
-                            + " the assistant are all plugins, and none were found"
-                            + (dir == null ? " on the class path." : " on the class path or in " + dir + ".")
-                            + "\n\nRunning smIDE from source? Set the run configuration's"
-                            + " \"Classpath of module\" to the module that depends on the"
-                            + " plugins - in this repository, smide-dist. A main class run"
-                            + " from smide-core alone gets smide-core alone.");
+                    "Highlighting, navigation, version control, build tools and the"
+                            + " assistant are all plugins, and none were on the class path.\n\n"
+                            + "Started from another smIDE? Fix it there, not here:\n"
+                            + "Run > Edit Configurations > Classpath of module = smide-dist.\n"
+                            + "A main class run from smide-core gets smide-core's class path.");
         }
     }
 
