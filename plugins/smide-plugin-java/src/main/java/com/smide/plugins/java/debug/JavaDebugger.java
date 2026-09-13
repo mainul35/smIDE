@@ -30,8 +30,8 @@ public final class JavaDebugger implements Debugger {
         // install every breakpoint before a line of it runs.
         JdiSession session = JdiSession.attach(ide, configuration.name(), port, 60);
         session.start(ide.breakpoints().all());
-        ide.breakpoints().addListener(file -> ide.breakpoints().inFile(file)
-                .forEach(session::addBreakpoint));
+        // The file's whole list every time, so a disabled or removed breakpoint is taken back.
+        ide.breakpoints().addListener(file -> session.sync(file, ide.breakpoints().inFile(file)));
         return session;
     }
 }

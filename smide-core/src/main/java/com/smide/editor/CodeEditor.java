@@ -124,6 +124,8 @@ public final class CodeEditor implements TextEditor {
         });
         area.getUndoManager().atMarkedPositionProperty().addListener((obs, was, now) -> modified.set(!now));
         area.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, this::onMousePressed);
+        area.addEventFilter(javafx.scene.input.ContextMenuEvent.CONTEXT_MENU_REQUESTED,
+                this::onContextMenuRequested);
         area.addEventFilter(KeyEvent.KEY_PRESSED, this::onKeyPressed);
         area.addEventFilter(KeyEvent.KEY_TYPED, this::onKeyTyped);
     }
@@ -269,17 +271,48 @@ public final class CodeEditor implements TextEditor {
         if (gutter == null || e.getButton() != javafx.scene.input.MouseButton.PRIMARY) {
             return;
         }
-        /* Which node was actually under the pointer, rather than where it was: the
-           editor's left edge moves with the tool windows, so a coordinate test against a
-           fixed width was wrong as soon as the Project panel changed size. */
-        javafx.scene.Node picked = e.getPickResult() == null ? null : e.getPickResult().getIntersectedNode();
-        while (picked != null && !picked.getStyleClass().contains("gutter")) {
-            picked = picked.getParent();
-        }
-        if (picked != null && picked.getUserData() instanceof Integer line) {
+        Integer line = gutterLine(e.getPickResult());
+        if (line != null) {
             e.consume();
             gutter.toggleAt(line);
         }
+    }
+
+    /**
+     * A right click on the gutter opens the breakpoint menu instead of the editing one.
+     *
+     * <p>A filter, for the same reason as {@link #onMousePressed}: the area's own handler
+     * would otherwise answer first, with Cut, Copy and Paste for a click that was never
+     * on the text.
+     */
+    private void onContextMenuRequested(javafx.scene.input.ContextMenuEvent e) {
+        if (gutter == null) {
+            return;
+        }
+        Integer line = gutterLine(e.getPickResult());
+        if (line == null) {
+            return;
+        }
+        e.consume();
+        if (area.getContextMenu() != null) {
+            area.getContextMenu().hide();
+        }
+        gutter.showMenu(area, line, e.getScreenX(), e.getScreenY());
+    }
+
+    /**
+     * The line of the gutter row under the pointer, or null when it is not over the gutter.
+     *
+     * <p>Which node was actually under the pointer, rather than where it was: the
+     * editor's left edge moves with the tool windows, so a coordinate test against a
+     * fixed width was wrong as soon as the Project panel changed size.
+     */
+    private static Integer gutterLine(javafx.scene.input.PickResult pick) {
+        javafx.scene.Node picked = pick == null ? null : pick.getIntersectedNode();
+        while (picked != null && !picked.getStyleClass().contains("gutter")) {
+            picked = picked.getParent();
+        }
+        return picked != null && picked.getUserData() instanceof Integer line ? line : null;
     }
 
     private void onKeyPressed(KeyEvent e) {

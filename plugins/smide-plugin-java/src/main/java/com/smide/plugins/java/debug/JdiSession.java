@@ -36,8 +36,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -59,8 +62,14 @@ public final class JdiSession implements DebugSession {
     private final String name;
     private final VirtualMachine vm;
     private final List<Consumer<DebugSession>> listeners = new CopyOnWriteArrayList<>();
-    private final Map<String, List<Breakpoint>> pendingByClass = new HashMap<>();
-    private final List<BreakpointRequest> installed = new ArrayList<>();
+    /** The enabled breakpoints wanted in each class, by class name. */
+    private final Map<String, List<Breakpoint>> wantedByClass = new HashMap<>();
+    /** The requests installed in each class, so a change can take exactly those back. */
+    private final Map<String, List<BreakpointRequest>> requestsByClass = new HashMap<>();
+    /** Classes the VM has been asked to announce when they load, each asked for once. */
+    private final Set<String> announced = new HashSet<>();
+    /** Warnings already given, so re-installing a file's breakpoints does not repeat them. */
+    private final Set<String> warned = new HashSet<>();
     private volatile ThreadReference suspendedThread;
     private volatile boolean running = true;
     private Thread pump;
@@ -111,30 +120,21 @@ public final class JdiSession implements DebugSession {
 
     /** Installs the current breakpoints and starts pumping events. */
     public void start(List<Breakpoint> breakpoints) {
+        Map<Path, List<Breakpoint>> byFile = new LinkedHashMap<>();
         for (Breakpoint b : breakpoints) {
-            if (!b.enabled()) {
-                continue;
-            }
-            String className = classNameOf(b.file());
-            if (className != null) {
-                pendingByClass.computeIfAbsent(className, c -> new ArrayList<>()).add(b);
-            }
+            byFile.computeIfAbsent(b.file(), f -> new ArrayList<>()).add(b);
         }
-        // Classes already loaded get their breakpoints now; the rest when they are prepared.
-        for (String className : pendingByClass.keySet()) {
-            for (ReferenceType type : vm.classesByName(className)) {
-                install(type);
-            }
-            ClassPrepareRequest request = vm.eventRequestManager().createClassPrepareRequest();
-            request.addClassFilter(className);
-            request.setSuspendPolicy(EventRequest.SUSPEND_ALL);
-            request.enable();
+        byFile.forEach(this::sync);
+        int wanted;
+        int bound;
+        synchronized (this) {
+            wanted = wantedByClass.values().stream().mapToInt(List::size).sum();
+            bound = requestsByClass.values().stream().mapToInt(List::size).sum();
         }
-        int wanted = pendingByClass.values().stream().mapToInt(List::size).sum();
         if (wanted == 0) {
             ide.statusBar().message("Debugging " + name + " with no breakpoints set.");
         } else {
-            ide.statusBar().message("Debugging " + name + ": " + installed.size() + " of " + wanted
+            ide.statusBar().message("Debugging " + name + ": " + bound + " of " + wanted
                     + " breakpoints bound, the rest when their classes load.");
         }
         pump = new Thread(this::pumpEvents, "smide-jdi-" + name);
@@ -142,15 +142,52 @@ public final class JdiSession implements DebugSession {
         pump.start();
     }
 
-    /** Adds a breakpoint while the session is running. */
-    public void addBreakpoint(Breakpoint breakpoint) {
-        String className = classNameOf(breakpoint.file());
+    /**
+     * Makes the session match one file's breakpoints as they are now.
+     *
+     * <p>Given the file's whole list after any change - added, removed, disabled,
+     * enabled - and answered the same way every time: take back every request the file's
+     * class has, then install the enabled ones again. Only adding used to reach a running
+     * session, and nothing was ever taken back, so disabling a breakpoint while stopped on
+     * it hollowed the dot and changed nothing else: the program stopped there on the next
+     * pass exactly as before.
+     *
+     * <p>A class that has not loaded yet is asked to be announced, once, so a breakpoint
+     * added mid-session in code that has not run yet still binds when it does.
+     */
+    public synchronized void sync(Path file, List<Breakpoint> current) {
+        if (!running) {
+            return;
+        }
+        String className = classNameOf(file);
         if (className == null) {
             return;
         }
-        pendingByClass.computeIfAbsent(className, c -> new ArrayList<>()).add(breakpoint);
-        for (ReferenceType type : vm.classesByName(className)) {
-            install(type);
+        try {
+            for (BreakpointRequest request : requestsByClass.getOrDefault(className, List.of())) {
+                vm.eventRequestManager().deleteEventRequest(request);
+            }
+            requestsByClass.remove(className);
+            List<Breakpoint> enabled = current.stream().filter(Breakpoint::enabled).toList();
+            if (enabled.isEmpty()) {
+                wantedByClass.remove(className);
+                return;
+            }
+            wantedByClass.put(className, enabled);
+            /* Asked for before looking, not after: a class that finished loading between
+               the look and the ask would be announced to nobody and never get its
+               breakpoints. */
+            if (announced.add(className)) {
+                ClassPrepareRequest request = vm.eventRequestManager().createClassPrepareRequest();
+                request.addClassFilter(className);
+                request.setSuspendPolicy(EventRequest.SUSPEND_ALL);
+                request.enable();
+            }
+            for (ReferenceType type : vm.classesByName(className)) {
+                install(type);
+            }
+        } catch (com.sun.jdi.VMDisconnectedException e) {
+            // The program ended between the check and the call; there is nothing left to change.
         }
     }
 
@@ -184,31 +221,33 @@ public final class JdiSession implements DebugSession {
         return simple;
     }
 
-    private void install(ReferenceType type) {
-        List<Breakpoint> wanted = pendingByClass.getOrDefault(type.name(), List.of());
-        for (Breakpoint b : wanted) {
+    /** Installs the wanted breakpoints into a loaded class: from {@link #sync}, or when it loads. */
+    private synchronized void install(ReferenceType type) {
+        for (Breakpoint b : wantedByClass.getOrDefault(type.name(), List.of())) {
             try {
                 // JDI lines are one-based; the API's are zero-based.
                 List<Location> locations = type.locationsOfLine(b.line() + 1);
                 if (locations.isEmpty()) {
                     /* No code was compiled for that line - a blank line, a comment, or a
                        class file older than the source. Silence here looked exactly like
-                       a debugger that ignores breakpoints. */
-                    ide.notifications().warn("Breakpoint not set",
-                            b.label() + " has no executable code in " + type.name()
-                                    + ". Rebuild the project if the class file is out of date.");
+                       a debugger that ignores breakpoints. Said once: every change to the
+                       file installs its breakpoints again. */
+                    if (warned.add(type.name() + ":" + b.line())) {
+                        ide.notifications().warn("Breakpoint not set",
+                                b.label() + " has no executable code in " + type.name()
+                                        + ". Rebuild the project if the class file is out of date.");
+                    }
                     continue;
                 }
                 BreakpointRequest request = vm.eventRequestManager().createBreakpointRequest(locations.get(0));
                 request.setSuspendPolicy(EventRequest.SUSPEND_ALL);
-                if (b.condition() != null) {
+                if (b.condition() != null && warned.add("condition:" + type.name() + ":" + b.line())) {
                     // A real conditional breakpoint needs expression evaluation in the
                     // debuggee; until that exists the condition is shown but not applied.
                     ide.statusBar().message("Conditional breakpoints are not evaluated yet: " + b.label());
                 }
                 request.enable();
-                installed.add(request);
-                ide.statusBar().message("Breakpoint set at " + b.label());
+                requestsByClass.computeIfAbsent(type.name(), c -> new ArrayList<>()).add(request);
             } catch (AbsentInformationException e) {
                 ide.statusBar().message("No line numbers in " + type.name() + "; compile with debug information.");
             } catch (RuntimeException e) {

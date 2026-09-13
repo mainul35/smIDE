@@ -5,7 +5,11 @@ import com.smide.api.debug.Breakpoints;
 import com.smide.api.editor.LineAnnotations;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.CheckMenuItem;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
@@ -19,6 +23,7 @@ import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.LineNumberFactory;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.function.IntFunction;
 
 /**
@@ -26,7 +31,8 @@ import java.util.function.IntFunction;
  *
  * <p>Clicking anywhere in the breakpoint column toggles a breakpoint on that line, the
  * way every IDE does it. The column is always there, showing a faint circle under the
- * pointer, so it is discoverable without a menu.
+ * pointer, so it is discoverable without a menu. Right-clicking it opens the menu that
+ * does the rest: enable, disable, remove.
  *
  * <p>RichTextFX asks for a graphic per visible paragraph and reuses nothing, so each
  * node is built fresh and must stay cheap.
@@ -44,6 +50,8 @@ public final class GutterFactory implements IntFunction<Node> {
     private int executionLine = -1;
     /** Per-line text shown left of everything else - blame, when it is switched on. */
     private LineAnnotations annotations;
+    /** The breakpoint menu on screen, if any, so a second right click replaces it. */
+    private ContextMenu menu;
 
     public GutterFactory(CodeArea area, Breakpoints breakpoints, Path file) {
         this.area = area;
@@ -88,9 +96,7 @@ public final class GutterFactory implements IntFunction<Node> {
         if (breakpoint != null) {
             Circle dot = new Circle(4.5);
             dot.getStyleClass().add(breakpoint.enabled() ? "breakpoint-dot" : "breakpoint-dot-disabled");
-            Tooltip.install(marker, new Tooltip(breakpoint.condition() == null
-                    ? "Breakpoint on line " + (paragraph + 1) + ". Click to remove."
-                    : "Breakpoint: " + breakpoint.condition()));
+            Tooltip.install(marker, new Tooltip(tooltip(breakpoint)));
             marker.getChildren().add(dot);
         } else {
             // A hollow circle that only appears on hover, so the column reads as clickable.
@@ -123,6 +129,17 @@ public final class GutterFactory implements IntFunction<Node> {
             row.getStyleClass().add("gutter-executing");
         }
         return row;
+    }
+
+    private static String tooltip(Breakpoint breakpoint) {
+        int line = breakpoint.line() + 1;
+        if (!breakpoint.enabled()) {
+            return "Disabled breakpoint on line " + line + " - the debugger passes it by."
+                    + " Right-click to enable.";
+        }
+        return breakpoint.condition() == null
+                ? "Breakpoint on line " + line + ". Click to remove; right-click to disable."
+                : "Breakpoint: " + breakpoint.condition();
     }
 
     /**
@@ -174,6 +191,57 @@ public final class GutterFactory implements IntFunction<Node> {
     /** Toggles the breakpoint on a line, from the editor's mouse filter. */
     public void toggleAt(int line) {
         breakpoints.toggle(file, line);
+    }
+
+    /**
+     * Opens the breakpoint menu for a line, from the editor's context-menu filter.
+     *
+     * @param owner the node the menu belongs to - the area, which outlives the gutter
+     *              graphic that was clicked, since every change rebuilds those
+     */
+    public void showMenu(Node owner, int line, double screenX, double screenY) {
+        if (menu != null) {
+            menu.hide();
+        }
+        menu = menuFor(line);
+        menu.show(owner, screenX, screenY);
+    }
+
+    /**
+     * What a right click on a line offers.
+     *
+     * <p>Built on demand for the line clicked, so it shows the breakpoint as it is now -
+     * one a debug session or another editor on the same file changed a moment ago
+     * included. Disabling keeps the breakpoint where it is, which is the point of it: a
+     * line you will want to stop on again, but not on this pass.
+     */
+    ContextMenu menuFor(int line) {
+        ContextMenu built = new ContextMenu();
+        Breakpoint breakpoint = breakpoints.at(file, line).orElse(null);
+        if (breakpoint == null) {
+            MenuItem add = new MenuItem("Add Breakpoint");
+            add.setOnAction(e -> breakpoints.add(new Breakpoint(file, line)));
+            built.getItems().add(add);
+        } else {
+            CheckMenuItem enabled = new CheckMenuItem("Enabled");
+            enabled.setSelected(breakpoint.enabled());
+            // The check has already flipped by the time the action runs.
+            enabled.setOnAction(e -> breakpoints.update(breakpoint.withEnabled(enabled.isSelected())));
+            MenuItem remove = new MenuItem("Remove Breakpoint");
+            remove.setOnAction(e -> breakpoints.remove(file, line));
+            built.getItems().addAll(enabled, remove);
+        }
+        List<Breakpoint> inFile = breakpoints.inFile(file);
+        if (!inFile.isEmpty()) {
+            boolean anyEnabled = inFile.stream().anyMatch(Breakpoint::enabled);
+            MenuItem every = new MenuItem(anyEnabled
+                    ? "Disable All in This File" : "Enable All in This File");
+            every.setOnAction(e -> inFile.forEach(b -> breakpoints.update(b.withEnabled(!anyEnabled))));
+            MenuItem removeAll = new MenuItem("Remove All in This File");
+            removeAll.setOnAction(e -> inFile.forEach(b -> breakpoints.remove(file, b.line())));
+            built.getItems().addAll(new SeparatorMenuItem(), every, removeAll);
+        }
+        return built;
     }
 
     /**
