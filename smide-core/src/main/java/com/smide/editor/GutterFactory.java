@@ -3,13 +3,16 @@ package com.smide.editor;
 import com.smide.api.debug.Breakpoint;
 import com.smide.api.debug.Breakpoints;
 import com.smide.api.editor.LineAnnotations;
+import com.smide.theme.ThemeManager;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
@@ -17,6 +20,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Polygon;
+import javafx.scene.shape.Shape;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import org.fxmisc.richtext.CodeArea;
@@ -94,7 +98,10 @@ public final class GutterFactory implements IntFunction<Node> {
 
         Breakpoint breakpoint = breakpoints.at(file, paragraph).orElse(null);
         if (breakpoint != null) {
-            Circle dot = new Circle(4.5);
+            // A diamond when it has a condition: a line that may not stop should not look like one that will.
+            Shape dot = breakpoint.condition() == null
+                    ? new Circle(4.5)
+                    : new Polygon(0, -5.5, 5.5, 0, 0, 5.5, -5.5, 0);
             dot.getStyleClass().add(breakpoint.enabled() ? "breakpoint-dot" : "breakpoint-dot-disabled");
             Tooltip.install(marker, new Tooltip(tooltip(breakpoint)));
             marker.getChildren().add(dot);
@@ -133,13 +140,14 @@ public final class GutterFactory implements IntFunction<Node> {
 
     private static String tooltip(Breakpoint breakpoint) {
         int line = breakpoint.line() + 1;
+        String when = breakpoint.condition() == null ? "" : "\nStops only when: " + breakpoint.condition();
         if (!breakpoint.enabled()) {
             return "Disabled breakpoint on line " + line + " - the debugger passes it by."
-                    + " Right-click to enable.";
+                    + " Right-click to enable." + when;
         }
-        return breakpoint.condition() == null
+        return (breakpoint.condition() == null
                 ? "Breakpoint on line " + line + ". Click to remove; right-click to disable."
-                : "Breakpoint: " + breakpoint.condition();
+                : "Conditional breakpoint on line " + line + ". Right-click to change the condition.") + when;
     }
 
     /**
@@ -227,9 +235,11 @@ public final class GutterFactory implements IntFunction<Node> {
             enabled.setSelected(breakpoint.enabled());
             // The check has already flipped by the time the action runs.
             enabled.setOnAction(e -> breakpoints.update(breakpoint.withEnabled(enabled.isSelected())));
+            MenuItem condition = new MenuItem("Condition...");
+            condition.setOnAction(e -> askCondition(breakpoint));
             MenuItem remove = new MenuItem("Remove Breakpoint");
             remove.setOnAction(e -> breakpoints.remove(file, line));
-            built.getItems().addAll(enabled, remove);
+            built.getItems().addAll(enabled, condition, remove);
         }
         List<Breakpoint> inFile = breakpoints.inFile(file);
         if (!inFile.isEmpty()) {
@@ -242,6 +252,37 @@ public final class GutterFactory implements IntFunction<Node> {
             built.getItems().addAll(new SeparatorMenuItem(), every, removeAll);
         }
         return built;
+    }
+
+    /**
+     * Asks for the condition a breakpoint stops on.
+     *
+     * <p>Empty means always stop, which is how a condition is taken off; Cancel leaves it as
+     * it was. The text is not checked here - the editor has no debugger to check it with,
+     * and a condition can only be judged in a frame - so a mistake shows when the line is
+     * reached: the debugger stops there and says what was wrong, rather than skipping it.
+     */
+    private void askCondition(Breakpoint breakpoint) {
+        TextInputDialog dialog = new TextInputDialog(breakpoint.condition() == null ? "" : breakpoint.condition());
+        dialog.setTitle("Breakpoint Condition");
+        dialog.setHeaderText("Stop at " + breakpoint.label() + " only when this is true.\n"
+                + "For example  i == 20  or  name.equals(\"x\")  - leave it empty to always stop.");
+        dialog.setContentText("Condition");
+        dialog.getEditor().setPrefColumnCount(36);
+        Scene owner = area.getScene();
+        if (owner != null) {
+            dialog.initOwner(owner.getWindow());
+            // Styled like the window it came from, as the theme styles any window: its
+            // stylesheet, and the dark class when that window has it.
+            Scene scene = dialog.getDialogPane().getScene();
+            scene.getStylesheets().addAll(owner.getStylesheets());
+            if (owner.getRoot().getStyleClass().contains(ThemeManager.DARK_CLASS)) {
+                scene.getRoot().getStyleClass().add(ThemeManager.DARK_CLASS);
+            }
+        }
+        // Applied to the breakpoint as it is now, in case it was enabled or disabled meanwhile.
+        dialog.showAndWait().ifPresent(text -> breakpoints.at(file, breakpoint.line())
+                .ifPresent(current -> breakpoints.update(current.withCondition(text.strip()))));
     }
 
     /**

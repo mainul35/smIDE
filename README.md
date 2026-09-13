@@ -27,7 +27,9 @@ and editable. A Maven tool window lists lifecycle phases, plugin goals and profi
 
 **Debugging.** Click the gutter to set a breakpoint; right-click it to disable, enable or
 remove one, or all of a file's - a disabled breakpoint stays in place and the running
-program passes it by, even when it is changed mid-session. Debug attaches over JDWP with JDI and
+program passes it by, even when it is changed mid-session. **Condition...** makes a
+breakpoint stop only when an expression such as `i == 20` is true (drawn as a diamond); one
+that cannot be worked out stops anyway and says why, rather than silently never stopping. Debug attaches over JDWP with JDI and
 stops there: call stack, variables (objects and arrays expandable), step over/into/out,
 resume, and an execution arrow in the gutter. Alt+F8 evaluates an expression in the frame
 you are stopped in - names, fields, array elements, method calls, literals, arithmetic and

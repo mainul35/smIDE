@@ -5,6 +5,7 @@ import com.smide.api.debug.Breakpoint;
 import com.smide.api.debug.DebugSession;
 import com.sun.jdi.AbsentInformationException;
 import com.sun.jdi.ArrayReference;
+import com.sun.jdi.BooleanValue;
 import com.sun.jdi.Bootstrap;
 import com.sun.jdi.Field;
 import com.sun.jdi.IncompatibleThreadStateException;
@@ -241,11 +242,8 @@ public final class JdiSession implements DebugSession {
                 }
                 BreakpointRequest request = vm.eventRequestManager().createBreakpointRequest(locations.get(0));
                 request.setSuspendPolicy(EventRequest.SUSPEND_ALL);
-                if (b.condition() != null && warned.add("condition:" + type.name() + ":" + b.line())) {
-                    // A real conditional breakpoint needs expression evaluation in the
-                    // debuggee; until that exists the condition is shown but not applied.
-                    ide.statusBar().message("Conditional breakpoints are not evaluated yet: " + b.label());
-                }
+                // What the request is for, so a hit can find its condition.
+                request.putProperty(BREAKPOINT, b);
                 request.enable();
                 requestsByClass.computeIfAbsent(type.name(), c -> new ArrayList<>()).add(request);
             } catch (AbsentInformationException e) {
@@ -265,8 +263,10 @@ public final class JdiSession implements DebugSession {
                     if (event instanceof ClassPrepareEvent prepared) {
                         install(prepared.referenceType());
                     } else if (event instanceof BreakpointEvent hit) {
-                        suspendedThread = hit.thread();
-                        stay = true;
+                        if (shouldStop(hit)) {
+                            suspendedThread = hit.thread();
+                            stay = true;
+                        }
                     } else if (event instanceof StepEvent step) {
                         // One step request at a time, or every line would fire for ever.
                         vm.eventRequestManager().deleteEventRequest(step.request());
@@ -293,6 +293,128 @@ public final class JdiSession implements DebugSession {
             notifyListeners();
         } catch (RuntimeException e) {
             System.err.println("smIDE debug: " + e);
+        }
+    }
+
+    /** The request property carrying the breakpoint a request was made for. */
+    private static final String BREAKPOINT = "smide.breakpoint";
+
+    /**
+     * Whether a breakpoint hit should stop the program: always, unless its condition came
+     * to false.
+     *
+     * <p>Evaluated here, on the event thread, while the event holds the VM suspended - the
+     * only moment the frame is there to read. A condition that cannot be worked out stops
+     * the program and says why. Skipping it instead would make a typo look exactly like a
+     * line that is never reached, which is the hardest kind of wrong to notice.
+     */
+    private boolean shouldStop(BreakpointEvent hit) {
+        if (!(hit.request().getProperty(BREAKPOINT) instanceof Breakpoint b) || b.condition() == null) {
+            return true;
+        }
+        try {
+            Value value = evaluateSafely(hit.thread(), 0, b.condition());
+            Boolean truth = truth(value);
+            if (truth != null) {
+                return truth;
+            }
+            conditionFailed(b, "it came to " + (value == null ? "null" : value.type().name())
+                    + ", not true or false.");
+        } catch (JdiEvaluator.EvalException e) {
+            conditionFailed(b, e.getMessage());
+        } catch (RuntimeException e) {
+            conditionFailed(b, String.valueOf(e));
+        }
+        return true;
+    }
+
+    /** true or false from a boolean or a Boolean; null for anything else. */
+    private static Boolean truth(Value value) {
+        if (value instanceof BooleanValue bool) {
+            return bool.value();
+        }
+        if (value instanceof ObjectReference object && "java.lang.Boolean".equals(object.referenceType().name())) {
+            Field field = object.referenceType().fieldByName("value");
+            return field != null && object.getValue(field) instanceof BooleanValue bool ? bool.value() : null;
+        }
+        return null;
+    }
+
+    private void conditionFailed(Breakpoint b, String why) {
+        String message = "Stopped at " + b.label() + " because its condition  " + b.condition()
+                + "  could not be used: " + why;
+        ide.statusBar().message(message);
+        boolean first;
+        synchronized (this) {
+            // Once per condition: a loop would otherwise post the same notice on every pass.
+            first = warned.add("condition:" + b.file() + ":" + b.line() + ":" + b.condition());
+        }
+        if (first) {
+            ide.notifications().warn("Breakpoint condition failed", message);
+        }
+    }
+
+    /**
+     * Evaluates with breakpoints paused whenever the expression could run code.
+     *
+     * <p>A call made in the program that reaches a breakpoint stops there, and that event
+     * waits for the very thread that is waiting on the call: on the event thread, checking a
+     * condition, that is a hang; from the Evaluate field, a frozen window. A class the call
+     * loads does the same through its prepare event. So for the length of the call those
+     * requests are switched off and put back afterwards. Only when the expression can run
+     * code at all: names, fields and arithmetic cannot, and pausing on every hover or every
+     * pass of a loop would be round trips for nothing.
+     */
+    private Value evaluateSafely(ThreadReference thread, int frameIndex, String expression)
+            throws JdiEvaluator.EvalException {
+        if (!mayRunCode(expression)) {
+            return JdiEvaluator.evaluate(thread, frameIndex, expression);
+        }
+        List<EventRequest> paused = pauseRequests();
+        try {
+            return JdiEvaluator.evaluate(thread, frameIndex, expression);
+        } finally {
+            restore(paused);
+        }
+    }
+
+    /** A call, or a + that may call toString() on an object. */
+    static boolean mayRunCode(String expression) {
+        return expression != null && (expression.indexOf('(') >= 0 || expression.indexOf('+') >= 0);
+    }
+
+    private synchronized List<EventRequest> pauseRequests() {
+        List<EventRequest> paused = new ArrayList<>();
+        List<EventRequest> all = new ArrayList<>(vm.eventRequestManager().breakpointRequests());
+        all.addAll(vm.eventRequestManager().classPrepareRequests());
+        for (EventRequest request : all) {
+            if (request.isEnabled()) {
+                request.disable();
+                paused.add(request);
+            }
+        }
+        return paused;
+    }
+
+    private synchronized void restore(List<EventRequest> paused) {
+        try {
+            for (EventRequest request : paused) {
+                try {
+                    request.enable();
+                } catch (com.sun.jdi.request.InvalidRequestStateException e) {
+                    // Deleted by a change made while the call ran: nothing to put back.
+                }
+            }
+            // A class the call loaded was announced to nobody; give it its breakpoints now.
+            for (String className : List.copyOf(wantedByClass.keySet())) {
+                if (!requestsByClass.containsKey(className)) {
+                    for (ReferenceType type : vm.classesByName(className)) {
+                        install(type);
+                    }
+                }
+            }
+        } catch (com.sun.jdi.VMDisconnectedException e) {
+            // The program ended during the call.
         }
     }
 
@@ -448,7 +570,7 @@ public final class JdiSession implements DebugSession {
             return Evaluation.failed("The program is running; stop it at a breakpoint first.");
         }
         try {
-            Value value = JdiEvaluator.evaluate(thread, frame == null ? 0 : frame.index(), expression);
+            Value value = evaluateSafely(thread, frame == null ? 0 : frame.index(), expression);
             /* The handle is the JDI value itself, so the result expands in the variables
                tree exactly like a local does - the point of evaluating an object is
                usually to look inside it. */
