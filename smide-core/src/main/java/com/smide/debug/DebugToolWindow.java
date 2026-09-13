@@ -16,7 +16,6 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
-import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.input.KeyCode;
@@ -57,6 +56,8 @@ public final class DebugToolWindow implements ToolWindowFactory {
     /** Which rows those are, so a watch can be told from a local at a glance. */
     private final Set<TreeItem<DebugSession.VariableInfo>> watchItems =
             Collections.newSetFromMap(new IdentityHashMap<>());
+    /** The tree rows and their lazy children, shared with the value popup in the editor. */
+    private final VariableTree variableTree = new VariableTree(() -> this.session, watchItems::contains);
     private final TextField expression = new TextField();
     private final Label evaluationError = new Label();
     private final HBox evaluateBar = new HBox(6);
@@ -89,7 +90,7 @@ public final class DebugToolWindow implements ToolWindowFactory {
         variables.setRoot(variablesRoot);
         variables.setShowRoot(false);
         variables.getStyleClass().add("debug-variables");
-        variables.setCellFactory(v -> new VariableCell());
+        variableTree.install(variables);
         status.getStyleClass().add("empty-hint");
     }
 
@@ -105,6 +106,16 @@ public final class DebugToolWindow implements ToolWindowFactory {
 
     public DebugSession session() {
         return session;
+    }
+
+    /** The frame selected in the list - the one the reader is looking at - or null. */
+    public DebugSession.StackFrameInfo selectedFrame() {
+        return frames.getSelectionModel().getSelectedItem();
+    }
+
+    /** The stack as shown, innermost first; empty unless the program is stopped. */
+    public List<DebugSession.StackFrameInfo> frames() {
+        return List.copyOf(frames.getItems());
     }
 
     private void refresh() {
@@ -243,26 +254,8 @@ public final class DebugToolWindow implements ToolWindowFactory {
         expression.selectAll();
     }
 
-    /** A variable node that fetches its children the first time it is opened. */
     private TreeItem<DebugSession.VariableInfo> node(DebugSession.VariableInfo variable) {
-        TreeItem<DebugSession.VariableInfo> item = new TreeItem<>(variable) {
-            @Override
-            public boolean isLeaf() {
-                return !variable.expandable();
-            }
-        };
-        if (variable.expandable()) {
-            item.getChildren().add(new TreeItem<>());
-            item.expandedProperty().addListener((o, was, now) -> {
-                if (now && item.getChildren().size() == 1 && item.getChildren().get(0).getValue() == null) {
-                    item.getChildren().clear();
-                    for (DebugSession.VariableInfo child : session.children(variable)) {
-                        item.getChildren().add(node(child));
-                    }
-                }
-            });
-        }
-        return item;
+        return variableTree.node(variable);
     }
 
     /** Puts the execution arrow in the editor's gutter. */
@@ -389,36 +382,6 @@ public final class DebugToolWindow implements ToolWindowFactory {
             String where = frame.file() == null ? "" : frame.file().getFileName() + ":" + (frame.line() + 1);
             setText(frame.description() + (where.isEmpty() ? "" : "   " + where));
             setGraphic(Icons.of(frame.index() == 0 ? "fth-chevron-right" : "fth-more-horizontal", 12));
-        }
-    }
-
-    private final class VariableCell extends TreeCell<DebugSession.VariableInfo> {
-        @Override
-        protected void updateItem(DebugSession.VariableInfo variable, boolean empty) {
-            super.updateItem(variable, empty);
-            getStyleClass().remove("debug-watch");
-            if (empty || variable == null) {
-                setText(null);
-                setGraphic(null);
-                return;
-            }
-            // A watched expression is the reader's own row, not one of the frame's.
-            boolean watched = watchItems.contains(getTreeItem());
-            if (watched) {
-                getStyleClass().add("debug-watch");
-            }
-            Label name = new Label(variable.name());
-            Label value = new Label(variable.value());
-            value.getStyleClass().add("debug-value");
-            Label type = new Label(variable.type() == null ? "" : variable.type());
-            type.getStyleClass().add("debug-type");
-            HBox row = new HBox(8, name, new Label("="), value, type);
-            if (watched) {
-                row.getChildren().add(0, Icons.of("fth-eye", 11));
-            }
-            row.setAlignment(Pos.CENTER_LEFT);
-            setText(null);
-            setGraphic(row);
         }
     }
 }

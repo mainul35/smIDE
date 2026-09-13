@@ -664,6 +664,25 @@
     -fx-font-size: 12px;
 }
 
+/* The value popup in the editor. A look of its own rather than .doc-popup's: that class
+   is for documentation, and its label rule - one colour, wrapped, 520px wide - flattened
+   the value and type colours these rows share with the Debug window and cut long values. */
+.debug-hover {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 4 6 4 6;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.22), 14, 0, 0, 4);
+}
+
+.debug-hover .tree-view {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
 .debug-variables .debug-watch {
     -fx-font-style: italic;
 }

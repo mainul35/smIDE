@@ -414,6 +414,33 @@ public final class JdiSession implements DebugSession {
         return out;
     }
 
+    /**
+     * From the method's own line table.
+     *
+     * <p>Its first entry is the first statement, not the signature, so the line before it
+     * counts too: that is where the parameters are declared, and they are as much the
+     * method's variables as anything in its body.
+     */
+    @Override
+    public boolean frameContains(StackFrameInfo frame, int line) {
+        ThreadReference thread = suspendedThread;
+        if (thread == null || frame == null) {
+            return false;
+        }
+        try {
+            int first = Integer.MAX_VALUE;
+            int last = -1;
+            for (Location location : thread.frame(frame.index()).location().method().allLineLocations()) {
+                first = Math.min(first, location.lineNumber());
+                last = Math.max(last, location.lineNumber());
+            }
+            int oneBased = line + 1;
+            return last >= 0 && oneBased >= first - 1 && oneBased <= last;
+        } catch (AbsentInformationException | IncompatibleThreadStateException | RuntimeException e) {
+            return false;
+        }
+    }
+
     @Override
     public Evaluation evaluate(StackFrameInfo frame, String expression) {
         ThreadReference thread = suspendedThread;

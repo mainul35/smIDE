@@ -135,6 +135,8 @@ public final class IdeImpl implements Ide {
         this.editors.addOpenedListener(editor -> {
             if (editor instanceof com.smide.editor.CodeEditor code) {
                 code.setContextMenu(actions.contextMenuFor("editor"));
+                // While a debug session is stopped, pointing at a variable shows what is in it.
+                com.smide.debug.DebugHover.install(this, code, () -> debugWindow);
             }
         });
         this.sessionStore = new SessionStore(homeDir.resolve("session.json"));

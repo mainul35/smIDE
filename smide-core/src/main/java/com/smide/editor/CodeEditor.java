@@ -633,6 +633,21 @@ public final class CodeEditor implements TextEditor {
         area.setEditable(false);
     }
 
+    /** Whether something else is showing a popup for the pointer, which documentation should not cover. */
+    private java.util.function.BooleanSupplier hoverClaim = () -> false;
+
+    /**
+     * Lets another popup for the pointer - the debugger's values - keep documentation away
+     * while it is showing, so the two do not stack on the same word.
+     */
+    public void claimHover(java.util.function.BooleanSupplier claim) {
+        this.hoverClaim = claim == null ? () -> false : claim;
+    }
+
+    public boolean isHoverClaimed() {
+        return hoverClaim.getAsBoolean();
+    }
+
     /** Right-click menu for the text itself; the actions decide what is in it. */
     public void setContextMenu(javafx.scene.control.ContextMenu menu) {
         area.setContextMenu(menu);

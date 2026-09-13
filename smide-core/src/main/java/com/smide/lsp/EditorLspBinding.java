@@ -61,7 +61,8 @@ public final class EditorLspBinding {
             pendingTrigger = null;
         });
         hoverDelay.setOnFinished(e -> {
-            if (hoverOffset >= 0) {
+            // Not over a value the debugger is already showing; two popups would stack.
+            if (hoverOffset >= 0 && !editor.isHoverClaimed()) {
                 hover.showAt(hoverOffset);
             }
         });

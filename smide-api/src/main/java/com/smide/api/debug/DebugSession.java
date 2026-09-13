@@ -42,6 +42,20 @@ public interface DebugSession {
         return Evaluation.failed("This debugger cannot evaluate expressions.");
     }
 
+    /**
+     * Whether a source line belongs to the code a frame is running - its method.
+     *
+     * <p>What decides how a name under the pointer may be read. Inside the method a name
+     * can be a local; outside it, a local of the same name in the stopped method is not
+     * the thing being pointed at, and showing its value would be a confident wrong answer.
+     * A debugger that cannot tell says every line belongs, so names are read as written.
+     *
+     * @param line zero-based, like every line in the API
+     */
+    default boolean frameContains(StackFrameInfo frame, int line) {
+        return true;
+    }
+
     void resume();
 
     void stepOver();

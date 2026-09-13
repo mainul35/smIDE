@@ -32,7 +32,10 @@ stops there: call stack, variables (objects and arrays expandable), step over/in
 resume, and an execution arrow in the gutter. Alt+F8 evaluates an expression in the frame
 you are stopped in - names, fields, array elements, method calls, literals, arithmetic and
 comparisons - and keeps it above the variables, re-read on every step until Delete drops
-it. Breakpoints are kept in `<project>/.smide/breakpoints.json`.
+it. While it is stopped, pointing at a variable in the editor shows its value and type,
+and an object or array opens there onto its fields and elements. Pointing never runs
+code: names and field chains are read, calls are not. Breakpoints are kept in
+`<project>/.smide/breakpoints.json`.
 
 **Deployment.** A Deploy tool window: package, run the built artifact, generate a
 multi-stage Dockerfile, build/run/push an image, compose up, build an installer with
