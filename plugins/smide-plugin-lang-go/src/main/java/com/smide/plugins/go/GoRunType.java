@@ -241,10 +241,14 @@ public final class GoRunType implements RunConfigurationType {
                 throw new com.smide.api.execution.CannotRunException(
                         "A go build has nothing to debug. Choose run or test as the kind.");
             }
-            Path dlv = GoBinaries.find("dlv").orElseThrow(() -> new com.smide.api.execution.CannotRunException(
-                    "Debugging Go needs Delve, the Go debugger, which is not installed.",
-                    new com.smide.api.ui.Notifications.NotificationAction("Install Delve",
-                            () -> GoDebugger.install(ide, goBinary))));
+            // A Delve that debugs this toolchain's Go: each release refuses versions outside its window.
+            Delve.Choice delve = Delve.forGo(ide, goBinary);
+            if (delve.binary() == null) {
+                throw new com.smide.api.execution.CannotRunException(delve.problem(),
+                        new com.smide.api.ui.Notifications.NotificationAction(delve.installLabel(),
+                                () -> Delve.install(ide, goBinary)));
+            }
+            Path dlv = delve.binary();
             List<String> cmd = new ArrayList<>();
             cmd.add(dlv.toString());
             if (kind.equals("test")) {

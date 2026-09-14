@@ -88,6 +88,12 @@ public final class DapSession implements DebugSession {
     private final CompletableFuture<Void> initialized = new CompletableFuture<>();
     private final AtomicBoolean over = new AtomicBoolean();
     private final AtomicBoolean disconnectSent = new AtomicBoolean();
+    /**
+     * Completed when the connection is gone. lsp4j leaves a request unanswered for ever when
+     * the other side hangs up, so every wait also watches this: Delve listening, then quitting
+     * over a Go version it will not debug, left "Attaching the debugger" up for half a minute.
+     */
+    private final CompletableFuture<Void> disconnected = new CompletableFuture<>();
     private volatile boolean closedByAdapter;
     private IDebugProtocolServer server;
     private Capabilities capabilities = new Capabilities();
@@ -193,7 +199,9 @@ public final class DapSession implements DebugSession {
         try {
             CompletableFuture.anyOf(initialized, attached).get(SETUP_MS, TimeUnit.MILLISECONDS);
         } catch (ExecutionException e) {
-            throw new IOException("The debugger would not attach: " + message(e));
+            throw new IOException(closedByAdapter
+                    ? "The debugger closed the connection before it attached. What it said is in the Run window."
+                    : "The debugger would not attach: " + message(e));
         } catch (TimeoutException e) {
             throw new IOException("The debugger did not get ready within " + SETUP_MS / 1000 + " s.");
         } catch (InterruptedException e) {
@@ -347,6 +355,7 @@ public final class DapSession implements DebugSession {
         suspended = false;
         forgetStack();
         initialized.completeExceptionally(new IOException("The debugger disconnected."));
+        disconnected.complete(null);
         /* A program that ended leaves the adapter connected - a headless Delve waits for the
            client to say it is done. Saying so makes the adapter close the connection from
            its side; closing it under the reader instead makes lsp4j log a stack trace for a
@@ -564,18 +573,51 @@ public final class DapSession implements DebugSession {
 
     // ----------------------------------------------------------------- helpers
 
-    private static <T> T await(CompletableFuture<T> future, long millis, String what) throws IOException {
+    private <T> T await(CompletableFuture<T> future, long millis, String what) throws IOException {
         try {
-            return future.get(millis, TimeUnit.MILLISECONDS);
+            CompletableFuture.anyOf(future, disconnected).get(millis, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
             throw new IOException("The debugger did not " + what + " within " + millis / 1000 + " s.");
         } catch (ExecutionException e) {
+            // The request failed; reading it below says how.
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted", e);
+        }
+        if (!future.isDone()) {
+            throw closed(what);
+        }
+        try {
+            return future.get();
+        } catch (ExecutionException e) {
+            if (connectionLost(e)) {
+                // Sending into a connection the adapter had just dropped, rather than an answer from it.
+                throw closed(what);
+            }
             throw new AdapterError("Could not " + what + ": " + message(e), message(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted", e);
         }
+    }
+
+    private static IOException closed(String what) {
+        return new IOException("The debugger closed the connection before it could " + what
+                + ". If it was started in the Run window, what it said is there.");
+    }
+
+    /** Whether a failure is the connection breaking, rather than the adapter answering with an error. */
+    private static boolean connectionLost(Throwable failure) {
+        for (Throwable t = failure; t != null; t = t.getCause()) {
+            if (t instanceof ResponseErrorException) {
+                return false;
+            }
+            if (t instanceof IOException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** A request the adapter answered with an error, and the reason it gave. */
