@@ -48,6 +48,14 @@ public final class CppPlugin implements Plugin {
 
     @Override
     public void start(PluginContext context) {
+        // What building C and C++ needs comes with the plugin: a compiler, CMake, run configurations, settings.
+        CppToolchains.Compiler compiler = new CppToolchains.Compiler();
+        CppToolchains.CMake cmake = new CppToolchains.CMake();
+        context.registerToolchain(compiler);
+        context.registerToolchain(cmake);
+        context.registerRunConfigurationType(new CppRunType(context.ide(), cmake::locate, compiler::locate));
+        context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/C and C++", compiler, cmake));
+
         Clangd clangd = new Clangd();
         context.registerFileType(new FileType("c", "C source", Set.of("c", "h"), Set.of(),
                 "mdi2l-language-c", false));

@@ -23,6 +23,12 @@ public final class DockerPlugin implements Plugin {
 
     @Override
     public void start(PluginContext context) {
+        // What running containers needs comes with the plugin: docker, compose and build configurations, settings.
+        DockerToolchain docker = new DockerToolchain();
+        context.registerToolchain(docker);
+        context.registerRunConfigurationType(new DockerRunType(context.ide(), docker::locate));
+        context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Tools/Docker", docker));
+
         context.registerFileType(new FileType("dockerfile", "Dockerfile",
                 Set.of("dockerfile"),
                 Set.of("Dockerfile", "Containerfile", "Dockerfile.dev", "Dockerfile.prod"),

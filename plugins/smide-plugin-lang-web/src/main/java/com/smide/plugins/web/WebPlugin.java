@@ -15,6 +15,12 @@ public final class WebPlugin implements Plugin {
 
     @Override
     public void start(PluginContext context) {
+        // What running JavaScript needs comes with the plugin: Node.js, npm script configurations, settings.
+        NodeToolchain node = new NodeToolchain();
+        context.registerToolchain(node);
+        context.registerRunConfigurationType(new NodeRunType(context.ide(), node::locate));
+        context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Node.js", node));
+
         NodeServer typescript = new NodeServer("typescript-language-server", "TypeScript Language Server",
                 /* typescript@5, not latest. TypeScript 7 is the native rewrite and ships no
                    tsserver.js at all, so the language server refuses to start against it:

@@ -95,17 +95,20 @@ On Windows, `run.ps1` does both steps.
 | `smide-plugin-markdown` | MDViewer: Markdown editing and preview |
 | `smide-plugin-git` | Git changes, log, diffs, branches |
 | `smide-plugin-terminal` | Terminal tool window |
-| `smide-plugin-lang-kotlin` | Kotlin, kotlin-language-server |
-| `smide-plugin-lang-python` | Python, pyright |
-| `smide-plugin-lang-web` | JavaScript, TypeScript, HTML, CSS, JSON |
+| `smide-plugin-lang-kotlin` | Kotlin, kotlin-language-server, kotlinc scripts and files outside Gradle/Maven |
+| `smide-plugin-lang-python` | Python, pyright, scripts/modules/pytest (project .venv first) |
+| `smide-plugin-lang-web` | JavaScript, TypeScript, HTML, CSS, JSON, npm scripts and Node files |
 | `smide-plugin-lang-config` | YAML, XML, TOML, properties, INI, dotenv, ignore files |
-| `smide-plugin-lang-shell` | Shell, PowerShell, batch |
+| `smide-plugin-lang-shell` | Shell, PowerShell, batch, and running scripts of each |
 | `smide-plugin-lang-sql` | SQL |
-| `smide-plugin-lang-go` | Go, gopls, run/test/build configurations, asks for the Go toolchain when missing |
-| `smide-plugin-lang-rust` | Rust, rust-analyzer |
-| `smide-plugin-lang-cpp` | C, C++, CMake, clangd |
-| `smide-plugin-lang-csharp` | C#, csharp-ls |
-| `smide-plugin-lang-docker` | Dockerfiles |
+| `smide-plugin-lang-go` | Go, gopls, run/test/build configurations |
+| `smide-plugin-lang-rust` | Rust, rust-analyzer, cargo run/test/build |
+| `smide-plugin-lang-cpp` | C, C++, CMake, clangd, CMake/make builds and compile-and-run |
+| `smide-plugin-lang-csharp` | C#, csharp-ls, dotnet run/test/build |
+| `smide-plugin-lang-docker` | Dockerfiles, compose up, image build and run |
+
+Every language plugin that runs code also names the toolchain it needs, and a project that
+needs one this machine does not have is told so when it is opened.
 
 Language servers are never installed behind your back: the IDE offers, and downloads only
 when you accept, into `~/.smide/tools`.

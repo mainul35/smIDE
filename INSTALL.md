@@ -283,15 +283,29 @@ about your code: it needs headers and a `compile_commands.json` to be useful.
 You can also install a server before you need it: **Settings → Languages → Java** has a
 button for the JDT server, and opening any file of the language offers the rest.
 
-**Compilers and runtimes are asked for when a project needs them.** A language plugin can
-also say what its projects need installed — the Go toolchain, for Go. When you open a
-project that needs it and it is not on the machine, a notification says so once, with
-**Download** (the official download page) and **Set location...** (for an installation smIDE
-did not find; it is checked and remembered). **Go** projects then get run configurations
-without writing any: every folder holding `package main` appears in the run list as
-`go run ./that/folder`, and a project with tests gets `go test ./...`. Configurations run
-from the module root (the nearest `go.mod`), or name a folder's files when there is no
-module. The Go installation can also be set under **Settings → Languages → Go**.
+**Compilers and runtimes are asked for when a project needs them.** Each language plugin
+also says what its projects need installed. When you open a project that needs it and it is
+not on the machine, a notification says so once, with **Download** (the official download
+page) and **Set location...** (for an installation smIDE did not find; it is checked and
+remembered). Every location can also be set under **Settings → Languages** (Docker under
+**Settings → Tools**).
+
+| Language | Asked for | Offered in the run list without writing a configuration |
+|---|---|---|
+| Go | the Go toolchain | `go run ./folder` for each `package main`, `go test ./...` |
+| Python | an interpreter — not asked when the project has its own `.venv` | `python script.py` for each script with a `__main__` block, `pytest` |
+| JavaScript, TypeScript | Node.js, for projects with a `package.json` | `npm run NAME` for every script |
+| Rust | cargo (rustup) | `cargo run` or `cargo run --bin NAME` per binary, `cargo test` per crate |
+| C# | the .NET SDK (a runtime alone is not enough) | `dotnet run` for programs, `dotnet test` for test projects |
+| C, C++ | a compiler; CMake for CMake projects | `CMake build`, `make`, or compile and run each file with a `main` |
+| Kotlin | kotlinc, only outside Gradle and Maven | `kotlinc -script` for `.kts`, compile and run for `.kt` with a `main` |
+| Shell | bash on Windows (Git for Windows); PowerShell elsewhere | `run script` for `.sh`, `.ps1`, `.bat` near the top |
+| Docker | docker | `docker compose up`, `docker build` |
+
+Go configurations run from the module root (the nearest `go.mod`), or name a folder's files
+when there is no module. Python uses the project's `.venv`, `venv` or `env` interpreter when
+there is one. Windows's own `python.exe` alias, which only opens the Microsoft Store, is never
+taken for an interpreter.
 
 ---
 

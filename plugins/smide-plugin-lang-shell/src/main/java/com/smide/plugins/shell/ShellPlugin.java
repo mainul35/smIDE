@@ -24,6 +24,14 @@ public final class ShellPlugin implements Plugin {
 
     @Override
     public void start(PluginContext context) {
+        // What running scripts needs comes with the plugin: bash and PowerShell where the system lacks them.
+        ShellToolchains.Bash bash = new ShellToolchains.Bash();
+        ShellToolchains.PowerShell powershell = new ShellToolchains.PowerShell();
+        context.registerToolchain(bash);
+        context.registerToolchain(powershell);
+        context.registerRunConfigurationType(new ShellRunType(context.ide(), bash::locate, powershell::locate));
+        context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Shell", bash, powershell));
+
         context.registerFileType(new FileType("shell", "Shell script",
                 Set.of("sh", "bash", "zsh", "ksh", "fish"),
                 Set.of(".bashrc", ".bash_profile", ".zshrc", ".profile", ".bash_aliases"), "fth-terminal", false));

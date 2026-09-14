@@ -11,6 +11,12 @@ public final class PythonPlugin implements Plugin {
 
     @Override
     public void start(PluginContext context) {
+        // What running Python needs comes with the plugin: the interpreter, its run configurations, its settings.
+        PythonToolchain python = new PythonToolchain();
+        context.registerToolchain(python);
+        context.registerRunConfigurationType(new PythonRunType(context.ide(), python::locate));
+        context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Python", python));
+
         context.registerFileType(new FileType("python", "Python source",
                 Set.of("py", "pyi", "pyw"), Set.of(), "mdi2l-language-python", false));
         // pyproject.toml is TOML and belongs to the config plugin; these two are Python's own.

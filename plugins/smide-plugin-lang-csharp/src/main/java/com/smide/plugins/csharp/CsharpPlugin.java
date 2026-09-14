@@ -27,6 +27,12 @@ public final class CsharpPlugin implements Plugin {
 
     @Override
     public void start(PluginContext context) {
+        // What running C# needs comes with the plugin: the .NET SDK, its run configurations, its settings.
+        DotnetToolchain dotnet = new DotnetToolchain();
+        context.registerToolchain(dotnet);
+        context.registerRunConfigurationType(new DotnetRunType(context.ide(), dotnet::locate));
+        context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/C#", dotnet));
+
         context.registerFileType(new FileType("csharp", "C# source", Set.of("cs", "csx"), Set.of(),
                 "mdi2l-language-csharp", false));
         context.registerLanguage(new CsharpLanguage(new CsharpLs()));

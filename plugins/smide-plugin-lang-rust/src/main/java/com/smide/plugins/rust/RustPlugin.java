@@ -27,6 +27,12 @@ public final class RustPlugin implements Plugin {
 
     @Override
     public void start(PluginContext context) {
+        // What running Rust needs comes with the plugin: cargo, its run configurations, its settings.
+        RustToolchain rust = new RustToolchain();
+        context.registerToolchain(rust);
+        context.registerRunConfigurationType(new RustRunType(context.ide(), rust::locate));
+        context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Rust", rust));
+
         context.registerFileType(new FileType("rust", "Rust source", Set.of("rs"), Set.of(),
                 "mdi2l-language-rust", false));
         context.registerLanguage(new RustLanguage(new RustAnalyzer()));
