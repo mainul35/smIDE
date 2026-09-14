@@ -97,7 +97,17 @@ final class TerminalSession {
                 process.destroy();
                 return;
             }
-            SwingUtilities.invokeLater(() -> attach(process));
+            SwingUtilities.invokeLater(() -> {
+                try {
+                    attach(process);
+                } catch (RuntimeException | LinkageError e) {
+                    /* Swing can refuse here - a Java runtime without its X11 library is
+                       headless, and the emulator's frame throws HeadlessException. Uncaught,
+                       that ended the event thread's task and left "Starting..." up for ever. */
+                    process.destroy();
+                    failed(command[0], e);
+                }
+            });
         });
     }
 
