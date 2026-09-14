@@ -54,9 +54,19 @@ public final class ExecutionService implements Execution {
     private RunConfiguration lastRun;
     private ExecutionMode lastMode = ExecutionMode.RUN;
 
+    /** What detection last found in each workspace; a workspace absent has not been looked at yet. */
+    private final Map<Workspace, List<RunConfiguration>> detected = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Workspaces being looked at right now, off the UI thread. */
+    private final java.util.Set<Workspace> detecting = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** Bumped whenever a workspace changes, so a pass that started before the change is done again. */
+    private final Map<Workspace, Integer> generations = new java.util.concurrent.ConcurrentHashMap<>();
+
     public ExecutionService(Ide ide, ExtensionRegistry registry) {
         this.ide = ide;
         this.registry = registry;
+        // What a project holds decides what is detected, so a change to it is a reason to look again.
+        ide.events().subscribe(com.smide.api.util.Events.FilesChanged.class, e -> redetect(e.workspace()));
+        ide.events().subscribe(com.smide.api.util.Events.WorkspaceClosed.class, e -> forget(e.workspace()));
     }
 
     public void addStartListener(Consumer<ProcessConsole> listener) {
@@ -76,6 +86,10 @@ public final class ExecutionService implements Execution {
      * project import finished, so detection can now see main classes and tests.
      */
     public void configurationsChanged() {
+        // An import finishing is what lets detection see main classes and tests: look again.
+        for (Workspace workspace : List.copyOf(detected.keySet())) {
+            redetect(workspace);
+        }
         fireConfigurations();
     }
 
@@ -249,22 +263,74 @@ public final class ExecutionService implements Execution {
 
     // --------------------------------------------------------- configurations
 
+    /**
+     * The saved configurations, and the ones detection has found so far.
+     *
+     * <p>Detection walks the project - every language looking for its programs and tests -
+     * and it used to do so right here, on every call. This is called from the UI thread by
+     * the run toolbar, the run list and Search Everywhere, so each of them froze the window
+     * for as long as the walk took: most of a second in a Go module, several in a folder
+     * like site-packages. Now the walk happens off the UI thread, once, and again only when
+     * the project changes; what it finds arrives through the configurations listeners.
+     */
     @Override
     public List<RunConfiguration> configurations(Workspace workspace) {
         List<RunConfiguration> out = new ArrayList<>(load(workspace));
-        for (RunConfigurationType type : registry.runTypes()) {
-            try {
-                for (RunConfiguration detected : type.detect(workspace)) {
-                    boolean dup = out.stream().anyMatch(c -> c.name().equals(detected.name()) && c.type() == type);
-                    if (!dup) {
-                        out.add(detected);
-                    }
-                }
-            } catch (RuntimeException e) {
-                System.err.println("smIDE: run configuration detection failed for " + type.id() + ": " + e);
+        List<RunConfiguration> found = detected.get(workspace);
+        if (found == null) {
+            startDetection(workspace);
+            return out;
+        }
+        for (RunConfiguration candidate : found) {
+            boolean dup = out.stream().anyMatch(c -> c.name().equals(candidate.name()) && c.type() == candidate.type());
+            if (!dup) {
+                out.add(candidate);
             }
         }
         return out;
+    }
+
+    /** Looks at a workspace again, off the UI thread; what was found stays until the new answer arrives. */
+    public void redetect(Workspace workspace) {
+        if (workspace == null) {
+            return;
+        }
+        generations.merge(workspace, 1, Integer::sum);
+        startDetection(workspace);
+    }
+
+    private void forget(Workspace workspace) {
+        detected.remove(workspace);
+        generations.remove(workspace);
+        saved.remove(workspace);
+    }
+
+    private void startDetection(Workspace workspace) {
+        if (!detecting.add(workspace)) {
+            // Already looking; the generation bump makes that pass run once more when it ends.
+            return;
+        }
+        int generation = generations.getOrDefault(workspace, 0);
+        List<RunConfigurationType> types = List.copyOf(registry.runTypes());
+        ide.window().runInBackground(() -> {
+            List<RunConfiguration> found = new ArrayList<>();
+            for (RunConfigurationType type : types) {
+                try {
+                    found.addAll(type.detect(workspace));
+                } catch (RuntimeException e) {
+                    System.err.println("smIDE: run configuration detection failed for " + type.id() + ": " + e);
+                }
+            }
+            ide.window().runLater(() -> {
+                detecting.remove(workspace);
+                if (generations.getOrDefault(workspace, 0) != generation) {
+                    startDetection(workspace);
+                    return;
+                }
+                detected.put(workspace, found);
+                fireConfigurations();
+            });
+        });
     }
 
     private List<RunConfiguration> load(Workspace workspace) {

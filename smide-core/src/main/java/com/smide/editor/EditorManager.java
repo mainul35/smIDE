@@ -197,12 +197,18 @@ public final class EditorManager implements Editors {
             notifications.warn("File not found", target.toString());
             return null;
         }
-        /* A file the IDE itself produced - the read-only source pulled out of a library
-           jar - belongs to the project the reader came from, not to a project of its own.
-           Left to the rule below it would open the IDE's own home directory as a
-           workspace, which is not a project and is full of everything else the user owns. */
-        WorkspaceImpl workspace = workspaces.containingImpl(target)
-                .or(() -> target.startsWith(LIBRARY_SOURCES) ? workspaces.activeImpl() : Optional.empty())
+        /* A jump into a file outside every open project - a declaration in the Go module
+           cache or the Go standard library, in site-packages, in the cargo registry, or a
+           source pulled out of a library jar - belongs to the project the reader came from.
+           It used to open that library's folder as a project of its own: GOROOT/src has a
+           go.mod, so one Ctrl+click on fmt.Println imported the whole standard library,
+           walked it for run configurations, and started a second gopls on it - minutes of
+           work, with the editor waiting. Opening a file deliberately, with no position,
+           still opens its project. */
+        Optional<WorkspaceImpl> owner = workspaces.containingImpl(target);
+        boolean library = owner.isEmpty() && staysInCurrentProject(target, line, workspaces.activeImpl().isPresent());
+        WorkspaceImpl workspace = owner
+                .or(() -> library ? workspaces.activeImpl() : Optional.empty())
                 .orElseGet(() -> workspaces.openImpl(projectRootFor(target)));
         workspaces.select(workspace);
 
@@ -216,7 +222,7 @@ public final class EditorManager implements Editors {
                         "At most " + MAX_DOCUMENTS_PER_WORKSPACE + " files per workspace; close some first.");
                 return null;
             }
-            Editor editor = createEditor(workspace, target);
+            Editor editor = createEditor(workspace, target, library && isDependency(target));
             if (editor == null) {
                 return null;
             }
@@ -245,7 +251,29 @@ public final class EditorManager implements Editors {
         return editor;
     }
 
-    private Editor createEditor(WorkspaceImpl workspace, Path target) {
+    /**
+     * Whether a file outside every project opens in the current one rather than as a project.
+     *
+     * <p>A library copy the IDE wrote always does; any other outside file does when it was
+     * reached by a jump to a position - a declaration, a search hit, a stack frame - and
+     * there is a project to stay in.
+     */
+    static boolean staysInCurrentProject(Path target, int line, boolean hasActiveProject) {
+        return hasActiveProject && (target.startsWith(LIBRARY_SOURCES) || line >= 0);
+    }
+
+    /** Folders that hold other people's code, downloaded for a build: never the reader's to edit. */
+    private static final List<String> DEPENDENCY_FOLDERS = List.of("/pkg/mod/", "/site-packages/", "/dist-packages/",
+            "/.cargo/registry/", "/.cargo/git/", "/node_modules/", "/.m2/repository/", "/.gradle/caches/",
+            "/.nuget/packages/", "/.rustup/toolchains/");
+
+    /** A dependency's file: in a package cache, or not writable - as the Go module cache and GOROOT are. */
+    static boolean isDependency(Path file) {
+        String text = file.toAbsolutePath().normalize().toString().replace('\\', '/').toLowerCase(java.util.Locale.ROOT);
+        return DEPENDENCY_FOLDERS.stream().anyMatch(text::contains) || !Files.isWritable(file);
+    }
+
+    private Editor createEditor(WorkspaceImpl workspace, Path target, boolean dependency) {
         for (EditorProvider provider : registry.editorProviders()) {
             try {
                 if (provider.accepts(target)) {
@@ -274,7 +302,7 @@ public final class EditorManager implements Editors {
         }
         LanguageSupport language = languages.forFileOrPlain(target);
         CodeEditor editor = new CodeEditor(workspace, target, language, settings, breakpoints);
-        if (target.startsWith(LIBRARY_SOURCES)) {
+        if (target.startsWith(LIBRARY_SOURCES) || dependency) {
             editor.markExternalSource();
         }
         return editor;

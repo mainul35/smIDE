@@ -177,9 +177,53 @@ public final class JdtLauncher implements LanguageServerLauncher {
 
     private Path dataDir(Ide ide, Workspace workspace) {
         String key = Integer.toHexString(workspace.root().toString().hashCode());
-        Path dir = ide.homeDir().resolve("jdtls-data").resolve(workspace.name() + "-" + key);
+        Path dir = freeDataDir(ide.homeDir().resolve("jdtls-data"), workspace.name() + "-" + key);
         discardIfJdkChanged(ide, dir, JavaTools.projectJdk(ide, workspace, registry).home());
         return dir;
+    }
+
+    /** Data folders this process has taken, kept locked until it exits. */
+    private static final Map<Path, java.nio.channels.FileChannel> HELD = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * A data folder for a project that no other smIDE process is using.
+     *
+     * <p>Two servers writing one Eclipse workspace corrupt it: its index is thrown away as
+     * broken and rebuilt, and every request waits while that happens. It is easy to get
+     * there - smIDE run from source for debugging, opening the same project as the smIDE
+     * that started it. The first process keeps the usual folder; another gets a numbered
+     * one beside it, which it will find again next time.
+     */
+    static Path freeDataDir(Path base, String name) {
+        for (int i = 1; i <= 10; i++) {
+            Path candidate = base.resolve(i == 1 ? name : name + "-" + i);
+            if (hold(candidate)) {
+                return candidate;
+            }
+        }
+        return base.resolve(name);
+    }
+
+    /** Takes a data folder for this process; false when another process holds it. */
+    static boolean hold(Path dir) {
+        if (HELD.containsKey(dir)) {
+            return true;
+        }
+        try {
+            Files.createDirectories(dir.getParent());
+            java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(
+                    dir.resolveSibling(dir.getFileName() + ".lock"),
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
+            if (channel.tryLock() == null) {
+                channel.close();
+                return false;
+            }
+            HELD.put(dir, channel);
+            return true;
+        } catch (IOException | RuntimeException e) {
+            // Locking is not available here: carry on as before rather than refuse to start.
+            return true;
+        }
     }
 
     /**

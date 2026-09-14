@@ -156,7 +156,7 @@ final class LibrarySources {
         }
         if (Files.isRegularFile(artifact.localPath())) {
             openFromJar(ide, artifact.localPath(), type.get(), artifact.label(), open);
-            reconfigureQuietly(session, fileInProject);
+            reconfigureQuietly(session, fileInProject, artifact);
             return true;
         }
         boolean yes = ide.window().confirm("Download sources",
@@ -175,7 +175,7 @@ final class LibrarySources {
                 Platform.runLater(() -> {
                     progress.done();
                     openFromJar(ide, artifact.localPath(), type.get(), artifact.label(), open);
-                    reconfigureQuietly(session, fileInProject);
+                    reconfigureQuietly(session, fileInProject, artifact);
                 });
             } catch (IOException e) {
                 Platform.runLater(() -> {
@@ -416,9 +416,12 @@ final class LibrarySources {
      * <p>Best effort and silent: the source is already open by this point, so a failure
      * here is not something to put in front of the user.
      */
-    private static void reconfigureQuietly(LspSession session, Path fileInProject) {
+    private static void reconfigureQuietly(LspSession session, Path fileInProject, Artifact artifact) {
         Path build = buildFileFor(fileInProject);
-        if (build == null) {
+        /* Once per library per session. It re-imports the module, which in a large reactor
+           keeps the server busy for a long while - and it used to happen on every click into
+           the same library, so each navigation queued behind the last one's re-import. */
+        if (build == null || !RECONFIGURED.add(build + "|" + artifact.label())) {
             return;
         }
         try {
@@ -433,6 +436,9 @@ final class LibrarySources {
             System.err.println("smIDE: could not update the project configuration: " + e);
         }
     }
+
+    /** Libraries whose project has already been asked to attach their sources this session. */
+    private static final java.util.Set<String> RECONFIGURED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /** The nearest build file above a source file. */
     private static Path buildFileFor(Path file) {
