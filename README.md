@@ -31,8 +31,9 @@ release its build asks for, or one pinned under Settings > Languages > Java.
 remove one, or all of a file's - a disabled breakpoint stays in place and the running
 program passes it by, even when it is changed mid-session. **Condition...** makes a
 breakpoint stop only when an expression such as `i == 20` is true (drawn as a diamond); one
-that cannot be worked out stops anyway and says why, rather than silently never stopping. Debug attaches over JDWP with JDI and
-stops there: call stack, variables (objects and arrays expandable), step over/into/out,
+that cannot be worked out stops anyway and says why, rather than silently never stopping. Java is debugged over JDWP with JDI;
+Go and Python through the Debug Adapter Protocol, with Delve and debugpy - and when either
+is missing, Debug offers to install it. A session stops there: call stack, variables (objects and arrays expandable), step over/into/out,
 resume, and an execution arrow in the gutter. Alt+F8 evaluates an expression in the frame
 you are stopped in - names, fields, array elements, method calls, literals, arithmetic and
 comparisons - and keeps it above the variables, re-read on every step until Delete drops

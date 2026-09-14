@@ -85,13 +85,14 @@ Container_Boundary(smide_boundary, "smIDE") {
     
     Container(editor, "Code Editor", "Java, RichTextFX", "Syntax highlighting, editing, line numbers")
     Container(lsp_client, "LSP Client", "Java, LSP4J", "Language Server Protocol communication")
-    Container(debugger, "Debugger UI", "Java, JDI", "Debug session management")
+    Container(debugger, "Debugger UI", "Java, JDI, DAP (lsp4j.debug)", "Debug session management")
     Container(terminal, "Terminal", "Java, PTY4J", "Shell integration")
     Container(git_tool, "Git Integration", "Java, JGit", "Version control operations")
 }
 
 Container_Ext(jvm, "JVM Runtime", "Java 21")
 Container_Ext(language_servers, "Language Servers", "External processes")
+Container_Ext(debug_adapters, "Debug Adapters", "Delve, debugpy - external processes")
 Container_Ext(git, "Git CLI", "System installation")
 
 Rel(user, smide_app, "Interacts with")
@@ -104,6 +105,7 @@ Rel(smide_core, debugger, "Provides")
 Rel(smide_core, terminal, "Provides")
 Rel(smide_core, git_tool, "Provides")
 Rel(lsp_client, language_servers, "Communicates via LSP")
+Rel(debugger, debug_adapters, "Communicates via DAP")
 Rel(git_tool, git, "Calls process")
 Rel(smide_app, jvm, "Runs on")
 
@@ -119,7 +121,7 @@ Rel(smide_app, jvm, "Runs on")
 | **smide-core** | RichTextFX, LSP4J, JGit | Core IDE: editor, LSP client, debugger, terminal, Git |
 | **Plugins** | Java | Language support (Java, Python, Kotlin, etc.) and features |
 | **LSP Client** | LSP4J | Protocol communication with language servers |
-| **Debugger UI** | JDI | Debug session management and UI |
+| **Debugger UI** | JDI for Java; the Debug Adapter Protocol (lsp4j.debug) for Go and Python | Debug session management and UI |
 
 ## 4. Component View
 
@@ -137,7 +139,7 @@ Component(plugin_loader, "Plugin Loader", "Java ServiceLoader", "Discovers and l
 Component(window_manager, "Window Manager", "JavaFX", "Manages windows and workspaces")
 Component(editor_service, "Editor Service", "RichTextFX", "Manages open files and editor instances")
 Component(lsp_manager, "LSP Manager", "LSP4J", "Starts and communicates with language servers")
-Component(debugger_service, "Debugger Service", "JDI", "Manages debug sessions")
+Component(debugger_service, "Debugger Service", "JDI, DAP", "Manages debug sessions")
 Component(terminal_service, "Terminal Service", "PTY4J", "Manages terminal instances")
 Component(git_service, "Git Service", "JGit", "Manages Git operations")
 Component(search_service, "Search Service", "Java", "Search everywhere, find in files")
@@ -268,6 +270,36 @@ jdi -> process: Continue
 process --> jdi: Stopped at breakpoint
 jdi -> debugger: Send stack, variables
 debugger -> ui: Update UI
+
+@enduml
+```
+
+### 5.4 Debug Session Flow (Debug Adapter Protocol)
+
+Go and Python are debugged through an adapter - Delve, debugpy - that the run configuration starts with the program, in the Run window, so the program's output stays there.
+
+```plantuml
+@startuml DAP Debug Flow
+
+participant "UI" as ui
+participant "ExecutionService" as exec
+participant "Language plugin" as plugin
+participant "DapSession" as dap
+participant "Adapter (dlv, debugpy)" as adapter
+
+ui -> exec: User clicks "Debug"
+exec -> plugin: prepare(DEBUG)
+plugin --> exec: adapter command, listening on a free port
+exec -> adapter: Start in the Run window
+exec -> plugin: attach(configuration, port, console)
+plugin -> dap: ide.debugAdapters().attach(...)
+dap -> adapter: initialize, attach
+adapter --> dap: initialized
+dap -> adapter: setBreakpoints (per file), configurationDone
+adapter --> dap: stopped
+dap -> adapter: stackTrace
+dap -> ui: Session suspended
+ui -> dap: variables, evaluate, next, continue
 
 @enduml
 ```

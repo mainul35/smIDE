@@ -65,14 +65,16 @@ context; everything is optional:
 | `ToolWindowFactory` | a docked panel with a stripe button, anchor LEFT/RIGHT/BOTTOM, optional shortcut |
 | `Action` | a command: menu path, shortcut, icon, toolbar group, context menu (`explorer`, `editor`), enablement, handler |
 | `ProjectImporter` | detects a build system at a workspace root and produces a `ProjectModel` |
-| `RunConfigurationType` | a kind of run configuration and its edit form |
+| `RunConfigurationType` | a kind of run configuration and its edit form; `supportsDebug()` enables Debug |
+| `Debugger` | attaches to a configuration started in debug mode - over the Debug Adapter Protocol with `ide.debugAdapters()`, or any way the plugin likes |
 | `SettingsPage` | a page in Settings at a path such as `Languages/Java` |
 | `NewProjectTemplate` | an entry in File → New Project |
 | `StatusBarWidget` | a small node on the right of the status bar |
 
 Services on `ctx.ide()`: `workspaces()`, `editors()`, `languages()`, `projects()`,
 `actions()`, `toolWindows()`, `execution()` (run a process into a console tab),
-`problems()` (diagnostics), `notifications()`, `statusBar()` (messages and progress),
+`problems()` (diagnostics), `breakpoints()`, `debugAdapters()` (debug sessions over the
+Debug Adapter Protocol), `notifications()`, `statusBar()` (messages and progress),
 `settings()`, `theme()`, `events()` (typed bus, see `com.smide.api.util.Events`),
 `downloads()` (fetch and unpack tools into `~/.smide/tools`), `window()` (stage,
 dialogs, `runLater`, `runInBackground`).

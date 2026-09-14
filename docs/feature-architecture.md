@@ -319,91 +319,77 @@ Output is displayed in console tool window
 
 ### 4.1 Feature Overview
 
-Debugging supports breakpoints, call stack, variables (expandable objects/arrays), step over/into/out, resume, execution arrow in gutter, and expression evaluation (Alt+F8) in the selected frame. Breakpoints are persisted in `.smide/breakpoints.json`.
+Breakpoints (enabled or disabled, optionally with a condition), the call stack, variables with expandable objects and arrays, watches, expression evaluation (Alt+F8) in the selected frame, the value of a name shown when pointing at it while stopped, step over/into/out, resume and stop. Breakpoints belong to files, not sessions, and are persisted in `.smide/breakpoints.json`.
+
+Java is debugged through JDI. Go and Python are debugged through the Debug Adapter Protocol: Delve and debugpy.
 
 ### 4.2 Components
 
 ```
+smide-api/src/main/java/com/smide/api/debug/
+├── Breakpoint.java, Breakpoints.java    # Breakpoints, owned by the core
+├── DebugSession.java                    # What the Debug window reads: frames, variables, evaluate, stepping
+├── Debugger.java                        # Registered by a plugin: attaches to a configuration's process
+└── DebugAdapters.java                   # The core's DAP client, as plugins see it
+
+smide-api/src/main/java/com/smide/api/execution/
+└── CannotRunException.java              # A refusal with actions, such as "Install Delve"
+
 smide-core/src/main/java/com/smide/debug/
-├── DebuggerService.java              # Main debugger service
-├── DebugSession.java                 # Represents a debug session
-├── BreakpointManager.java            # Manages breakpoints
-├── DebugProtocolClient.java          # JDWP protocol implementation
-├── StackFrameProvider.java           # Provides call stack
-├── VariableProvider.java             # Provides variable values
-├── DebugGutter.java                  # Gutter with breakpoint indicators
-├── VariablesView.java                # UI for variables panel
-├── CallStackView.java                # UI for call stack panel
-└── DebugConsole.java                 # Debug console output
+├── BreakpointService.java               # Stores, persists and announces breakpoints
+├── DebugToolWindow.java                 # Stack, variables, watches, evaluate bar, controls
+├── VariableTree.java                    # Expandable variables, shared with the hover
+├── DebugHover.java                      # A variable's value when pointing at it while stopped
+└── dap/
+    ├── DapSession.java                  # A DebugSession over DAP (lsp4j.debug)
+    └── DebugAdaptersImpl.java
 
-plugins/smide-plugin-java/src/main/java/com/smide/plugin/java/
-└── JavaDebuggerProvider.java         # Java-specific debugging
+smide-core/src/main/java/com/smide/editor/GutterFactory.java        # Breakpoint gutter and its context menu
+smide-core/src/main/java/com/smide/execution/ExecutionService.java  # Runs in debug mode, finds the Debugger
+
+plugins/smide-plugin-java/.../debug/        # JavaDebugger, JdiSession, JdiEvaluator
+plugins/smide-plugin-lang-go/.../go/        # GoDebugger; GoRunType starts dlv debug/test headless
+plugins/smide-plugin-lang-python/.../python/ # PythonDebugger; PythonRunType starts python -m debugpy
 ```
 
-### 4.3 Key Classes
-
-**DebuggerService** (`smide.debug.DebuggerService`)
-- Manages debug session lifecycle
-- Coordinates with language server for Java debugging
-- Provides API to start/stop/debug
-
-**BreakpointManager** (`smide.debug.BreakpointManager`)
-- Stores breakpoints per project
-- Persists breakpoints to `.smide/breakpoints.json`
-- Syncs breakpoints with debug session
-
-**DebugSession** (`smide.debug.DebugSession`)
-- Represents an active debug session
-- Manages connection to debugged process
-- Handles breakpoints, stepping, etc.
-
-### 4.4 Data Flow
+### 4.3 How a Session Starts
 
 ```
-User sets breakpoint (clicks gutter)
+User clicks Debug on a configuration whose type supportsDebug()
     ↓
-BreakpointManager records breakpoint
+ExecutionService prepares it with ExecutionMode.DEBUG, off the UI thread
+    (a CannotRunException becomes a notification with its actions)
     ↓
-User clicks "Debug"
+The process starts in the Run window, waiting for a debugger:
+    java -agentlib:jdwp=...suspend=y / dlv debug --headless / python -m debugpy --wait-for-client
     ↓
-DebuggerService launches JDWP process
+ExecutionService asks the Debugger that supports() the configuration to attach
     ↓
-DebugSession connects to process
+Java: JdiSession attaches over JDWP
+Others: ide.debugAdapters().attach() -> DapSession
+    initialize -> attach -> "initialized" -> setBreakpoints per file -> configurationDone
     ↓
-BreakpointManager sends breakpoints to session
+The program stops: the stack is fetched, then the Debug window is told (on the JavaFX thread)
     ↓
-Process runs and stops at breakpoint
-    ↓
-DebugProtocolClient receives stop event
-    ↓
-StackFrameProvider and VariableProvider fetch state
-    ↓
-UI updates (call stack, variables, gutter arrow)
+A breakpoint added, removed, disabled or given a condition re-sends its file's whole list
 ```
 
-### 4.5 Extension Points
+The Debug window calls the session on the JavaFX thread and expects an answer at once. `DapSession` therefore fetches the stack when the program stops, and bounds every other request (variables opened, expressions typed) to a few seconds.
 
-**For Plugin Developers:**
+### 4.4 How to Add Debugging for a New Language
 
-1. **Debugger Provider**: Implement `DebuggerProvider` for new languages
-2. **Breakpoint Storage**: Customize breakpoint persistence
-3. **Debug UI**: Add custom debug panels
+1. Return `true` from `supportsDebug()` in the run configuration type.
+2. In `prepare(ide, ExecutionMode.DEBUG)`, start the program under its debug adapter, listening on `DebugAdapters.freePort()`, and store the port in the configuration as `debugPort`.
+3. Implement `Debugger`: `supports()` the configuration type, and `attach(ide, configuration, port, console)` by calling `ide.debugAdapters().attach(name, port, attachArguments, timeout, console)`.
+4. When the adapter is missing, throw `CannotRunException` with a `NotificationAction` that installs it.
+5. Register it with `context.registerDebugger(...)`.
 
-### 4.6 How to Add Debugging for a New Language
+### 4.5 Known Limitations
 
-1. Implement `DebuggerProvider` interface
-2. Provide:
-   - Debug command (e.g., `java -agentlib:jdwp`)
-   - JDWP configuration
-   - Breakpoint format for the language
-3. Register in plugin
-4. Test by debugging a simple program
-
-### 4.7 Known Limitations
-
-- JDWP is Java-specific (other languages need different protocols)
-- Breakpoints are line-based (no conditional breakpoints in v1)
-- Variable evaluation is limited to supported types
+- Sessions attach to an adapter that is already running the program. Adapters that launch the program themselves (CodeLLDB, netcoredbg, js-debug) are not supported yet, so Node.js, Rust, C/C++, C#, Kotlin and shell scripts cannot be debugged.
+- For DAP sessions every source line counts as belonging to the stopped frame, so pointing at a name reads it as written.
+- Delve debugs the tests of one package at a time.
+- On Windows without long paths, debugpy cannot start from a very deep home folder; the installer says so.
 
 ---
 
