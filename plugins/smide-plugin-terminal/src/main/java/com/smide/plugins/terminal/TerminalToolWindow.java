@@ -162,7 +162,19 @@ final class TerminalToolWindow implements ToolWindowFactory {
         int number = counters.merge(base, 1, Integer::sum);
         String title = base + " " + number;
 
-        TerminalSession session = new TerminalSession(ide, settings, dir, title);
+        TerminalSession session;
+        try {
+            session = new TerminalSession(ide, settings, dir, title);
+        } catch (LinkageError | RuntimeException e) {
+            /* The emulator is Swing inside a SwingNode, which needs the jdk.unsupported.desktop
+               module. A runtime built without it threw here, on the JavaFX thread, before any
+               tab existed - so pressing + showed nothing at all, not even an error. */
+            counters.merge(base, -1, Integer::sum);
+            String message = "The terminal cannot start in this Java runtime: " + e;
+            empty.setText(message);
+            ide.notifications().error("Terminal", message);
+            return null;
+        }
         Tab tab = new Tab(title, session.node());
         tab.setGraphic(new FontIcon("fth-terminal"));
         tab.setTooltip(new Tooltip(dir.toString()));

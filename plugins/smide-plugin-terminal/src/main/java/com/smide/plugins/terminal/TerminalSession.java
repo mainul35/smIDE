@@ -88,7 +88,8 @@ final class TerminalSession {
                         .setInitialColumns(INITIAL_COLUMNS)
                         .setInitialRows(INITIAL_ROWS)
                         .start();
-            } catch (Exception e) {
+            } catch (Exception | LinkageError e) {
+                // LinkageError too: a missing native or class would otherwise end this thread silently.
                 failed(command[0], e);
                 return;
             }
@@ -135,7 +136,7 @@ final class TerminalSession {
     }
 
     /** Reports a shell that could not be started. Background thread. */
-    private void failed(String executable, Exception e) {
+    private void failed(String executable, Throwable e) {
         String message = "Could not start " + executable + ": " + e.getMessage();
         Platform.runLater(() -> {
             if (disposed.get()) {
