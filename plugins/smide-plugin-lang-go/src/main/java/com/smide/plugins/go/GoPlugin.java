@@ -41,6 +41,7 @@ public final class GoPlugin implements Plugin {
         context.registerLanguage(new GoModLanguage());
         context.registerToolchain(toolchain);
         context.registerRunConfigurationType(new GoRunType(context.ide(), toolchain::locate));
+        context.registerDebugger(new GoDebugger());
         context.registerSettingsPage(new GoSettingsPage(context.ide(), toolchain));
     }
 
@@ -177,31 +178,7 @@ public final class GoPlugin implements Plugin {
         }
 
         private static Optional<Path> locate() {
-            String exe = WINDOWS ? "gopls.exe" : "gopls";
-            String home = System.getProperty("user.home", ".");
-            String gopath = System.getenv("GOPATH");
-            List<Path> candidates = new java.util.ArrayList<>();
-            if (gopath != null && !gopath.isBlank()) {
-                for (String part : gopath.split(File.pathSeparator)) {
-                    candidates.add(Path.of(part, "bin", exe));
-                }
-            }
-            candidates.add(Path.of(home, "go", "bin", exe));
-            for (Path candidate : candidates) {
-                if (Files.isRegularFile(candidate)) {
-                    return Optional.of(candidate);
-                }
-            }
-            String path = System.getenv("PATH");
-            if (path != null) {
-                for (String dir : path.split(File.pathSeparator)) {
-                    Path candidate = Path.of(dir.isBlank() ? "." : dir, exe);
-                    if (Files.isRegularFile(candidate)) {
-                        return Optional.of(candidate);
-                    }
-                }
-            }
-            return Optional.empty();
+            return GoBinaries.find("gopls");
         }
 
         @Override

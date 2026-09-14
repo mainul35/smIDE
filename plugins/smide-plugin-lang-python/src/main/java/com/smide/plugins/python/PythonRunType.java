@@ -24,11 +24,13 @@ public final class PythonRunType extends CommandRunType {
     private static final Pattern MAIN = Pattern.compile("if\\s+__name__\\s*==\\s*[\"']__main__[\"']");
     private static final int MAX_DETECTED = 50;
 
+    static final String ID = "python.run";
+
     private final Function<Ide, Optional<Path>> python;
 
     /** @param python finds an interpreter installed on the machine, or nothing */
     public PythonRunType(Ide ide, Function<Ide, Optional<Path>> python) {
-        super(ide, "python.run", "Python", "mdi2l-language-python");
+        super(ide, ID, "Python", "mdi2l-language-python");
         this.python = python;
     }
 
@@ -47,12 +49,17 @@ public final class PythonRunType extends CommandRunType {
     }
 
     @Override
+    public boolean supportsDebug() {
+        return true;
+    }
+
+    @Override
     protected String note() {
         return "Uses the project's .venv, venv or env when there is one, so the packages installed there are importable.";
     }
 
     @Override
-    protected Command command(Config c, ExecutionMode mode) {
+    protected Command command(Config c, ExecutionMode mode) throws Exception {
         Path root = c.workspace().root();
         Path interpreter = interpreter(c, root);
         String kind = c.get("kind", "script");
@@ -77,7 +84,11 @@ public final class PythonRunType extends CommandRunType {
         }
         cmd.addAll(Forms.splitArgs(c.get("args", "")));
         // Unbuffered and UTF-8, so output reaches the console as it happens and non-ASCII prints on Windows.
-        return new Command(cmd, root, Map.of("PYTHONUNBUFFERED", "1", "PYTHONIOENCODING", "utf-8"));
+        Map<String, String> env = Map.of("PYTHONUNBUFFERED", "1", "PYTHONIOENCODING", "utf-8");
+        if (mode == ExecutionMode.DEBUG) {
+            return PythonDebugger.command(ide, c, interpreter, cmd, root, env);
+        }
+        return new Command(cmd, root, env);
     }
 
     private Path interpreter(Config c, Path root) {

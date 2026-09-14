@@ -50,6 +50,9 @@ public interface Ide {
     /** Breakpoints, shared by the gutter and whichever debugger runs. */
     com.smide.api.debug.Breakpoints breakpoints();
 
+    /** Debug sessions over the Debug Adapter Protocol, for plugins whose debugger speaks it. */
+    com.smide.api.debug.DebugAdapters debugAdapters();
+
     Notifications notifications();
 
     StatusBar statusBar();

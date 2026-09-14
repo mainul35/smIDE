@@ -175,15 +175,21 @@ public final class ExecutionService implements Execution {
                 spec = configuration.prepare(ide, mode);
             } catch (Exception e) {
                 String message = e.getMessage() == null ? e.toString() : e.getMessage();
-                ide.notifications().error("Cannot run " + configuration.name(), message);
+                // A missing tool comes with the button that installs it.
+                com.smide.api.ui.Notifications.NotificationAction[] actions =
+                        e instanceof com.smide.api.execution.CannotRunException cannot
+                                ? cannot.actions().toArray(new com.smide.api.ui.Notifications.NotificationAction[0])
+                                : new com.smide.api.ui.Notifications.NotificationAction[0];
+                ide.notifications().error((mode == ExecutionMode.DEBUG ? "Cannot debug " : "Cannot run ")
+                        + configuration.name(), message, actions);
                 progress.done();
                 return;
             }
             progress.done();
             ide.window().runLater(() -> {
-                run(spec);
+                ConsoleHandle console = run(spec);
                 if (mode == ExecutionMode.DEBUG) {
-                    attachDebugger(configuration);
+                    attachDebugger(configuration, console);
                 }
             });
         });
@@ -204,7 +210,7 @@ public final class ExecutionService implements Execution {
      * begin; if no plugin can debug this kind of configuration the user is told, because
      * otherwise the program would sit there for ever with no explanation.
      */
-    private void attachDebugger(RunConfiguration configuration) {
+    private void attachDebugger(RunConfiguration configuration, ConsoleHandle console) {
         com.smide.api.debug.Debugger debugger = registry.debuggers().stream()
                 .filter(d -> d.supports(configuration))
                 .findFirst()
@@ -218,7 +224,7 @@ public final class ExecutionService implements Execution {
         StatusBar.Progress progress = ide.statusBar().progress("Attaching the debugger", false);
         ide.window().runInBackground(() -> {
             try {
-                com.smide.api.debug.DebugSession session = debugger.attach(ide, configuration, port);
+                com.smide.api.debug.DebugSession session = debugger.attach(ide, configuration, port, console);
                 ide.window().runLater(() -> {
                     if (debugSessionSink != null) {
                         debugSessionSink.accept(session);

@@ -22,4 +22,14 @@ public interface Debugger {
      * a message the user can act on.
      */
     DebugSession attach(Ide ide, RunConfiguration configuration, int port) throws Exception;
+
+    /**
+     * Attaches, knowing the console the program was started in: a debugger waiting for the
+     * program to open its port can stop waiting once the program has ended - a build that
+     * failed, say - instead of waiting out its whole timeout.
+     */
+    default DebugSession attach(Ide ide, RunConfiguration configuration, int port,
+                                com.smide.api.execution.ConsoleHandle console) throws Exception {
+        return attach(ide, configuration, port);
+    }
 }

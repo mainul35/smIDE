@@ -65,6 +65,11 @@ public final class GoRunType implements RunConfigurationType {
     }
 
     @Override
+    public boolean supportsDebug() {
+        return true;
+    }
+
+    @Override
     public RunConfiguration create(Workspace workspace) {
         Config c = new Config(workspace);
         c.setName("Go");
@@ -123,6 +128,9 @@ public final class GoRunType implements RunConfigurationType {
                             + ", or set its folder in Settings > Languages > Go."));
             String kind = get("kind", "run");
             Launch launch = launch(workspace.root(), get("target", "."), kind);
+            if (mode == ExecutionMode.DEBUG) {
+                return debug(goBinary, kind, launch);
+            }
             List<String> cmd = new ArrayList<>();
             cmd.add(goBinary.toString());
             cmd.add(kind.equals("test") || kind.equals("build") ? kind : "run");
@@ -139,6 +147,68 @@ public final class GoRunType implements RunConfigurationType {
             String wd = get("workingDir", "");
             Path cwd = wd.isBlank() ? launch.directory() : Path.of(wd);
             return new ProcessSpec(name(), cmd, cwd, Forms.environment(get("env", "")));
+        }
+
+        /**
+         * The program or tests under Delve, headless: the output stays in the Run window, and
+         * the IDE attaches to Delve over the Debug Adapter Protocol.
+         */
+        private ProcessSpec debug(Path goBinary, String kind, Launch launch) throws Exception {
+            if (kind.equals("build")) {
+                throw new com.smide.api.execution.CannotRunException(
+                        "A go build has nothing to debug. Choose run or test as the kind.");
+            }
+            Path dlv = GoBinaries.find("dlv").orElseThrow(() -> new com.smide.api.execution.CannotRunException(
+                    "Debugging Go needs Delve, the Go debugger, which is not installed.",
+                    new com.smide.api.ui.Notifications.NotificationAction("Install Delve",
+                            () -> GoDebugger.install(ide, goBinary))));
+            List<String> cmd = new ArrayList<>();
+            cmd.add(dlv.toString());
+            if (kind.equals("test")) {
+                if (launch.targets().size() != 1 || launch.targets().get(0).endsWith("...")) {
+                    throw new com.smide.api.execution.CannotRunException("Delve debugs the tests of one package at a"
+                            + " time. Set the package, such as ./internal/store, instead of " + get("target", ".") + ".");
+                }
+                cmd.add("test");
+            } else {
+                cmd.add("debug");
+            }
+            cmd.addAll(launch.targets());
+            // Delve writes the binary it debugs beside the sources unless told otherwise, leaving
+            // a __debug_bin in the project after every session.
+            Path binary = java.nio.file.Files.createTempDirectory("smide-dlv")
+                    .resolve(System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")
+                            ? "__debug_bin.exe" : "__debug_bin");
+            binary.getParent().toFile().deleteOnExit();
+            cmd.add("--output=" + binary);
+            int port = com.smide.api.debug.DebugAdapters.freePort();
+            set("debugPort", String.valueOf(port));
+            cmd.addAll(List.of("--headless", "--listen=127.0.0.1:" + port, "--api-version=2"));
+            String flags = get("flags", "").strip();
+            if (!flags.isEmpty()) {
+                cmd.add("--build-flags=" + flags);
+            }
+            List<String> programArgs = new ArrayList<>();
+            if (kind.equals("test")) {
+                String filter = get("testFilter", "");
+                if (!filter.isBlank()) {
+                    programArgs.addAll(List.of("-test.run", filter));
+                }
+            } else {
+                programArgs.addAll(Forms.splitArgs(get("args", "")));
+            }
+            if (!programArgs.isEmpty()) {
+                cmd.add("--");
+                cmd.addAll(programArgs);
+            }
+            String wd = get("workingDir", "");
+            Path cwd = wd.isBlank() ? launch.directory() : Path.of(wd);
+            // Delve runs go build itself, so the toolchain found here goes on its PATH.
+            java.util.Map<String, String> env = new java.util.HashMap<>();
+            env.put("PATH", goBinary.getParent() + java.io.File.pathSeparator
+                    + java.util.Objects.requireNonNullElse(System.getenv("PATH"), ""));
+            env.putAll(Forms.environment(get("env", "")));
+            return new ProcessSpec(name(), cmd, cwd, env);
         }
     }
 

@@ -155,6 +155,8 @@ public final class DownloadsImpl implements Downloads {
     public void runTool(List<String> command, Path workingDir, ProgressReporter progress) throws IOException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         if (workingDir != null) {
+            // The tools folder does not exist until something is installed into it.
+            Files.createDirectories(workingDir);
             pb.directory(workingDir.toFile());
         }
         Process process = pb.start();

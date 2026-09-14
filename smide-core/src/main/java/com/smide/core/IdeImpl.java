@@ -99,6 +99,7 @@ public final class IdeImpl implements Ide {
     private final PluginManager plugins;
     private final SessionStore sessionStore;
     private final FileIndex fileIndex = new FileIndex();
+    private final com.smide.debug.dap.DebugAdaptersImpl debugAdapters = new com.smide.debug.dap.DebugAdaptersImpl(this);
     private ToolWindowManager toolWindows;
     private ExplorerToolWindow explorer;
     private FindInPathToolWindow findInPath;
@@ -620,6 +621,11 @@ public final class IdeImpl implements Ide {
     @Override
     public Downloads downloads() {
         return downloads;
+    }
+
+    @Override
+    public com.smide.api.debug.DebugAdapters debugAdapters() {
+        return debugAdapters;
     }
 
     @Override
