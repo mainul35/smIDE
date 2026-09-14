@@ -318,6 +318,16 @@ public final class GoRunType implements RunConfigurationType {
         boolean recursive = written.endsWith("/...") || written.equals("...");
         String base = recursive ? written.substring(0, Math.max(0, written.length() - 4)) : written;
         Path path = root.resolve(base.isEmpty() ? "." : base).normalize();
+        /* Said plainly when the target is not there: listing it as a folder threw an exception
+           whose whole message was the path, and "Cannot run" followed by a path told the
+           reader nothing about what was wrong with it. */
+        if (!Files.exists(path)) {
+            throw new IllegalStateException("There is no " + written + " in " + root
+                    + ". Point the configuration at a Go file, a folder or a package that exists.");
+        }
+        if (!Files.isRegularFile(path) && !Files.isDirectory(path)) {
+            throw new IllegalStateException(path + " is neither a Go file nor a folder, so there is nothing to run.");
+        }
         Path dir = Files.isRegularFile(path) ? path.getParent() : path;
         Path module = moduleOf(dir, root);
         if (module != null) {

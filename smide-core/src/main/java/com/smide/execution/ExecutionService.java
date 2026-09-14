@@ -174,7 +174,7 @@ public final class ExecutionService implements Execution {
             try {
                 spec = configuration.prepare(ide, mode);
             } catch (Exception e) {
-                String message = e.getMessage() == null ? e.toString() : e.getMessage();
+                String message = describe(e);
                 // A missing tool comes with the button that installs it.
                 com.smide.api.ui.Notifications.NotificationAction[] actions =
                         e instanceof com.smide.api.execution.CannotRunException cannot
@@ -194,6 +194,33 @@ public final class ExecutionService implements Execution {
             });
         });
         return null;
+    }
+
+    /**
+     * What went wrong, in words.
+     *
+     * <p>A file system exception's message is only the path it was about, so "Cannot run"
+     * followed by a path said nothing about what was wrong with it. The kind goes in front,
+     * and anything not a plain refusal is also written out whole for whoever reads the log.
+     */
+    static String describe(Exception e) {
+        if (!(e instanceof com.smide.api.execution.CannotRunException) && !(e instanceof IllegalStateException)) {
+            System.err.println("smIDE: preparing a run failed:");
+            e.printStackTrace();
+        }
+        if (e instanceof java.nio.file.NoSuchFileException f) {
+            return "Not found: " + f.getFile();
+        }
+        if (e instanceof java.nio.file.NotDirectoryException f) {
+            return "Not a folder: " + f.getFile();
+        }
+        if (e instanceof java.nio.file.AccessDeniedException f) {
+            return "Permission denied: " + f.getFile();
+        }
+        if (e instanceof java.nio.file.FileSystemException f) {
+            return e.getClass().getSimpleName() + ": " + f.getFile() + (f.getReason() == null ? "" : " - " + f.getReason());
+        }
+        return e.getMessage() == null ? e.toString() : e.getMessage();
     }
 
     /** Set by the window so a session can be shown; null until the core is built. */
