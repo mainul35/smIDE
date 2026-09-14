@@ -238,7 +238,7 @@ public final class DeployToolWindow implements ToolWindowFactory {
         g.add(type, 1, 2);
         Button jpackage = button("Build with jpackage", "fth-download", () -> jpackage(ws, p, appName.getText(),
                 mainClass.getText(), type.getValue()));
-        boolean available = JavaTools.jdkTool(ide, "jpackage").isPresent();
+        boolean available = JavaTools.jdkTool(JavaTools.projectJdk(ide, ws, registry).home(), "jpackage").isPresent();
         jpackage.setDisable(!available);
         return new VBox(6, heading("Installer"), g, new HBox(6, jpackage),
                 note(available ? "Packages the built jar and its dependencies with a bundled runtime into target/installer. "
@@ -297,7 +297,8 @@ public final class DeployToolWindow implements ToolWindowFactory {
                 cmd.add("-DskipTests");
             }
         }
-        ConsoleHandle h = ide.execution().run(new ProcessSpec(goals, cmd, ws.root()));
+        ConsoleHandle h = ide.execution().run(new ProcessSpec(goals, cmd, ws.root(),
+                JavaTools.environment(JavaTools.launchJdk(ide, ws, registry).home())));
         if (h != null) {
             h.exitCode().thenAccept(code -> ide.window().runLater(this::rebuild));
         }
@@ -349,7 +350,8 @@ public final class DeployToolWindow implements ToolWindowFactory {
         }
         Path jar = jars.get(0);
         ide.execution().run(new ProcessSpec("java -jar " + jar.getFileName(),
-                List.of(JavaTools.javaExecutable(ide), "-jar", jar.toString()), jar.getParent()));
+                List.of(JavaTools.javaExecutable(JavaTools.launchJdk(ide, ws, registry).home()), "-jar", jar.toString()),
+                jar.getParent()));
     }
 
     private void docker(Workspace ws, String title, List<String> cmd) {
@@ -373,7 +375,8 @@ public final class DeployToolWindow implements ToolWindowFactory {
         Path jar = jars.get(0);
         Path input = jar.getParent();
         Path dest = ws.root().resolve(p.isGradle() ? "build/installer" : "target/installer");
-        List<String> cmd = new ArrayList<>(List.of(JavaTools.jdkTool(ide, "jpackage").orElse("jpackage"),
+        List<String> cmd = new ArrayList<>(List.of(
+                JavaTools.jdkTool(JavaTools.launchJdk(ide, ws, registry).home(), "jpackage").orElse("jpackage"),
                 "--input", input.toString(), "--main-jar", jar.getFileName().toString(), "--main-class", mainClass,
                 "--name", name.isBlank() ? p.artifactId() : name, "--type", type, "--dest", dest.toString()));
         if (!p.version().isBlank() && p.version().matches("\\d+(\\.\\d+){0,2}")) {

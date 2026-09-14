@@ -20,6 +20,11 @@ public final class JavaProjectRegistry {
         return workspace == null ? Optional.empty() : Optional.ofNullable(byRoot.get(workspace.root()));
     }
 
+    /** The release a workspace's build compiles for, or 0 when it does not say. */
+    public int requestedRelease(Workspace workspace) {
+        return get(workspace).map(JavaProjectInfo::javaVersion).orElse(0);
+    }
+
     public void remove(Workspace workspace) {
         byRoot.remove(workspace.root());
     }

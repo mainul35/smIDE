@@ -24,6 +24,8 @@ build lives a level down, such as `repo/server/pom.xml`. The Eclipse JDT Languag
 is downloaded on request and gives the intelligence above. Run configurations for
 Application, Spring Boot, JUnit, Maven goal and Gradle task are detected from the project
 and editable. A Maven tool window lists lifecycle phases, plugin goals and profiles.
+Each project builds and runs with its own JDK: the oldest installed one that suits the
+release its build asks for, or one pinned under Settings > Languages > Java.
 
 **Debugging.** Click the gutter to set a breakpoint; right-click it to disable, enable or
 remove one, or all of a file's - a disabled breakpoint stays in place and the running

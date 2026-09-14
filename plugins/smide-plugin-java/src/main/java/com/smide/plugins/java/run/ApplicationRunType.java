@@ -121,22 +121,24 @@ public final class ApplicationRunType implements RunConfigurationType {
             Path root = workspace.root();
             Path module = moduleDir();
             JavaProjectInfo info = registry.get(workspace).orElse(null);
+            // Built, run and debugged with the project's JDK, not whichever the IDE found first.
+            Path jdk = JavaTools.launchJdk(ide, workspace, registry).home();
             String classpath;
             if (info != null && info.isMaven()) {
-                classpath = MavenBuild.compileAndClasspath(ide, root, module, !flag("build", true));
+                classpath = MavenBuild.compileAndClasspath(ide, jdk, root, module, !flag("build", true));
             } else if (info != null && info.isGradle()) {
                 if (flag("build", true)) {
                     List<String> gradle = JavaTools.gradle(ide, root);
                     gradle.add("-q");
                     gradle.add("classes");
-                    MavenBuild.run(ide, gradle, root, "Building with Gradle");
+                    MavenBuild.run(ide, jdk, gradle, root, "Building with Gradle");
                 }
                 classpath = gradleClasspath(module);
             } else {
                 classpath = plainClasspath(root);
             }
             List<String> cmd = new ArrayList<>();
-            cmd.add(JavaTools.javaExecutable(ide));
+            cmd.add(JavaTools.javaExecutable(jdk));
             if (mode == ExecutionMode.DEBUG) {
                 /* suspend=y: the VM waits for the debugger, so a breakpoint on the first
                    line of main is honoured instead of being installed after it ran. */
@@ -150,7 +152,10 @@ public final class ApplicationRunType implements RunConfigurationType {
             cmd.addAll(Forms.splitArgs(get("args", "")));
             String wd = get("workingDir", "");
             Path cwd = wd.isBlank() ? module : Path.of(wd);
-            return new ProcessSpec(name(), cmd, cwd, Forms.environment(get("env", "")));
+            // JAVA_HOME for anything the program starts itself; the configuration's own variables win.
+            java.util.Map<String, String> env = new java.util.HashMap<>(JavaTools.environment(jdk));
+            env.putAll(Forms.environment(get("env", "")));
+            return new ProcessSpec(name(), cmd, cwd, env);
         }
 
         private String gradleClasspath(Path module) {

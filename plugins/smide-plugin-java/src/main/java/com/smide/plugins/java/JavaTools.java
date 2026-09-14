@@ -1,13 +1,18 @@
 package com.smide.plugins.java;
 
 import com.smide.api.Ide;
+import com.smide.api.workspace.Workspace;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Where the tools are: the JDK, Maven (wrapper first), Gradle (wrapper first), Docker.
@@ -103,13 +108,21 @@ public final class JavaTools {
      */
     private static List<Path> installed() {
         String programFiles = System.getenv().getOrDefault("ProgramFiles", "C:\\Program Files");
-        List<String> roots = WINDOWS
+        String home = System.getProperty("user.home", ".");
+        List<String> roots = new ArrayList<>(WINDOWS
                 ? List.of(programFiles + "\\Eclipse Adoptium", programFiles + "\\Java",
                           programFiles + "\\Microsoft", programFiles + "\\Zulu",
                           programFiles + "\\Amazon Corretto")
                 : List.of("/usr/lib/jvm", "/usr/java", "/opt/java", "/opt/jdk",
                           "/Library/Java/JavaVirtualMachines",
-                          System.getProperty("user.home", ".") + "/.sdkman/candidates/java");
+                          home + "/.sdkman/candidates/java"));
+        // Where IntelliJ puts the JDKs it downloads, on every platform.
+        roots.add(Path.of(home, ".jdks").toString());
+        return installedUnder(roots);
+    }
+
+    /** The JDK homes directly under each root, macOS bundles unwrapped, newest-looking first. */
+    static List<Path> installedUnder(List<String> roots) {
         List<Path> found = new ArrayList<>();
         for (String root : roots) {
             Path dir = Path.of(root);
@@ -127,7 +140,7 @@ public final class JavaTools {
             }
         }
         // Newest first, so java-21 wins over java-17 when both are present.
-        found.sort(java.util.Comparator.comparing(Path::toString).reversed());
+        found.sort(Comparator.comparing(Path::toString).reversed());
         return found;
     }
 
@@ -141,14 +154,183 @@ public final class JavaTools {
         return canCompile(home) && Files.isRegularFile(home.resolve("lib").resolve("src.zip"));
     }
 
-    public static String javaExecutable(Ide ide) {
-        Path bin = jdkHome(ide).resolve("bin").resolve(WINDOWS ? "java.exe" : "java");
+    /** A JDK found on this machine. */
+    public record Jdk(Path home, int version, boolean hasSources) {
+
+        /** How it reads in a list: {@code JDK 25   C:\Program Files\...}. */
+        public String label() {
+            return (version > 0 ? "JDK " + version : "JDK, version unknown") + "   " + home;
+        }
+    }
+
+    /**
+     * The JDK a project gets, and why.
+     *
+     * @param home      the JDK, or null when this machine has none
+     * @param requested the release the build asks for, 0 when it does not say
+     * @param reason    how it was chosen, in words
+     * @param problem   what is wrong with the choice, for the reader, or null
+     */
+    public record ProjectJdk(Path home, int version, int requested, String reason, String problem) {
+    }
+
+    /**
+     * Every JDK on this machine, each once, newest first.
+     *
+     * <p>Looked for where {@link #jdk} looks: the setting, JAVA_HOME, the PATH and where the
+     * platform's packages put them. A path reached twice - a symlink, a JAVA_HOME that is
+     * also on the PATH - is one JDK, not two. Within a release, one with its class library
+     * sources comes first, since navigation into the JDK needs them.
+     */
+    public static List<Jdk> jdks(Ide ide) {
+        List<Path> candidates = new ArrayList<>();
+        String setting = ide.settings().get(JDK_HOME, "");
+        if (!setting.isBlank()) {
+            candidates.add(Path.of(setting));
+        }
+        String env = System.getenv("JAVA_HOME");
+        if (env != null && !env.isBlank()) {
+            candidates.add(Path.of(env));
+        }
+        candidates.add(Path.of(System.getProperty("java.home")));
+        candidates.addAll(onPath());
+        candidates.addAll(installed());
+        return describe(candidates);
+    }
+
+    /** The candidates that are JDKs, described, each once, newest first. */
+    static List<Jdk> describe(List<Path> candidates) {
+        Map<Path, Jdk> byHome = new LinkedHashMap<>();
+        for (Path candidate : candidates) {
+            if (candidate == null || !canCompile(candidate)) {
+                continue;
+            }
+            Path home = real(candidate);
+            byHome.putIfAbsent(home, new Jdk(home, jdkVersion(home), hasSources(home)));
+        }
+        List<Jdk> out = new ArrayList<>(byHome.values());
+        out.sort(Comparator.comparingInt(Jdk::version).reversed()
+                .thenComparing(Jdk::hasSources, Comparator.reverseOrder()));
+        return out;
+    }
+
+    private static Path real(Path path) {
+        try {
+            return path.toRealPath();
+        } catch (java.io.IOException | RuntimeException e) {
+            return path.toAbsolutePath().normalize();
+        }
+    }
+
+    /**
+     * The JDK for a project, from what is known about it.
+     *
+     * <p>In order: the JDK the project was given in its own settings; the IDE's default JDK,
+     * when it is new enough for the release the build asks for; otherwise the oldest JDK on
+     * the machine that is. The default first, so that a project already working keeps the
+     * JDK it works with. The oldest rather than the newest because it is the nearest to what
+     * the project was written against: a newer JDK compiles an older release, but runs it on
+     * a class library that may have dropped something the code uses.
+     *
+     * <p>When nothing installed is new enough, the default is kept and the problem says so -
+     * a build that fails for a reason already named beats refusing to try.
+     *
+     * @param projectSetting the JDK set for the project, or null
+     * @param fallback       the IDE's default JDK, or null when there is none
+     * @param installed      every JDK found, from {@link #jdks}
+     * @param requested      the release the build asks for, 0 when unknown
+     */
+    static ProjectJdk choose(Path projectSetting, Jdk fallback, List<Jdk> installed, int requested) {
+        String settingProblem = null;
+        if (projectSetting != null) {
+            if (canCompile(projectSetting)) {
+                int version = jdkVersion(projectSetting);
+                String problem = requested > 0 && version > 0 && version < requested
+                        ? "This project builds for Java " + requested + ", but the JDK set for it is "
+                        + version + ". Choose a newer one in Settings > Languages > Java."
+                        : null;
+                return new ProjectJdk(projectSetting, version, requested, "set for this project", problem);
+            }
+            settingProblem = "The JDK set for this project, " + projectSetting
+                    + ", is not a JDK - it has no javac - so one is chosen automatically.";
+        }
+        if (fallback != null && (requested <= 0 || fallback.version() >= requested)) {
+            return new ProjectJdk(fallback.home(), fallback.version(), requested, "the default JDK", settingProblem);
+        }
+        if (requested > 0) {
+            Optional<Jdk> enough = installed.stream()
+                    .filter(jdk -> jdk.version() >= requested)
+                    .min(Comparator.comparingInt(Jdk::version)
+                            .thenComparing(Jdk::hasSources, Comparator.reverseOrder()));
+            if (enough.isPresent()) {
+                Jdk jdk = enough.get();
+                return new ProjectJdk(jdk.home(), jdk.version(), requested,
+                        "the oldest JDK found that builds Java " + requested, settingProblem);
+            }
+        }
+        int newest = installed.stream().mapToInt(Jdk::version).max().orElse(0);
+        String problem = requested > 0
+                ? "This project builds for Java " + requested + ", and no JDK that new was found"
+                + (newest > 0 ? " - the newest is " + newest : "") + ". Install JDK " + requested
+                + " or later, or set its folder in Settings > Languages > Java."
+                : "No JDK was found. Install one, or set its folder in Settings > Languages > Java.";
+        return fallback == null
+                ? new ProjectJdk(null, 0, requested, "no JDK found", problem)
+                : new ProjectJdk(fallback.home(), fallback.version(), requested, "the default JDK", problem);
+    }
+
+    /** The JDK a workspace builds, runs, tests and debugs with, given what its build asks for. */
+    public static ProjectJdk projectJdk(Ide ide, Workspace workspace, int requested) {
+        String setting = workspace == null ? "" : workspace.settings().get(JDK_HOME, "");
+        return jdkFor(ide, setting.isBlank() ? null : Path.of(setting), requested);
+    }
+
+    public static ProjectJdk projectJdk(Ide ide, Workspace workspace, JavaProjectRegistry registry) {
+        return projectJdk(ide, workspace, registry == null ? 0 : registry.requestedRelease(workspace));
+    }
+
+    /** What a project with this JDK set for it - null for none - and this release would get. */
+    public static ProjectJdk jdkFor(Ide ide, Path setting, int requested) {
+        Jdk fallback = jdk(ide).map(home -> new Jdk(home, jdkVersion(home), hasSources(home))).orElse(null);
+        ProjectJdk chosen = choose(setting, fallback, jdks(ide), requested);
+        if (chosen.home() != null) {
+            return chosen;
+        }
+        // Nothing to name: the runtime smIDE runs on, as before, with the problem still said.
+        Path own = Path.of(System.getProperty("java.home"));
+        return new ProjectJdk(own, jdkVersion(own), requested, chosen.reason(), chosen.problem());
+    }
+
+    /** Problems already told, per project, so launching ten times does not say it ten times. */
+    private static final Set<String> TOLD = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * The project's JDK for something about to start, having said once what is wrong with it.
+     *
+     * <p>A notification rather than a refusal: the build may know better - a toolchain, a
+     * property this could not read - and if it does not, it fails in its own words.
+     */
+    public static ProjectJdk launchJdk(Ide ide, Workspace workspace, JavaProjectRegistry registry) {
+        ProjectJdk jdk = projectJdk(ide, workspace, registry);
+        if (jdk.problem() != null && workspace != null && TOLD.add(workspace.root() + "|" + jdk.problem())) {
+            ide.notifications().warn("Project JDK", workspace.name() + ": " + jdk.problem());
+        }
+        return jdk;
+    }
+
+    /** What a build tool needs to use this JDK: Maven and Gradle both read JAVA_HOME. */
+    public static Map<String, String> environment(Path jdk) {
+        return jdk == null ? Map.of() : Map.of("JAVA_HOME", jdk.toString());
+    }
+
+    public static String javaExecutable(Path jdk) {
+        Path bin = jdk.resolve("bin").resolve(WINDOWS ? "java.exe" : "java");
         return Files.exists(bin) ? bin.toString() : "java";
     }
 
-    /** {@code jpackage} from the same JDK, or null if the JDK has none. */
-    public static Optional<String> jdkTool(Ide ide, String name) {
-        Path bin = jdkHome(ide).resolve("bin").resolve(WINDOWS ? name + ".exe" : name);
+    /** A tool such as {@code jpackage} from this JDK, else from the PATH, else nothing. */
+    public static Optional<String> jdkTool(Path jdk, String name) {
+        Path bin = jdk.resolve("bin").resolve(WINDOWS ? name + ".exe" : name);
         if (Files.exists(bin)) {
             return Optional.of(bin.toString());
         }

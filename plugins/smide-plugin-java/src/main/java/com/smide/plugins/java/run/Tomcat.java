@@ -267,9 +267,9 @@ public final class Tomcat {
      * the process the IDE owns is the JVM itself: Stop ends the server rather than a
      * script that has already exited, and a debug agent can be put on the command line.
      */
-    public static List<String> command(Ide ide, Path home, Path base, List<String> vmArgs) {
+    public static List<String> command(Path jdk, Path home, Path base, List<String> vmArgs) {
         List<String> cmd = new ArrayList<>();
-        cmd.add(JavaTools.javaExecutable(ide));
+        cmd.add(JavaTools.javaExecutable(jdk));
         cmd.add("-Dcatalina.home=" + home);
         cmd.add("-Dcatalina.base=" + base);
         cmd.add("-Djava.io.tmpdir=" + base.resolve("temp"));

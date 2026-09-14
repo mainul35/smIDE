@@ -120,6 +120,7 @@ public final class TomcatRunType implements RunConfigurationType {
         @Override
         public ProcessSpec prepare(Ide ide, ExecutionMode mode) throws Exception {
             Path home = home(ide);
+            Path jdk = com.smide.plugins.java.JavaTools.launchJdk(ide, workspace, registry).home();
             Path module = moduleDir();
             int port = number(get("port", "8080"), 8080);
 
@@ -130,7 +131,7 @@ public final class TomcatRunType implements RunConfigurationType {
                 build.add("-B");
                 build.add("-DskipTests");
                 build.add("package");
-                MavenBuild.run(ide, build, layout.directory(), "Building " + module.getFileName());
+                MavenBuild.run(ide, jdk, build, layout.directory(), "Building " + module.getFileName());
             }
 
             Path artifact = artifact(module);
@@ -146,13 +147,14 @@ public final class TomcatRunType implements RunConfigurationType {
                         + get("debugPort", "5005"));
             }
             vmArgs.addAll(Forms.splitArgs(get("vmArgs", "")));
-            List<String> cmd = Tomcat.command(ide, home, base, vmArgs);
+            List<String> cmd = Tomcat.command(jdk, home, base, vmArgs);
 
             String url = Tomcat.url(port, get("context", "/"));
             if (flag("browser", true)) {
                 Tomcat.openWhenUp(ide, url, port, 120);
             }
             Map<String, String> env = new HashMap<>();
+            env.put("JAVA_HOME", jdk.toString());
             env.put("CATALINA_HOME", home.toString());
             env.put("CATALINA_BASE", base.toString());
             // The configuration's own variables last, so they can override even these.

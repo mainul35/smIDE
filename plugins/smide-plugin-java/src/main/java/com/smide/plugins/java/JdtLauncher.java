@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -26,9 +27,11 @@ public final class JdtLauncher implements LanguageServerLauncher {
     public static final String JVM_ARGS_KEY = "java.jdtls.jvmArgs";
 
     private final Ide ide;
+    private final JavaProjectRegistry registry;
 
-    public JdtLauncher(Ide ide) {
+    public JdtLauncher(Ide ide, JavaProjectRegistry registry) {
         this.ide = ide;
+        this.registry = registry;
     }
 
     @Override
@@ -80,10 +83,9 @@ public final class JdtLauncher implements LanguageServerLauncher {
 
     /** Downloads and unpacks the latest snapshot, replacing any earlier install. */
     public void install(Ide ide, ProgressReporter progress) throws Exception {
-        int jdk = JavaTools.jdkVersion(JavaTools.jdkHome(ide));
-        if (jdk != 0 && jdk < 21) {
-            throw new IllegalStateException("JDT Language Server needs Java 21 or newer; the configured JDK is " + jdk
-                    + ". Set the JDK in Settings > Languages > Java.");
+        if (serverJdk(JavaTools.jdks(ide)).isEmpty()) {
+            throw new IllegalStateException("JDT Language Server needs a JDK 21 or newer to run on, and none was found."
+                    + " Install one - projects can still build with older JDKs of their own.");
         }
         progress.progress("Looking up the latest build", -1);
         String latest = ide.downloads().fetchText(SNAPSHOTS + "latest.txt").strip();
@@ -137,7 +139,12 @@ public final class JdtLauncher implements LanguageServerLauncher {
             config = os.contains("win") ? "config_win" : os.contains("mac") ? "config_mac" : "config_linux";
         }
         List<String> cmd = new ArrayList<>();
-        cmd.add(JavaTools.javaExecutable(ide));
+        /* The newest JDK there is, not the project's: the server needs 21 or later to run at
+           all, and a Java 17 project's own JDK would stop it starting. What the project
+           compiles against is the runtimes it is told about, not what the server runs on. */
+        cmd.add(JavaTools.javaExecutable(serverJdk(JavaTools.jdks(ide))
+                .map(JavaTools.Jdk::home)
+                .orElseGet(() -> JavaTools.projectJdk(ide, workspace, registry).home())));
         cmd.add("-Declipse.application=org.eclipse.jdt.ls.core.id1");
         cmd.add("-Dosgi.bundles.defaultStartLevel=4");
         cmd.add("-Declipse.product=org.eclipse.jdt.ls.core.product");
@@ -163,10 +170,15 @@ public final class JdtLauncher implements LanguageServerLauncher {
         return cmd;
     }
 
-    private static Path dataDir(Ide ide, Workspace workspace) {
+    /** The JDK the server runs on: the newest found that is 21 or later. */
+    static Optional<JavaTools.Jdk> serverJdk(List<JavaTools.Jdk> installed) {
+        return installed.stream().filter(jdk -> jdk.version() >= 21).findFirst();
+    }
+
+    private Path dataDir(Ide ide, Workspace workspace) {
         String key = Integer.toHexString(workspace.root().toString().hashCode());
         Path dir = ide.homeDir().resolve("jdtls-data").resolve(workspace.name() + "-" + key);
-        discardIfJdkChanged(ide, dir);
+        discardIfJdkChanged(ide, dir, JavaTools.projectJdk(ide, workspace, registry).home());
         return dir;
     }
 
@@ -184,9 +196,9 @@ public final class JdtLauncher implements LanguageServerLauncher {
      * that stops matching, the workspace goes and JDT imports again - a couple of minutes
      * once, against a JDK that has source, rather than a permanently sourceless one.
      */
-    private static void discardIfJdkChanged(Ide ide, Path dir) {
+    private static void discardIfJdkChanged(Ide ide, Path dir, Path projectJdk) {
         Path marker = dir.resolveSibling(dir.getFileName() + ".jdk");
-        String current = JavaTools.jdk(ide).map(Path::toString).orElse("");
+        String current = projectJdk != null && JavaTools.canCompile(projectJdk) ? projectJdk.toString() : "";
         String previous = "";
         try {
             if (Files.isRegularFile(marker)) {
@@ -198,7 +210,7 @@ public final class JdtLauncher implements LanguageServerLauncher {
         try {
             if (Files.isDirectory(dir) && !current.isEmpty() && !current.equals(previous)) {
                 ide.notifications().info("Java project re-import",
-                        "The JDK changed to " + current + ", so the Java language server's"
+                        "This project's JDK changed to " + current + ", so the Java language server's"
                         + " workspace is being rebuilt. Navigation will be ready shortly.");
                 deleteTree(dir);
             }
@@ -215,26 +227,52 @@ public final class JdtLauncher implements LanguageServerLauncher {
     @Override
     public Map<String, String> environment(Ide ide, Workspace workspace) {
         Map<String, String> env = new HashMap<>();
-        env.put("JAVA_HOME", JavaTools.jdkHome(ide).toString());
+        env.putAll(JavaTools.environment(JavaTools.projectJdk(ide, workspace, registry).home()));
         return env;
     }
 
-    /** The JDK to compile and navigate against, named as an execution environment. */
-    private static Map<String, Object> runtime(Ide ide) {
-        java.nio.file.Path home = JavaTools.jdkHome(ide);
-        int version = JavaTools.jdkVersion(home);
-        Map<String, Object> runtime = new HashMap<>();
-        runtime.put("name", "JavaSE-" + (version >= 9 ? version : "1." + (version == 0 ? 8 : version)));
-        runtime.put("path", home.toString());
-        runtime.put("default", true);
-        /* Named rather than left to be found. Declaring the runtime alone was not enough
-           here: the container came up with no source attachment, so a jdt:// declaration
-           opened to nothing at all. */
-        java.nio.file.Path sources = home.resolve("lib").resolve("src.zip");
-        if (java.nio.file.Files.isRegularFile(sources)) {
-            runtime.put("sources", sources.toString());
+    /**
+     * The JDKs to compile and navigate against: one per Java release, the project's the default.
+     *
+     * <p>JDT keys runtimes by execution environment name - JavaSE-21, JavaSE-25 - and gives
+     * each module the one its build's release asks for, so a JDK of every release found is
+     * worth naming. One per name, since two JDK 21s under one name would collide: the
+     * project's own JDK takes its release's slot, then one with sources. Sources named
+     * rather than left to be found - declaring the runtime alone gave a container with no
+     * source attachment, so a jdt:// declaration in the JDK opened to nothing at all.
+     */
+    static List<Map<String, Object>> runtimes(List<JavaTools.Jdk> installed, Path projectJdk) {
+        JavaTools.Jdk project = projectJdk != null && JavaTools.canCompile(projectJdk)
+                ? JavaTools.describe(List.of(projectJdk)).get(0) : null;
+        List<JavaTools.Jdk> ordered = new ArrayList<>();
+        if (project != null) {
+            ordered.add(project);
         }
-        return runtime;
+        ordered.addAll(installed);
+        Map<Integer, JavaTools.Jdk> byRelease = new LinkedHashMap<>();
+        for (JavaTools.Jdk jdk : ordered) {
+            if (jdk.version() > 0) {
+                byRelease.putIfAbsent(jdk.version(), jdk);
+            }
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        byRelease.entrySet().stream()
+                .sorted(Map.Entry.<Integer, JavaTools.Jdk>comparingByKey().reversed())
+                .forEach(entry -> {
+                    JavaTools.Jdk jdk = entry.getValue();
+                    Map<String, Object> runtime = new HashMap<>();
+                    runtime.put("name", "JavaSE-" + (jdk.version() >= 9 ? jdk.version() : "1." + jdk.version()));
+                    runtime.put("path", jdk.home().toString());
+                    if (project != null && jdk.home().equals(project.home())) {
+                        runtime.put("default", true);
+                    }
+                    Path sources = jdk.home().resolve("lib").resolve("src.zip");
+                    if (Files.isRegularFile(sources)) {
+                        runtime.put("sources", sources.toString());
+                    }
+                    out.add(runtime);
+                });
+        return out;
     }
 
     @Override
@@ -258,8 +296,11 @@ public final class JdtLauncher implements LanguageServerLauncher {
            "Invalid runtime for JavaSE-21: the path does not point to a JDK", after which
            there is no source attachment at all. Sending nothing leaves JDT on its own
            defaults, which is worse than a JDK and better than an invalid one. */
-        JavaTools.jdk(ide).ifPresent(home ->
-                configuration.put("runtimes", List.of(runtime(ide))));
+        List<Map<String, Object>> runtimes = runtimes(JavaTools.jdks(ide),
+                JavaTools.launchJdk(ide, workspace, registry).home());
+        if (!runtimes.isEmpty()) {
+            configuration.put("runtimes", runtimes);
+        }
         java.put("configuration", configuration);
         /* Source jars come from the same repository the build already uses, so a
            declaration inside a dependency opens as source instead of sending JDT off to

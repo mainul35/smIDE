@@ -39,7 +39,7 @@ public final class JavaPlugin implements Plugin {
     @Override
     public void start(PluginContext context) {
         ide = context.ide();
-        jdt = new JdtLauncher(ide);
+        jdt = new JdtLauncher(ide, registry);
 
         context.registerFileType(FileType.text("java", "Java source", "mdi2l-language-java", "java", "jav"));
         context.registerFileType(new FileType("class", "Java class file", Set.of("class"), Set.of(), "fth-cpu", true));
@@ -56,8 +56,8 @@ public final class JavaPlugin implements Plugin {
         context.registerRunConfigurationType(new TomcatRunType(ide, registry));
         context.registerRunConfigurationType(new ApplicationRunType(ide, registry));
         context.registerRunConfigurationType(new JUnitRunType(ide, registry));
-        context.registerRunConfigurationType(new BuildToolRunType(ide, false));
-        context.registerRunConfigurationType(new BuildToolRunType(ide, true));
+        context.registerRunConfigurationType(new BuildToolRunType(ide, registry, false));
+        context.registerRunConfigurationType(new BuildToolRunType(ide, registry, true));
 
         context.registerDebugger(new com.smide.plugins.java.debug.JavaDebugger());
 
@@ -67,7 +67,7 @@ public final class JavaPlugin implements Plugin {
 
         context.registerNewProjectTemplate(new MavenQuickstartTemplate());
         context.registerNewProjectTemplate(new SpringBootTemplate());
-        context.registerSettingsPage(new JavaSettingsPage(ide, jdt, this::installJdt));
+        context.registerSettingsPage(new JavaSettingsPage(ide, jdt, registry, this::installJdt));
 
         registerActions(context);
 
@@ -140,7 +140,8 @@ public final class JavaPlugin implements Plugin {
                 cmd.add("-DskipTests");
             }
         }
-        ide.execution().run(new ProcessSpec((gradle ? gradleTasks : mavenGoals) + " [" + w.name() + "]", cmd, buildRoot));
+        ide.execution().run(new ProcessSpec((gradle ? gradleTasks : mavenGoals) + " [" + w.name() + "]", cmd, buildRoot,
+                JavaTools.environment(JavaTools.launchJdk(ide, w, registry).home())));
     }
 
     private void installJdt() {

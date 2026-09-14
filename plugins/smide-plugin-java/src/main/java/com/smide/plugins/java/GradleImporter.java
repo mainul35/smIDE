@@ -27,6 +27,18 @@ public final class GradleImporter implements ProjectImporter {
     public static final List<String> TASKS = List.of("build", "clean", "assemble", "test", "check", "jar", "run",
             "bootRun", "bootJar", "dependencies", "tasks");
 
+    /** A version as a build script writes it: JavaVersion.VERSION_17, '17', "1.8" or 21. */
+    private static final String VERSION =
+            "(?:JavaVersion\\.VERSION_(?:1_)?(\\d+)|[\"'](?:1\\.)?(\\d+)[\"']|(?:1\\.)?(\\d+)\\b)";
+
+    /** The ways a build script says which Java it builds for, most binding first. */
+    private static final List<Pattern> RELEASE_FORMS = List.of(
+            Pattern.compile("JavaLanguageVersion\\.of\\(\\s*(\\d+)\\s*\\)"),
+            Pattern.compile("jvmToolchain\\(\\s*(\\d+)\\s*\\)"),
+            Pattern.compile("options\\.release(?:\\.set\\(\\s*|\\s*=\\s*)(\\d+)"),
+            Pattern.compile("targetCompatibility\\s*=\\s*" + VERSION),
+            Pattern.compile("sourceCompatibility\\s*=\\s*" + VERSION));
+
     private final JavaProjectRegistry registry;
 
     public GradleImporter(JavaProjectRegistry registry) {
@@ -64,6 +76,7 @@ public final class GradleImporter implements ProjectImporter {
         }
         boolean springBoot = false;
         boolean springLens = false;
+        int release = 0;
         List<JavaProjectInfo.WebModule> webModules = new ArrayList<>();
         for (Path dir : moduleDirs) {
             String name = dir.equals(root) ? root.getFileName().toString() : root.relativize(dir).toString().replace('\\', ':');
@@ -72,6 +85,10 @@ public final class GradleImporter implements ProjectImporter {
             List<Path> res = existing(dir.resolve("src/main/resources"));
             modules.add(new ProjectModule(name, dir, src, test, res, dir.resolve("build/classes")));
             String script = readScript(dir);
+            // The root's script first, since it is the first directory; a module's if the root says nothing.
+            if (release == 0) {
+                release = releaseOf(script);
+            }
             springBoot |= script.contains("org.springframework.boot");
             springLens |= script.contains("spring-lens");
             if (script.contains("'war'") || script.contains("\"war\"") || script.contains("apply plugin: war")) {
@@ -86,8 +103,33 @@ public final class GradleImporter implements ProjectImporter {
         ProjectModel model = new ProjectModel("gradle", root.getFileName().toString(), root, modules, tasks);
         SourceScanner.Result scanned = SourceScanner.scan(model);
         registry.put(root, new JavaProjectInfo("gradle", model, springBoot, springLens, scanned.mains(), scanned.tests(),
-                "jar", root.getFileName().toString(), "", webModules, List.of(), 0));
+                "jar", root.getFileName().toString(), "", webModules, List.of(), release));
         return model;
+    }
+
+    /**
+     * The Java release a build script asks for, or 0.
+     *
+     * <p>Read from the text rather than by running Gradle, so it knows the forms people write:
+     * a toolchain first - that is the JDK Gradle itself insists on - then the compiler's
+     * release, then target and source compatibility. A value built from a variable is not
+     * followed; that is what the project's own JDK setting is for.
+     */
+    static int releaseOf(String script) {
+        if (script == null) {
+            return 0;
+        }
+        for (Pattern form : RELEASE_FORMS) {
+            Matcher matcher = form.matcher(script);
+            if (matcher.find()) {
+                for (int group = 1; group <= matcher.groupCount(); group++) {
+                    if (matcher.group(group) != null) {
+                        return Integer.parseInt(matcher.group(group));
+                    }
+                }
+            }
+        }
+        return 0;
     }
 
     private static List<String> includes(Path root) {

@@ -99,6 +99,17 @@ the package for you. smIDE ranks the JDKs it can find and
 prefers one with sources, but it can only pick from what is there. Temurin, Zulu, Corretto
 and Oracle's builds all include `src.zip`.
 
+**Each project gets its own JDK.** smIDE looks in `JAVA_HOME`, the `PATH`, the platform's
+usual folders, sdkman and `~/.jdks`, and reads the Java release a build asks for
+(`maven.compiler.release` and its relatives in Maven; a toolchain, `options.release` or
+`sourceCompatibility` in Gradle). A project uses the default JDK when that is new enough,
+otherwise the oldest JDK found that is — so a Java 17 service and a Java 25 one can be open
+side by side. Runs, tests, debugging, Maven and Gradle all use it; the language server
+is told about every JDK found and runs itself on the newest 21 or later. To pin one, pick
+it under Settings > Languages > Java > Project JDKs; it is stored in the project's
+`.smide/settings.json`. A project that asks for a release no installed JDK can build says
+so once, with the release it needs.
+
 **Platforms.** Developed and exercised on Windows 11. macOS and Linux build and run the
 same way — the paths below use `~` throughout, which on Windows is `C:\Users\<you>`. The
 one place the platform shows through is the terminal (`pwsh` or `cmd` on Windows, your

@@ -153,7 +153,11 @@ public final class SpringBootRunType implements RunConfigurationType {
                     cmd.add("-Dspring-boot.run.main-class=" + mainClass);
                 }
             }
-            return new ProcessSpec(name(), cmd, cwd, Forms.environment(get("env", "")));
+            // The build and the application it forks run on the project's JDK; the configuration's variables win.
+            java.util.Map<String, String> env = new java.util.HashMap<>(
+                    JavaTools.environment(JavaTools.launchJdk(ide, workspace, registry).home()));
+            env.putAll(Forms.environment(get("env", "")));
+            return new ProcessSpec(name(), cmd, cwd, env);
         }
     }
 }

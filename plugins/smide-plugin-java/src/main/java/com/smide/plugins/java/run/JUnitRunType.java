@@ -117,7 +117,8 @@ public final class JUnitRunType implements RunConfigurationType {
                 }
             }
             cmd.addAll(Forms.splitArgs(get("extra", "")));
-            return new ProcessSpec(name(), cmd, maven == null ? workspace.root() : maven.directory());
+            return new ProcessSpec(name(), cmd, maven == null ? workspace.root() : maven.directory(),
+                    JavaTools.environment(JavaTools.launchJdk(ide, workspace, registry).home()));
         }
     }
 }

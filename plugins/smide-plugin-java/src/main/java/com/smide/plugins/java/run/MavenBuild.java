@@ -29,7 +29,7 @@ public final class MavenBuild {
      * @param moduleDir the module to compile; equal to root for a single-module build
      * @return the runtime classpath: target/classes plus dependencies
      */
-    public static String compileAndClasspath(Ide ide, Path root, Path moduleDir, boolean skipCompile)
+    public static String compileAndClasspath(Ide ide, Path jdk, Path root, Path moduleDir, boolean skipCompile)
             throws IOException, InterruptedException {
         MavenLayout layout = MavenLayout.of(root, moduleDir);
         List<String> cmd = layout.command(ide);
@@ -41,7 +41,7 @@ public final class MavenBuild {
         cmd.add("dependency:build-classpath");
         cmd.add("-Dmdep.outputFile=" + CLASSPATH_FILE);
         cmd.add("-Dmdep.includeScope=runtime");
-        run(ide, cmd, layout.directory(), "Building " + moduleDir.getFileName());
+        run(ide, jdk, cmd, layout.directory(), "Building " + moduleDir.getFileName());
         Path file = moduleDir.resolve(CLASSPATH_FILE);
         String deps = Files.exists(file) ? Files.readString(file, StandardCharsets.UTF_8).strip() : "";
         String classes = moduleDir.resolve("target/classes").toString();
@@ -73,13 +73,18 @@ public final class MavenBuild {
             "To see the full stack trace", "Re-run Maven", "For more information about the errors",
             "[Help", "After correcting the problems");
 
-    /** Runs a Maven command to completion, reporting lines to the status bar; throws on failure. */
-    public static void run(Ide ide, List<String> cmd, Path cwd, String title) throws IOException, InterruptedException {
+    /**
+     * Runs a Maven command to completion, reporting lines to the status bar; throws on failure.
+     *
+     * @param jdk the project's JDK, handed to the build as JAVA_HOME
+     */
+    public static void run(Ide ide, Path jdk, List<String> cmd, Path cwd, String title)
+            throws IOException, InterruptedException {
         StatusBar.Progress progress = ide.statusBar().progress(title, false);
         List<String> tail = new ArrayList<>();
         try {
             ProcessBuilder pb = new ProcessBuilder(cmd).directory(cwd.toFile()).redirectErrorStream(true);
-            pb.environment().put("JAVA_HOME", JavaTools.jdkHome(ide).toString());
+            pb.environment().putAll(JavaTools.environment(jdk));
             Process p = pb.start();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;

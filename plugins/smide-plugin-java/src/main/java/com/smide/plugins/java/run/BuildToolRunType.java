@@ -6,6 +6,7 @@ import com.smide.api.execution.ProcessSpec;
 import com.smide.api.execution.RunConfiguration;
 import com.smide.api.execution.RunConfigurationType;
 import com.smide.api.workspace.Workspace;
+import com.smide.plugins.java.JavaProjectRegistry;
 import com.smide.plugins.java.JavaTools;
 import javafx.scene.Node;
 import javafx.scene.layout.GridPane;
@@ -18,10 +19,12 @@ import java.util.List;
 public final class BuildToolRunType implements RunConfigurationType {
 
     private final Ide ide;
+    private final JavaProjectRegistry registry;
     private final boolean gradle;
 
-    public BuildToolRunType(Ide ide, boolean gradle) {
+    public BuildToolRunType(Ide ide, JavaProjectRegistry registry, boolean gradle) {
         this.ide = ide;
+        this.registry = registry;
         this.gradle = gradle;
     }
 
@@ -82,7 +85,9 @@ public final class BuildToolRunType implements RunConfigurationType {
                 }
             }
             cmd.addAll(Forms.splitArgs(get("extra", "")));
-            return new ProcessSpec(name(), cmd, cwd);
+            // Maven and Gradle both build with whatever JAVA_HOME says: the project's JDK.
+            return new ProcessSpec(name(), cmd, cwd,
+                    JavaTools.environment(JavaTools.launchJdk(ide, workspace, registry).home()));
         }
     }
 }

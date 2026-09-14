@@ -189,7 +189,8 @@ public final class MavenToolWindow implements ToolWindowFactory {
         }
         cmd.addAll(args);
         Path cwd = task.workingDir() == null ? current.root() : task.workingDir();
-        ide.execution().run(new ProcessSpec(task.name() + " [" + cwd.getFileName() + "]", cmd, cwd));
+        ide.execution().run(new ProcessSpec(task.name() + " [" + cwd.getFileName() + "]", cmd, cwd,
+                JavaTools.environment(JavaTools.launchJdk(ide, current, registry).home())));
     }
 
     /** Runs an arbitrary goal line typed by the user. */
@@ -204,7 +205,8 @@ public final class MavenToolWindow implements ToolWindowFactory {
         }
         cmd.addAll(com.smide.plugins.java.run.Forms.splitArgs(line));
         ide.execution().run(new ProcessSpec(line, cmd,
-                com.smide.plugins.java.run.MavenLayout.buildRootFor(current.root())));
+                com.smide.plugins.java.run.MavenLayout.buildRootFor(current.root()),
+                JavaTools.environment(JavaTools.launchJdk(ide, current, registry).home())));
     }
 
     @Override
