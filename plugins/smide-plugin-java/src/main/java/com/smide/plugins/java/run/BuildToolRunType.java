@@ -1,6 +1,8 @@
 package com.smide.plugins.java.run;
 
 import com.smide.api.Ide;
+import com.smide.api.execution.BaseRunConfiguration;
+import com.smide.api.execution.Forms;
 import com.smide.api.execution.ExecutionMode;
 import com.smide.api.execution.ProcessSpec;
 import com.smide.api.execution.RunConfiguration;

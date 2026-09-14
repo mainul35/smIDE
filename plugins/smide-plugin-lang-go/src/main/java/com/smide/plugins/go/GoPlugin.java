@@ -21,7 +21,10 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
-/** Go, with gopls. */
+/**
+ * Go: highlighting, gopls, run configurations for programs and tests, and the toolchain they
+ * all need - asked for when a Go project is opened on a machine without it.
+ */
 public final class GoPlugin implements Plugin {
 
     private static final boolean WINDOWS =
@@ -33,8 +36,12 @@ public final class GoPlugin implements Plugin {
                 "mdi2l-language-go", false));
         context.registerFileType(new FileType("gomod", "Go module", Set.of("mod", "sum"),
                 Set.of("go.mod", "go.sum", "go.work"), "mdi2l-language-go", false));
-        context.registerLanguage(new GoLanguage(new Gopls()));
+        GoToolchain toolchain = new GoToolchain();
+        context.registerLanguage(new GoLanguage(new Gopls(toolchain)));
         context.registerLanguage(new GoModLanguage());
+        context.registerToolchain(toolchain);
+        context.registerRunConfigurationType(new GoRunType(context.ide(), toolchain::locate));
+        context.registerSettingsPage(new GoSettingsPage(context.ide(), toolchain));
     }
 
     private static final class GoLanguage implements LanguageSupport {
@@ -148,6 +155,12 @@ public final class GoPlugin implements Plugin {
      */
     private static final class Gopls implements LanguageServerLauncher {
 
+        private final GoToolchain toolchain;
+
+        Gopls(GoToolchain toolchain) {
+            this.toolchain = toolchain;
+        }
+
         @Override
         public String serverId() {
             return "gopls";
@@ -201,12 +214,25 @@ public final class GoPlugin implements Plugin {
 
                 @Override
                 public void run(Ide ide, ProgressReporter progress) throws IOException {
-                    String go = WINDOWS ? "go.exe" : "go";
+                    String go = toolchain.locate(ide).map(Path::toString).orElse(WINDOWS ? "go.exe" : "go");
                     progress.progress("go install golang.org/x/tools/gopls@latest", -1);
                     ide.downloads().runTool(List.of(go, "install", "golang.org/x/tools/gopls@latest"),
                             ide.downloads().toolsDir(), progress);
                 }
             });
+        }
+
+        /**
+         * gopls runs the go command itself to load packages, so the toolchain found here goes
+         * on its PATH - otherwise a Go installed anywhere but the PATH leaves it unable to load
+         * a single file.
+         */
+        @Override
+        public java.util.Map<String, String> environment(Ide ide, Workspace workspace) {
+            return toolchain.locate(ide)
+                    .map(go -> java.util.Map.of("PATH", go.getParent() + File.pathSeparator
+                            + java.util.Objects.requireNonNullElse(System.getenv("PATH"), "")))
+                    .orElse(java.util.Map.of());
         }
 
         @Override

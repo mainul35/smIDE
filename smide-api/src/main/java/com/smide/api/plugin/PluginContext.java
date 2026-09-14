@@ -44,4 +44,10 @@ public interface PluginContext {
     void registerNewProjectTemplate(NewProjectTemplate template);
 
     void registerStatusBarWidget(StatusBarWidget widget);
+
+    /**
+     * Something this language's projects need installed - a compiler, a runtime - so the IDE
+     * can say what is missing, and where to get it, when such a project is opened without it.
+     */
+    void registerToolchain(com.smide.api.lang.Toolchain toolchain);
 }

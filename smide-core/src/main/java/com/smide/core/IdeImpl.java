@@ -141,6 +141,8 @@ public final class IdeImpl implements Ide {
         });
         this.sessionStore = new SessionStore(homeDir.resolve("session.json"));
         workspaces.setStatusReporter(statusBar::message);
+        // A project opened without the compiler or runtime its language needs is told so, once.
+        workspaces.addOpenedListener(new ToolchainCheck(this, registry)::check);
     }
 
     // ------------------------------------------------------------------ start

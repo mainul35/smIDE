@@ -1,14 +1,18 @@
-package com.smide.plugins.java.run;
+package com.smide.api.execution;
 
-import com.smide.api.execution.RunConfiguration;
-import com.smide.api.execution.RunConfigurationType;
 import com.smide.api.workspace.Workspace;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Name, type, workspace and a string map of fields; subclasses add {@code prepare}. */
+/**
+ * Name, type, workspace and a string map of fields; subclasses add {@code prepare}.
+ *
+ * <p>In the API so that every language plugin builds its run configurations the same way
+ * - stored, edited with {@link Forms} and detected alike - rather than each one inventing
+ * its own, which is how a language came to have no run configurations at all.
+ */
 public abstract class BaseRunConfiguration implements RunConfiguration {
 
     protected final RunConfigurationType type;

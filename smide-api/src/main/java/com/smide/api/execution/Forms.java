@@ -1,4 +1,4 @@
-package com.smide.plugins.java.run;
+package com.smide.api.execution;
 
 import com.smide.api.Ide;
 import javafx.geometry.Insets;
@@ -14,7 +14,7 @@ import javafx.scene.layout.Priority;
 import java.nio.file.Path;
 import java.util.List;
 
-/** Small form builders that write straight into a configuration's values. */
+/** Small form builders that write straight into a configuration's values, for any plugin's run configurations. */
 public final class Forms {
 
     private Forms() {

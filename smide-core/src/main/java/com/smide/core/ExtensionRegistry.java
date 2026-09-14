@@ -33,6 +33,7 @@ public final class ExtensionRegistry {
     private final List<SettingsPage> settingsPages = new ArrayList<>();
     private final List<NewProjectTemplate> templates = new ArrayList<>();
     private final List<StatusBarWidget> statusWidgets = new ArrayList<>();
+    private final List<com.smide.api.lang.Toolchain> toolchains = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private final List<Consumer<ToolWindowFactory>> toolWindowListeners = new ArrayList<>();
     private final List<Consumer<Action>> actionListeners = new ArrayList<>();
@@ -92,6 +93,14 @@ public final class ExtensionRegistry {
         statusWidgets.add(w);
         statusWidgets.sort(Comparator.comparingInt(StatusBarWidget::order));
         statusWidgetListeners.forEach(l -> l.accept(w));
+    }
+
+    public void addToolchain(com.smide.api.lang.Toolchain t) {
+        toolchains.add(t);
+    }
+
+    public List<com.smide.api.lang.Toolchain> toolchains() {
+        return List.copyOf(toolchains);
     }
 
     public List<FileType> fileTypes() {

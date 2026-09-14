@@ -1,0 +1,86 @@
+package com.smide.core;
+
+import com.smide.api.Ide;
+import com.smide.api.lang.Toolchain;
+import com.smide.api.ui.Notifications;
+import com.smide.api.workspace.Workspace;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * When a project opens, asks for any toolchain it needs that is not on the machine.
+ *
+ * <p>Once per toolchain and project, and only when both are true - the project needs it
+ * and it cannot be found - because a notice about Go in a Java project, or about a Go that
+ * is already installed, teaches people to dismiss notices. The looking happens off the UI
+ * thread: finding out whether a folder is a Go project can mean walking it.
+ */
+public final class ToolchainCheck {
+
+    private final Ide ide;
+    private final ExtensionRegistry registry;
+    private final Set<String> asked = ConcurrentHashMap.newKeySet();
+
+    public ToolchainCheck(Ide ide, ExtensionRegistry registry) {
+        this.ide = ide;
+        this.registry = registry;
+    }
+
+    /** Looks at a project that has just opened. */
+    public void check(Workspace workspace) {
+        List<Toolchain> toolchains = registry.toolchains();
+        if (toolchains.isEmpty() || workspace == null) {
+            return;
+        }
+        ide.window().runInBackground(() -> {
+            for (Toolchain toolchain : toolchains) {
+                try {
+                    if (!toolchain.isNeededBy(workspace.root()) || toolchain.locate(ide).isPresent()) {
+                        continue;
+                    }
+                    if (asked.add(toolchain.id() + "|" + workspace.root())) {
+                        ide.window().runLater(() -> ask(toolchain, workspace));
+                    }
+                } catch (RuntimeException e) {
+                    // One plugin's broken check is no reason to skip the others.
+                    System.err.println("smIDE: toolchain check " + toolchain.id() + " failed: " + e);
+                }
+            }
+        });
+    }
+
+    private void ask(Toolchain toolchain, Workspace workspace) {
+        List<Notifications.NotificationAction> actions = new ArrayList<>();
+        if (toolchain.downloadUrl() != null) {
+            actions.add(new Notifications.NotificationAction("Download",
+                    () -> ide.window().browse(toolchain.downloadUrl())));
+        }
+        if (toolchain.homeSetting() != null) {
+            actions.add(new Notifications.NotificationAction("Set location...", () -> chooseHome(toolchain)));
+        }
+        actions.add(new Notifications.NotificationAction("Not now", () -> {
+        }));
+        ide.notifications().warn(toolchain.displayName() + " not found",
+                workspace.name() + " needs the " + toolchain.displayName() + ", which was not found on this machine. "
+                        + toolchain.purpose(),
+                actions.toArray(new Notifications.NotificationAction[0]));
+    }
+
+    /** Lets someone point at an installation the search missed, and remembers it. */
+    private void chooseHome(Toolchain toolchain) {
+        ide.window().chooseDirectory(toolchain.displayName() + " location", Path.of(System.getProperty("user.home", ".")))
+                .ifPresent(home -> {
+                    if (!toolchain.accepts(home)) {
+                        ide.notifications().warn(toolchain.displayName(),
+                                home + " does not look like a " + toolchain.displayName() + " installation.");
+                        return;
+                    }
+                    ide.settings().set(toolchain.homeSetting(), home.toString());
+                    ide.notifications().info(toolchain.displayName(), "Using " + home + ".");
+                });
+    }
+}

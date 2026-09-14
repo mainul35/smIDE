@@ -90,4 +90,9 @@ final class PluginContextImpl implements PluginContext {
     public void registerStatusBarWidget(StatusBarWidget widget) {
         registry.addStatusWidget(widget);
     }
+
+    @Override
+    public void registerToolchain(com.smide.api.lang.Toolchain toolchain) {
+        registry.addToolchain(toolchain);
+    }
 }

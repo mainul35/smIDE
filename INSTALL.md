@@ -283,6 +283,16 @@ about your code: it needs headers and a `compile_commands.json` to be useful.
 You can also install a server before you need it: **Settings → Languages → Java** has a
 button for the JDT server, and opening any file of the language offers the rest.
 
+**Compilers and runtimes are asked for when a project needs them.** A language plugin can
+also say what its projects need installed — the Go toolchain, for Go. When you open a
+project that needs it and it is not on the machine, a notification says so once, with
+**Download** (the official download page) and **Set location...** (for an installation smIDE
+did not find; it is checked and remembered). **Go** projects then get run configurations
+without writing any: every folder holding `package main` appears in the run list as
+`go run ./that/folder`, and a project with tests gets `go test ./...`. Configurations run
+from the module root (the nearest `go.mod`), or name a folder's files when there is no
+module. The Go installation can also be set under **Settings → Languages → Go**.
+
 ---
 
 ## 7. The assistant

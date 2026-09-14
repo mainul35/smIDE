@@ -203,7 +203,7 @@ public final class MavenToolWindow implements ToolWindowFactory {
         if (!gradle) {
             cmd.add("-B");
         }
-        cmd.addAll(com.smide.plugins.java.run.Forms.splitArgs(line));
+        cmd.addAll(com.smide.api.execution.Forms.splitArgs(line));
         ide.execution().run(new ProcessSpec(line, cmd,
                 com.smide.plugins.java.run.MavenLayout.buildRootFor(current.root()),
                 JavaTools.environment(JavaTools.launchJdk(ide, current, registry).home())));
