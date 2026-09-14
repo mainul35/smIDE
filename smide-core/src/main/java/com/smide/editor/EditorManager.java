@@ -65,6 +65,8 @@ public final class EditorManager implements Editors {
     private Editor lastActive;
     /** True while Back or Forward is driving, so the jump is not recorded again. */
     private boolean navigating;
+    /** True while a workspace closes all its tabs, so each one closed does not activate the next. */
+    private boolean closingAll;
 
     public EditorManager(WorkspaceManager workspaces, ExtensionRegistry registry, LanguageRegistry languages,
                          ProblemsService problems, WindowService window, Theme theme,
@@ -110,6 +112,9 @@ public final class EditorManager implements Editors {
     }
 
     private void fireActive() {
+        if (closingAll) {
+            return;
+        }
         Optional<Editor> active = active();
         if (active.orElse(null) == lastActive) {
             return;
@@ -378,9 +383,19 @@ public final class EditorManager implements Editors {
                 return false;
             }
         }
-        for (EditorTab tab : List.copyOf(workspace.editorTabs())) {
-            removeEditor(workspace, tab.editor());
+        /* Closing a tab selects its neighbour, so closing a workspace one tab at a time made
+           every remaining file the active one in turn: the explorer scrolled to it, an open
+           structure view asked its language server for symbols, a Markdown preview
+           rendered - all for files about to close. Nobody is told until the last is gone. */
+        closingAll = true;
+        try {
+            for (EditorTab tab : List.copyOf(workspace.editorTabs())) {
+                removeEditor(workspace, tab.editor());
+            }
+        } finally {
+            closingAll = false;
         }
+        fireActive();
         return true;
     }
 

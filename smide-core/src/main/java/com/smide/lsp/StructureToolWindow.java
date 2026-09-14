@@ -43,6 +43,8 @@ public final class StructureToolWindow implements ToolWindowFactory {
     private final StackPane pane = new StackPane();
     private final PauseTransition refreshDelay = new PauseTransition(Duration.millis(800));
     private Editor current;
+    /** Editors given a text listener already: an editor becomes active many times, and needs one. */
+    private final java.util.Set<CodeEditor> listening = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private boolean visible;
     private int generation;
 
@@ -69,7 +71,7 @@ public final class StructureToolWindow implements ToolWindowFactory {
         refreshDelay.setOnFinished(e -> refresh());
         ide.editors().addActiveListener(e -> {
             current = e.orElse(null);
-            if (current instanceof CodeEditor code) {
+            if (current instanceof CodeEditor code && listening.add(code)) {
                 code.addTextListener(t -> {
                     if (visible && current == code) {
                         refreshDelay.playFromStart();

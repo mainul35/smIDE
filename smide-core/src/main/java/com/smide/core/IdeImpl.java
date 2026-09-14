@@ -109,6 +109,9 @@ public final class IdeImpl implements Ide {
     private final Label caretLabel = new Label();
     private final Label separatorLabel = new Label();
     private final Label languageLabel = new Label();
+    /** Editors whose caret already updates the status bar. */
+    private final Set<CodeEditor> caretWatched = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    private FreezeReporter freezes;
 
     public IdeImpl(Stage stage, HostServices hostServices) {
         this.stage = stage;
@@ -240,6 +243,11 @@ public final class IdeImpl implements Ide {
                 && (session.toolWindows == null || session.toolWindows.isEmpty())) {
             toolWindows.show(ExplorerToolWindow.ID);
         }
+        /* When the window stops answering, what it was doing goes to logs/freezes. Not in the
+           first seconds: every editor restored is laid out for the first time then, which
+           takes a second or two on its own and would be reported at every start. */
+        freezes = new FreezeReporter(homeDir.resolve("logs").resolve("freezes"), statusBar::message, 10_000);
+        freezes.start();
     }
 
     private final javafx.scene.layout.StackPane centerHolder = new javafx.scene.layout.StackPane();
@@ -331,11 +339,14 @@ public final class IdeImpl implements Ide {
         CodeEditor c = code.get();
         Runnable update = () -> caretLabel.setText((c.caretLine() + 1) + ":" + (c.caretColumn() + 1));
         update.run();
-        c.addCaretListener(() -> {
-            if (editors.active().orElse(null) == c) {
-                update.run();
-            }
-        });
+        // Once per editor: it becomes active again and again, and each time used to add another.
+        if (caretWatched.add(c)) {
+            c.addCaretListener(() -> {
+                if (editors.active().orElse(null) == c) {
+                    update.run();
+                }
+            });
+        }
         separatorLabel.setText(c.lineSeparatorName());
         languageLabel.setText(c.language().displayName());
     }
@@ -421,6 +432,10 @@ public final class IdeImpl implements Ide {
 
     public void shutdown() {
         try {
+            if (freezes != null) {
+                // Stopping language servers takes a while, and is not the window freezing.
+                freezes.stop();
+            }
             if (lsp != null) {
                 lsp.stopAll();
             }
