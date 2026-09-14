@@ -93,7 +93,7 @@ public final class MavenBuild {
                     if (tail.size() > 60) {
                         tail.remove(0);
                     }
-                    progress.update(line.length() > 80 ? line.substring(0, 80) : line, -1);
+                    progress.update(line, -1);
                 }
             }
             int code = p.waitFor();

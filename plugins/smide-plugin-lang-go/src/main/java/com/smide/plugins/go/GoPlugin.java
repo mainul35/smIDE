@@ -193,7 +193,7 @@ public final class GoPlugin implements Plugin {
                 public void run(Ide ide, ProgressReporter progress) throws IOException {
                     String go = toolchain.locate(ide).map(Path::toString).orElse(WINDOWS ? "go.exe" : "go");
                     progress.progress("go install golang.org/x/tools/gopls@latest", -1);
-                    ide.downloads().runTool(List.of(go, "install", "golang.org/x/tools/gopls@latest"),
+                    ide.downloads().runTool(List.of(go, "install", "-v", "golang.org/x/tools/gopls@latest"),
                             ide.downloads().toolsDir(), progress);
                 }
             });

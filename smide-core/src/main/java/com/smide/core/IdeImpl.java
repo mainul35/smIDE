@@ -127,7 +127,7 @@ public final class IdeImpl implements Ide {
         this.problems = new ProblemsService();
         this.breakpoints = new BreakpointService(workspaces);
         this.notifications = new NotificationCenter();
-        this.statusBar = new StatusBarView(registry);
+        this.statusBar = new StatusBarView(registry, theme);
         this.editors = new EditorManager(workspaces, registry, languages, problems, window, theme, notifications,
                 events, settings, breakpoints);
         this.projects = new ProjectService(this, registry);

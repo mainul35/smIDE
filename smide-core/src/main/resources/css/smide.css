@@ -221,6 +221,81 @@
     -fx-background-radius: 2;
 }
 
+.status-progress {
+    -fx-cursor: hand;
+}
+
+/* What the background tasks are doing, opened from the status bar's progress. */
+.background-tasks {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 10 12 10 12;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.22), 14, 0, 0, 4);
+}
+
+.background-tasks .scroll-pane,
+.background-tasks .scroll-pane > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.background-tasks-heading {
+    -fx-text-fill: -smide-text;
+    -fx-font-weight: bold;
+}
+
+.background-tasks-section {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+    -fx-padding: 10 0 0 0;
+}
+
+.background-task {
+    -fx-padding: 8 0 8 0;
+    -fx-border-color: transparent transparent -smide-border transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.background-task-title {
+    -fx-text-fill: -smide-text;
+    -fx-font-weight: bold;
+}
+
+.background-task-meta {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11.5px;
+}
+
+.background-tasks .hyperlink {
+    -fx-text-fill: -smide-accent;
+    -fx-padding: 0;
+    -fx-border-width: 0;
+}
+
+.background-tasks .progress-bar {
+    -fx-pref-height: 8;
+}
+
+.background-tasks .progress-bar > .bar {
+    -fx-background-color: -smide-accent;
+    -fx-background-radius: 2;
+    -fx-padding: 0;
+}
+
+.background-tasks .progress-bar > .track {
+    -fx-background-color: -smide-surface-alt;
+    -fx-background-radius: 2;
+}
+
+.background-tasks .text-area.background-task-output {
+    -fx-font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono", monospace;
+    -fx-font-size: 11.5px;
+}
+
 .split-pane {
     -fx-background-color: -smide-paper;
     -fx-padding: 0;

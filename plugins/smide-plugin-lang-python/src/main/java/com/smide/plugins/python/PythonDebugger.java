@@ -114,7 +114,7 @@ final class PythonDebugger implements Debugger {
                     throw new IOException(interpreter + " did not say which Python version it is.");
                 }
                 ide.downloads().runTool(List.of(interpreter.toString(), "-m", "pip", "install", "--upgrade",
-                        "--target", copy.toString(), "debugpy"), ide.downloads().toolsDir(), (message, fraction) -> { });
+                        "--target", copy.toString(), "debugpy"), ide.downloads().toolsDir(), progress::update);
                 if (!importable(interpreter, copy)) {
                     throw new IOException("pip finished, but debugpy in " + copy + " cannot start. On Windows, a path"
                             + " in it may be longer than Python can open there; turning on long paths fixes that.");

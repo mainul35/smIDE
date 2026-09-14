@@ -45,7 +45,7 @@ public final class BuildStep {
                         tail.remove(0);
                     }
                     if (progress != null) {
-                        progress.update(line.length() > 80 ? line.substring(0, 80) : line, -1);
+                        progress.update(line, -1);
                     }
                 }
             }

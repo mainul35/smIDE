@@ -52,8 +52,9 @@ final class GoDebugger implements Debugger {
         StatusBar.Progress progress = ide.statusBar().progress("Installing Delve", false);
         ide.window().runInBackground(() -> {
             try {
-                ide.downloads().runTool(List.of(go.toString(), "install", DELVE_PACKAGE),
-                        ide.downloads().toolsDir(), (message, fraction) -> { });
+                // -v names each package as it is built, so the task shows where it has got to.
+                ide.downloads().runTool(List.of(go.toString(), "install", "-v", DELVE_PACKAGE),
+                        ide.downloads().toolsDir(), progress::update);
                 if (GoBinaries.find("dlv").isPresent()) {
                     ide.notifications().info("Delve installed", "Debug the configuration again to start debugging.");
                 } else {
