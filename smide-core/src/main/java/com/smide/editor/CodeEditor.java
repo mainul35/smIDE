@@ -271,6 +271,13 @@ public final class CodeEditor implements TextEditor {
         if (gutter == null || e.getButton() != javafx.scene.input.MouseButton.PRIMARY) {
             return;
         }
+        Integer run = runMarkerLine(e.getPickResult());
+        if (run != null) {
+            // The run icon runs, rather than setting a breakpoint on the line it sits on.
+            e.consume();
+            gutter.showRunMenu(area, run, e.getScreenX(), e.getScreenY());
+            return;
+        }
         Integer line = gutterLine(e.getPickResult());
         if (line != null) {
             e.consume();
@@ -289,6 +296,15 @@ public final class CodeEditor implements TextEditor {
         if (gutter == null) {
             return;
         }
+        Integer run = runMarkerLine(e.getPickResult());
+        if (run != null) {
+            e.consume();
+            if (area.getContextMenu() != null) {
+                area.getContextMenu().hide();
+            }
+            gutter.showRunMenu(area, run, e.getScreenX(), e.getScreenY());
+            return;
+        }
         Integer line = gutterLine(e.getPickResult());
         if (line == null) {
             return;
@@ -298,6 +314,17 @@ public final class CodeEditor implements TextEditor {
             area.getContextMenu().hide();
         }
         gutter.showMenu(area, line, e.getScreenX(), e.getScreenY());
+    }
+
+    /** The line of the run icon under the pointer, or null when the pointer is not on one. */
+    private static Integer runMarkerLine(javafx.scene.input.PickResult pick) {
+        javafx.scene.Node picked = pick == null ? null : pick.getIntersectedNode();
+        boolean onIcon = false;
+        while (picked != null && !picked.getStyleClass().contains("gutter")) {
+            onIcon |= picked.getStyleClass().contains("run-marker");
+            picked = picked.getParent();
+        }
+        return onIcon && picked != null && picked.getUserData() instanceof Integer line ? line : null;
     }
 
     /**
@@ -615,6 +642,33 @@ public final class CodeEditor implements TextEditor {
         if (gutter != null) {
             gutter.refresh();
         }
+    }
+
+    /** What the run icons showed last: the names on each line, so an unchanged scan repaints nothing. */
+    private java.util.Map<Integer, List<String>> shownRunMarkers = java.util.Map.of();
+
+    /**
+     * Shows run icons beside the lines a run can start from.
+     *
+     * @param menu what a click on an icon opens, made from the markers on its line
+     */
+    public void setRunMarkers(java.util.Map<Integer, List<com.smide.api.execution.RunMarker>> markers,
+                              java.util.function.Function<List<com.smide.api.execution.RunMarker>, javafx.scene.control.ContextMenu> menu) {
+        if (gutter == null || disposed) {
+            return;
+        }
+        java.util.Map<Integer, List<String>> names = new java.util.TreeMap<>();
+        markers.forEach((line, here) -> names.put(line,
+                here.stream().map(com.smide.api.execution.RunMarker::name).toList()));
+        gutter.setRunMarkers(markers, menu);
+        if (!names.equals(shownRunMarkers)) {
+            shownRunMarkers = names;
+            gutter.refresh();
+        }
+    }
+
+    public boolean isDisposed() {
+        return disposed;
     }
 
     /**

@@ -139,6 +139,31 @@ public final class CppRunType extends CommandRunType {
         return new Command(run, source.getParent(), env);
     }
 
+    private static final Pattern MAIN_LINE = Pattern.compile("^[ \\t]*int\\s+main\\s*\\(", Pattern.MULTILINE);
+
+    /**
+     * The main function of a source file compiled and run on its own. A project CMake or make
+     * builds is run through its build, as detection has it, so there is no file to run alone.
+     */
+    @Override
+    public List<com.smide.api.execution.RunMarker> markers(Workspace workspace, Path file, String text) {
+        Path root = workspace.root();
+        if (!ProjectFiles.hasExtension(file, "c", "cc", "cpp", "cxx") || !file.startsWith(root)) {
+            return List.of();
+        }
+        if (Files.isRegularFile(root.resolve("CMakeLists.txt"))
+                || List.of("Makefile", "makefile", "GNUmakefile").stream().anyMatch(n -> Files.isRegularFile(root.resolve(n)))) {
+            return List.of();
+        }
+        java.util.regex.Matcher main = MAIN_LINE.matcher(text);
+        if (!main.find()) {
+            return List.of();
+        }
+        String relative = ProjectFiles.relative(root, file);
+        return List.of(marker(workspace, com.smide.api.execution.RunMarker.lineOf(text, main.start()),
+                "compile and run " + relative, Map.of("kind", "file", "target", relative)));
+    }
+
     @Override
     protected List<Detected> find(Workspace workspace) {
         Path root = workspace.root();

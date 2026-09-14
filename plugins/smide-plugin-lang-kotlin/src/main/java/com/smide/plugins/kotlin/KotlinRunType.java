@@ -75,6 +75,27 @@ public final class KotlinRunType extends CommandRunType {
         return new Command(cmd, file.getParent());
     }
 
+    private static final Pattern MAIN_LINE = Pattern.compile("^[ \\t]*fun\\s+main\\s*\\(", Pattern.MULTILINE);
+
+    /**
+     * The main function of a loose Kotlin file. A project Gradle or Maven builds runs through
+     * its build instead, as detection has it, so its files get no icon of this kind.
+     */
+    @Override
+    public List<com.smide.api.execution.RunMarker> markers(Workspace workspace, Path file, String text) {
+        Path root = workspace.root();
+        if (!file.getFileName().toString().endsWith(".kt") || !file.startsWith(root) || KotlinToolchain.builtByTool(root)) {
+            return List.of();
+        }
+        java.util.regex.Matcher main = MAIN_LINE.matcher(text);
+        if (!main.find()) {
+            return List.of();
+        }
+        String relative = ProjectFiles.relative(root, file);
+        return List.of(marker(workspace, com.smide.api.execution.RunMarker.lineOf(text, main.start()),
+                "kotlin " + relative, Map.of("file", relative)));
+    }
+
     @Override
     protected List<Detected> find(Workspace workspace) {
         Path root = workspace.root();

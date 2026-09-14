@@ -108,6 +108,24 @@ public final class PythonRunType extends CommandRunType {
         }
     }
 
+    private static final Pattern MAIN_LINE =
+            Pattern.compile("^if\\s+__name__\\s*==\\s*[\"']__main__[\"']\\s*:", Pattern.MULTILINE);
+
+    /** The {@code if __name__ == "__main__":} line of a script, run as the detected configuration would run it. */
+    @Override
+    public List<com.smide.api.execution.RunMarker> markers(Workspace workspace, Path file, String text) {
+        if (!ProjectFiles.hasExtension(file, "py") || !file.startsWith(workspace.root())) {
+            return List.of();
+        }
+        java.util.regex.Matcher main = MAIN_LINE.matcher(text);
+        if (!main.find()) {
+            return List.of();
+        }
+        String relative = ProjectFiles.relative(workspace.root(), file);
+        return List.of(marker(workspace, com.smide.api.execution.RunMarker.lineOf(text, main.start()),
+                "python " + relative, Map.of("kind", "script", "target", relative)));
+    }
+
     @Override
     protected List<Detected> find(Workspace workspace) {
         Path root = workspace.root();

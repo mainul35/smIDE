@@ -99,6 +99,21 @@ public abstract class CommandRunType implements RunConfigurationType {
         return List.of();
     }
 
+    /**
+     * A run icon on a line, running a configuration with these values - named as the one
+     * {@link #find} gives for the same thing, so that one, and any settings saved on it, is
+     * what runs.
+     */
+    protected RunMarker marker(Workspace workspace, int line, String name, Map<String, String> values) {
+        return new RunMarker(line, name, () -> {
+            Config c = new Config(workspace);
+            c.setName(name);
+            defaults().forEach(c::set);
+            values.forEach(c::set);
+            return c.temporary();
+        });
+    }
+
     @Override
     public RunConfiguration create(Workspace workspace) {
         Config c = new Config(workspace);

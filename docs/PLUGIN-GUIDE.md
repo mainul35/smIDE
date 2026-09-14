@@ -65,7 +65,7 @@ context; everything is optional:
 | `ToolWindowFactory` | a docked panel with a stripe button, anchor LEFT/RIGHT/BOTTOM, optional shortcut |
 | `Action` | a command: menu path, shortcut, icon, toolbar group, context menu (`explorer`, `editor`), enablement, handler |
 | `ProjectImporter` | detects a build system at a workspace root and produces a `ProjectModel` |
-| `RunConfigurationType` | a kind of run configuration and its edit form; `supportsDebug()` enables Debug |
+| `RunConfigurationType` | a kind of run configuration and its edit form; `supportsDebug()` enables Debug; `markers()` puts a run icon beside the lines of a file it can run, such as a main function |
 | `Debugger` | attaches to a configuration started in debug mode - over the Debug Adapter Protocol with `ide.debugAdapters()`, or any way the plugin likes |
 | `SettingsPage` | a page in Settings at a path such as `Languages/Java` |
 | `NewProjectTemplate` | an entry in File → New Project |

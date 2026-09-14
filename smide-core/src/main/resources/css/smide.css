@@ -698,6 +698,19 @@
     -fx-padding: 0 1 0 2;
 }
 
+/* The run icon beside a main method: a green triangle, as in IntelliJ. */
+.run-marker {
+    -fx-cursor: hand;
+}
+
+.run-marker-icon {
+    -fx-fill: -smide-success;
+}
+
+.run-marker:hover .run-marker-icon {
+    -fx-fill: derive(-smide-success, 25%);
+}
+
 .breakpoint-dot {
     -fx-fill: -smide-danger;
 }

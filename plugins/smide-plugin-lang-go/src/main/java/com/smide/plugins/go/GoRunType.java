@@ -100,6 +100,89 @@ public final class GoRunType implements RunConfigurationType {
         return out;
     }
 
+    private static final java.util.regex.Pattern MAIN_FUNC =
+            java.util.regex.Pattern.compile("^func\\s+main\\s*\\(\\s*\\)", java.util.regex.Pattern.MULTILINE);
+
+    /**
+     * The main function of a main package.
+     *
+     * <p>Run as its package, the way detection names it - unless another file in the same
+     * folder has a main of its own. A folder of tutorial programs is exactly that, and as a
+     * package it does not build ("main redeclared in this block"), so there each file runs
+     * on its own.
+     */
+    @Override
+    public List<com.smide.api.execution.RunMarker> markers(Workspace workspace, Path file, String text) {
+        String fileName = file.getFileName().toString();
+        if (!fileName.endsWith(".go") || fileName.endsWith("_test.go") || !file.startsWith(workspace.root())) {
+            return List.of();
+        }
+        java.util.regex.Matcher main = MAIN_FUNC.matcher(text);
+        if (!main.find() || !declaresMain(text)) {
+            return List.of();
+        }
+        String target = otherMainBeside(file)
+                ? relative(workspace.root(), file)
+                : relative(workspace.root(), file.getParent());
+        String name = "go run " + target;
+        return List.of(new com.smide.api.execution.RunMarker(
+                com.smide.api.execution.RunMarker.lineOf(text, main.start()), name, () -> {
+                    Config c = new Config(workspace);
+                    c.setName(name);
+                    c.set("kind", "run");
+                    c.set("target", target);
+                    return c.temporary();
+                }));
+    }
+
+    /** Whether another Go file in the same folder declares a main function in package main. */
+    private static boolean otherMainBeside(Path file) {
+        try (Stream<Path> siblings = Files.list(file.getParent())) {
+            return siblings.filter(p -> !p.equals(file))
+                    .filter(p -> p.getFileName().toString().endsWith(".go") && !p.getFileName().toString().endsWith("_test.go"))
+                    .anyMatch(p -> {
+                        try {
+                            String text = Files.readString(p);
+                            return MAIN_FUNC.matcher(text).find() && declaresMain(text);
+                        } catch (IOException | RuntimeException e) {
+                            return false;
+                        }
+                    });
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** Whether a Go source's package clause - its first line that is not a comment - says main. */
+    static boolean declaresMain(String text) {
+        boolean inBlock = false;
+        for (String raw : (Iterable<String>) text.lines().limit(80)::iterator) {
+            String line = raw.strip();
+            if (inBlock) {
+                int end = line.indexOf("*/");
+                if (end < 0) {
+                    continue;
+                }
+                inBlock = false;
+                line = line.substring(end + 2).strip();
+            }
+            if (line.startsWith("/*")) {
+                inBlock = !line.contains("*/");
+                continue;
+            }
+            if (line.isEmpty() || line.startsWith("//")) {
+                continue;
+            }
+            if (line.startsWith("package ")) {
+                String name = line.substring("package ".length()).strip();
+                int comment = name.indexOf("//");
+                return (comment >= 0 ? name.substring(0, comment).strip() : name).equals("main");
+            }
+            return false;
+        }
+        return false;
+    }
+
     @Override
     public Node editor(RunConfiguration configuration) {
         Config c = (Config) configuration;

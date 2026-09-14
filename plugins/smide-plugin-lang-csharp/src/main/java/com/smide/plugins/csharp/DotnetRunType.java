@@ -71,6 +71,36 @@ public final class DotnetRunType extends CommandRunType {
         return new Command(cmd, c.workspace().root(), Map.of("DOTNET_NOLOGO", "true"));
     }
 
+    private static final Pattern MAIN_LINE = Pattern.compile(
+            "^[ \\t]*(?:(?:public|private|internal)\\s+)?static\\s+(?:async\\s+)?(?:void|int|Task(?:<int>)?)\\s+Main\\s*\\(",
+            Pattern.MULTILINE);
+
+    /** A Main method, run as the project it belongs to - the nearest .csproj above the file. */
+    @Override
+    public List<com.smide.api.execution.RunMarker> markers(Workspace workspace, Path file, String text) {
+        Path root = workspace.root();
+        if (!ProjectFiles.hasExtension(file, "cs") || !file.startsWith(root)) {
+            return List.of();
+        }
+        java.util.regex.Matcher main = MAIN_LINE.matcher(text);
+        if (!main.find()) {
+            return List.of();
+        }
+        for (Path dir = file.getParent(); dir != null && dir.startsWith(root); dir = dir.getParent()) {
+            try (java.util.stream.Stream<Path> files = java.nio.file.Files.list(dir)) {
+                Optional<Path> csproj = files.filter(p -> ProjectFiles.hasExtension(p, "csproj")).sorted().findFirst();
+                if (csproj.isPresent()) {
+                    String name = csproj.get().getFileName().toString().replaceFirst("\\.csproj$", "");
+                    return List.of(marker(workspace, com.smide.api.execution.RunMarker.lineOf(text, main.start()),
+                            "dotnet run " + name, Map.of("kind", "run", "project", ProjectFiles.relative(root, csproj.get()))));
+                }
+            } catch (java.io.IOException e) {
+                return List.of();
+            }
+        }
+        return List.of();
+    }
+
     @Override
     protected List<Detected> find(Workspace workspace) {
         Path root = workspace.root();

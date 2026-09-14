@@ -113,6 +113,7 @@ public final class IdeImpl implements Ide {
     /** Editors whose caret already updates the status bar. */
     private final Set<CodeEditor> caretWatched = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private FreezeReporter freezes;
+    private final com.smide.execution.RunMarkers runMarkers;
 
     public IdeImpl(Stage stage, HostServices hostServices) {
         this.stage = stage;
@@ -134,6 +135,8 @@ public final class IdeImpl implements Ide {
         this.execution = new ExecutionService(this, registry);
         this.actions = new ActionManager(this, registry, settings);
         this.plugins = new PluginManager(this, registry);
+        // Run icons beside main methods and functions, from every run configuration type.
+        this.runMarkers = new com.smide.execution.RunMarkers(this, registry);
         /* Every text editor gets the right-click menu the actions describe. Wired here
            rather than inside the editor, which knows nothing about actions. */
         this.editors.addOpenedListener(editor -> {
@@ -141,6 +144,7 @@ public final class IdeImpl implements Ide {
                 code.setContextMenu(actions.contextMenuFor("editor"));
                 // While a debug session is stopped, pointing at a variable shows what is in it.
                 com.smide.debug.DebugHover.install(this, code, () -> debugWindow);
+                runMarkers.attach(code);
             }
         });
         this.sessionStore = new SessionStore(homeDir.resolve("session.json"));

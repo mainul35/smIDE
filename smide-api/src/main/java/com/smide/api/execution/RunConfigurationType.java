@@ -26,6 +26,17 @@ public interface RunConfigurationType {
         return List.of();
     }
 
+    /**
+     * The lines of a file a run can start from - a main method, a main function - which the
+     * editor marks with a run icon.
+     *
+     * <p>Reads the text it is given, which is what the editor shows and may not be saved,
+     * and does nothing slow: it is asked again as the file is edited, off the UI thread.
+     */
+    default List<RunMarker> markers(Workspace workspace, java.nio.file.Path file, String text) {
+        return List.of();
+    }
+
     /** The edit form; changes apply to the configuration directly. */
     Node editor(RunConfiguration configuration);
 }

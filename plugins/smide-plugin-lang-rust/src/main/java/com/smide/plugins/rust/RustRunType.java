@@ -76,6 +76,57 @@ public final class RustRunType extends CommandRunType {
         return new Command(cmd, crate);
     }
 
+    private static final Pattern MAIN_LINE =
+            Pattern.compile("^[ \\t]*(?:pub\\s+)?(?:async\\s+)?fn\\s+main\\s*\\(", Pattern.MULTILINE);
+
+    /**
+     * The main function of a crate's binary: src/main.rs, src/bin/NAME.rs or src/bin/NAME/main.rs,
+     * run with cargo as detection names it.
+     */
+    @Override
+    public List<com.smide.api.execution.RunMarker> markers(Workspace workspace, Path file, String text) {
+        Path root = workspace.root();
+        if (!ProjectFiles.hasExtension(file, "rs") || !file.startsWith(root)) {
+            return List.of();
+        }
+        Matcher main = MAIN_LINE.matcher(text);
+        if (!main.find()) {
+            return List.of();
+        }
+        Path crate = file.getParent();
+        while (crate != null && crate.startsWith(root) && !Files.isRegularFile(crate.resolve("Cargo.toml"))) {
+            crate = crate.getParent();
+        }
+        if (crate == null || !crate.startsWith(root)) {
+            return List.of();
+        }
+        String manifest = ProjectFiles.head(crate.resolve("Cargo.toml"), 256_000);
+        if (!manifest.contains("[package]")) {
+            return List.of();
+        }
+        String relative = ProjectFiles.relative(root, crate);
+        String suffix = relative.isEmpty() ? "" : " (" + relative + ")";
+        int line = com.smide.api.execution.RunMarker.lineOf(text, main.start());
+        Path src = crate.resolve("src");
+        String bin;
+        if (file.equals(src.resolve("main.rs"))) {
+            if (binaries(crate, manifest).isEmpty()) {
+                return List.of(marker(workspace, line, "cargo run" + suffix, Map.of("kind", "run", "crate", relative)));
+            }
+            Matcher name = PACKAGE_NAME.matcher(manifest);
+            bin = name.find() ? name.group(1) : crate.getFileName().toString();
+        } else if (src.resolve("bin").equals(file.getParent())) {
+            bin = file.getFileName().toString().replaceFirst("\\.rs$", "");
+        } else if (file.getFileName().toString().equals("main.rs") && file.getParent() != null
+                && src.resolve("bin").equals(file.getParent().getParent())) {
+            bin = file.getParent().getFileName().toString();
+        } else {
+            return List.of();
+        }
+        return List.of(marker(workspace, line, "cargo run --bin " + bin + suffix,
+                Map.of("kind", "run", "crate", relative, "bin", bin)));
+    }
+
     @Override
     protected List<Detected> find(Workspace workspace) {
         Path root = workspace.root();

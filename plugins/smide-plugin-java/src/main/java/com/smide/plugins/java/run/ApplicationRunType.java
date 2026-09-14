@@ -71,20 +71,77 @@ public final class ApplicationRunType implements RunConfigurationType {
         }
         List<RunConfiguration> out = new ArrayList<>();
         for (JavaProjectInfo.RunnableClass rc : info.get().mainClasses()) {
-            Config c = new Config(workspace);
-            c.setName(rc.simpleName());
-            c.set("mainClass", rc.fqn());
-            /* The class path is the assembly's when there is one. A main class in a
-               module that the application is assembled from - smIDE's own Launcher, in
-               a reactor whose plugins it does not depend on - runs with its module's
-               class path and comes up missing everything the assembly adds. */
-            Path classpathModule = AssemblyModule.of(info.get().model(), rc.moduleRoot())
-                    .orElse(rc.moduleRoot());
-            c.set("module", Forms.relative(workspace.root(), classpathModule));
-            c.temporary();
-            out.add(c);
+            out.add(configFor(workspace, info.get(), rc));
         }
         return out;
+    }
+
+    private RunConfiguration configFor(Workspace workspace, JavaProjectInfo info, JavaProjectInfo.RunnableClass rc) {
+        Config c = new Config(workspace);
+        c.setName(rc.simpleName());
+        c.set("mainClass", rc.fqn());
+        /* The class path is the assembly's when there is one. A main class in a
+           module that the application is assembled from - smIDE's own Launcher, in
+           a reactor whose plugins it does not depend on - runs with its module's
+           class path and comes up missing everything the assembly adds. */
+        Path classpathModule = AssemblyModule.of(info.model(), rc.moduleRoot())
+                .orElse(rc.moduleRoot());
+        c.set("module", Forms.relative(workspace.root(), classpathModule));
+        c.temporary();
+        return c;
+    }
+
+    private static final java.util.regex.Pattern MAIN_METHOD = java.util.regex.Pattern.compile(
+            "^[ \\t]*(?:public\\s+)?(?:static\\s+)?(?:final\\s+)?void\\s+main\\s*\\(", java.util.regex.Pattern.MULTILINE);
+    private static final java.util.regex.Pattern PACKAGE =
+            java.util.regex.Pattern.compile("^[ \\t]*package\\s+([\\w.]+)\\s*;", java.util.regex.Pattern.MULTILINE);
+
+    /**
+     * The main method of a class. Run as the detected configuration of the same class when
+     * the import knows it, so the class path is the one detection works out; a class the
+     * import has not seen yet - written since - runs from the module the file is in.
+     */
+    @Override
+    public List<com.smide.api.execution.RunMarker> markers(Workspace workspace, Path file, String text) {
+        if (!file.getFileName().toString().endsWith(".java") || !file.startsWith(workspace.root())) {
+            return List.of();
+        }
+        java.util.regex.Matcher main = MAIN_METHOD.matcher(text);
+        if (!main.find()) {
+            return List.of();
+        }
+        int line = com.smide.api.execution.RunMarker.lineOf(text, main.start());
+        Optional<JavaProjectInfo> info = registry.get(workspace);
+        if (info.isPresent()) {
+            for (JavaProjectInfo.RunnableClass rc : info.get().mainClasses()) {
+                if (rc.file() != null && rc.file().toAbsolutePath().normalize().equals(file)) {
+                    return List.of(new com.smide.api.execution.RunMarker(line, rc.simpleName(),
+                            () -> configFor(workspace, info.get(), rc)));
+                }
+            }
+        }
+        String simple = file.getFileName().toString().replaceFirst("\\.java$", "");
+        java.util.regex.Matcher pkg = PACKAGE.matcher(text);
+        String fqn = pkg.find() ? pkg.group(1) + "." + simple : simple;
+        return List.of(new com.smide.api.execution.RunMarker(line, simple, () -> {
+            Config c = new Config(workspace);
+            c.setName(simple);
+            c.set("mainClass", fqn);
+            c.set("module", Forms.relative(workspace.root(), moduleOf(workspace.root(), file)));
+            c.temporary();
+            return c;
+        }));
+    }
+
+    /** The nearest folder above a source with a build file, or the workspace root. */
+    private static Path moduleOf(Path root, Path file) {
+        for (Path dir = file.getParent(); dir != null && dir.startsWith(root); dir = dir.getParent()) {
+            if (Files.isRegularFile(dir.resolve("pom.xml")) || Files.isRegularFile(dir.resolve("build.gradle"))
+                    || Files.isRegularFile(dir.resolve("build.gradle.kts"))) {
+                return dir;
+            }
+        }
+        return root;
     }
 
     @Override

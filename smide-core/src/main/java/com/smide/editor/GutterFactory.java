@@ -56,6 +56,12 @@ public final class GutterFactory implements IntFunction<Node> {
     private LineAnnotations annotations;
     /** The breakpoint menu on screen, if any, so a second right click replaces it. */
     private ContextMenu menu;
+    /** Width of the run icon column, which is there only in a file that has something to run. */
+    static final double RUN_WIDTH = 16;
+    /** Run icons by line; empty when the file has nothing to run. */
+    private java.util.Map<Integer, List<com.smide.api.execution.RunMarker>> runMarkers = java.util.Map.of();
+    /** What a click on a run icon opens, made from the markers on its line. */
+    private java.util.function.Function<List<com.smide.api.execution.RunMarker>, ContextMenu> runMenu;
 
     public GutterFactory(CodeArea area, Breakpoints breakpoints, Path file) {
         this.area = area;
@@ -126,6 +132,10 @@ public final class GutterFactory implements IntFunction<Node> {
         HBox row = annotations == null
                 ? new HBox(marker, number)
                 : new HBox(annotation(paragraph), marker, number);
+        if (!runMarkers.isEmpty()) {
+            // Beside the code, right of the numbers, where IntelliJ puts it.
+            row.getChildren().add(runCell(paragraph));
+        }
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("gutter");
         /* The whole gutter toggles a breakpoint, line number included, which is what
@@ -195,6 +205,57 @@ public final class GutterFactory implements IntFunction<Node> {
     private static final String ANNOTATION_FONT = com.smide.ui.Fonts.monospace();
     private static final double ANNOTATION_SIZE = 11;
     private double annotationWidth;
+
+    /**
+     * One cell of the run column: a run icon on a line a run can start from, else empty.
+     *
+     * <p>The empty cells keep the column the same width on every line, so the code does not
+     * move sideways past a main method.
+     */
+    private Node runCell(int paragraph) {
+        StackPane cell = new StackPane();
+        cell.setMinWidth(RUN_WIDTH);
+        cell.setPrefWidth(RUN_WIDTH);
+        cell.setMaxWidth(RUN_WIDTH);
+        cell.setAlignment(Pos.CENTER);
+        cell.getStyleClass().add("run-column");
+        List<com.smide.api.execution.RunMarker> here = runMarkers.get(paragraph);
+        if (here != null && !here.isEmpty()) {
+            Polygon play = new Polygon(0, -5, 8, 0, 0, 5);
+            play.getStyleClass().add("run-marker-icon");
+            cell.getChildren().add(play);
+            // Found by the editor's mouse filter, as the breakpoint column is.
+            cell.getStyleClass().add("run-marker");
+            cell.setPickOnBounds(true);
+            Tooltip.install(cell, new Tooltip(here.size() == 1
+                    ? "Run '" + here.get(0).name() + "'" : "Run " + here.size() + " ways from here"));
+        }
+        return cell;
+    }
+
+    /** Shows run icons on these lines; clicking one opens what {@code menu} makes of its markers. */
+    public void setRunMarkers(java.util.Map<Integer, List<com.smide.api.execution.RunMarker>> markers,
+                              java.util.function.Function<List<com.smide.api.execution.RunMarker>, ContextMenu> menu) {
+        this.runMarkers = markers == null ? java.util.Map.of() : markers;
+        this.runMenu = menu;
+    }
+
+    public java.util.Map<Integer, List<com.smide.api.execution.RunMarker>> runMarkers() {
+        return runMarkers;
+    }
+
+    /** Opens the run menu for a line's icon, from the editor's mouse filter. */
+    public void showRunMenu(Node owner, int line, double screenX, double screenY) {
+        List<com.smide.api.execution.RunMarker> here = runMarkers.get(line);
+        if (here == null || here.isEmpty() || runMenu == null) {
+            return;
+        }
+        if (menu != null) {
+            menu.hide();
+        }
+        menu = runMenu.apply(here);
+        menu.show(owner, screenX, screenY);
+    }
 
     /** Toggles the breakpoint on a line, from the editor's mouse filter. */
     public void toggleAt(int line) {
