@@ -56,7 +56,9 @@ public final class ConsoleView extends BorderPane {
                 handleClick();
             }
         });
-        setCenter(new VirtualizedScrollPane<>(area));
+        VirtualizedScrollPane<StyleClassedTextArea> output = new VirtualizedScrollPane<>(area);
+        output.setMinHeight(0);
+        setCenter(output);
 
         input.getStyleClass().add("console-input");
         input.setPromptText("Send to the process's standard input, Enter to send");
@@ -78,6 +80,18 @@ public final class ConsoleView extends BorderPane {
         toolbar.getStyleClass().add("console-toolbar");
         toolbar.getChildren().add(scrollLock);
         toolbar.setAlignment(Pos.TOP_CENTER);
+        /* A column of buttons is at least as tall as its buttons, and a border pane is at
+           least as tall as its tallest side. A Run window shorter than the four buttons
+           therefore kept the console at their height and cut off its bottom - the input
+           field, so a program asking for input could not be answered. The column may now
+           shrink, hiding the buttons that do not fit rather than the field. */
+        toolbar.setMinHeight(0);
+        javafx.scene.shape.Rectangle clip = new javafx.scene.shape.Rectangle();
+        clip.widthProperty().bind(toolbar.widthProperty());
+        clip.heightProperty().bind(toolbar.heightProperty());
+        toolbar.setClip(clip);
+        input.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
+        setMinHeight(0);
         setLeft(toolbar);
     }
 
