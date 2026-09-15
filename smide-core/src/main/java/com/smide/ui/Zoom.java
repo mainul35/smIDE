@@ -5,6 +5,7 @@ import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.collections.ListChangeListener;
 import javafx.scene.Parent;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Region;
@@ -135,6 +136,10 @@ public final class Zoom {
         if (scene == null || scene.getRoot() == null) {
             return;
         }
+        if (window instanceof javafx.stage.PopupWindow) {
+            scalePopup(scene.getRoot());
+            return;
+        }
         if (scene.getRoot() instanceof ScaledRoot scaled) {
             scaled.setFactor(factor.get());
             resize(window);
@@ -142,6 +147,33 @@ public final class Zoom {
         }
         scene.setRoot(new ScaledRoot(scene.getRoot(), factor.get()));
         resize(window);
+    }
+
+    /** The transform a popup's content was given, kept on the node so it is added once. */
+    private static final String POPUP_SCALE = "smide.zoom.scale";
+
+    /**
+     * Scales what a popup holds, leaving its root where the popup put it.
+     *
+     * <p>A popup sizes its window from its own root, and that root is its to manage. Putting
+     * it inside a scaling holder, as a dialog's is, broke that for a ComboBox: its list had
+     * not measured itself when the window appeared, the window was sized to the holder's
+     * empty preferred size - two pixels by one - and it never grew. Every dropdown in the
+     * Settings dialog opened and showed nothing. The transform goes on each piece of content
+     * instead, and the popup sizes itself around the scaled content as it always has.
+     */
+    private void scalePopup(Parent root) {
+        for (Node node : root.getChildrenUnmodifiable()) {
+            Object existing = node.getProperties().get(POPUP_SCALE);
+            if (existing instanceof Scale transform) {
+                transform.setX(factor.get());
+                transform.setY(factor.get());
+            } else {
+                Scale transform = new Scale(factor.get(), factor.get(), 0, 0);
+                node.getTransforms().add(transform);
+                node.getProperties().put(POPUP_SCALE, transform);
+            }
+        }
     }
 
     /**
