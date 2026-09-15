@@ -60,6 +60,8 @@ public final class GutterFactory implements IntFunction<Node> {
     static final double RUN_WIDTH = 16;
     /** Run icons by line; empty when the file has nothing to run. */
     private java.util.Map<Integer, List<com.smide.api.execution.RunMarker>> runMarkers = java.util.Map.of();
+    /** Colours written on each line, as written - a stylesheet's values - shown as swatches. */
+    private java.util.Map<Integer, List<String>> colors = java.util.Map.of();
     /** What a click on a run icon opens, made from the markers on its line. */
     private java.util.function.Function<List<com.smide.api.execution.RunMarker>, ContextMenu> runMenu;
 
@@ -132,7 +134,7 @@ public final class GutterFactory implements IntFunction<Node> {
         HBox row = annotations == null
                 ? new HBox(marker, number)
                 : new HBox(annotation(paragraph), marker, number);
-        if (!runMarkers.isEmpty()) {
+        if (!runMarkers.isEmpty() || !colors.isEmpty()) {
             // Beside the code, right of the numbers, where IntelliJ puts it.
             row.getChildren().add(runCell(paragraph));
         }
@@ -229,8 +231,23 @@ public final class GutterFactory implements IntFunction<Node> {
             cell.setPickOnBounds(true);
             Tooltip.install(cell, new Tooltip(here.size() == 1
                     ? "Run '" + here.get(0).name() + "'" : "Run " + here.size() + " ways from here"));
+            return cell;
+        }
+        List<String> written = colors.get(paragraph);
+        javafx.scene.paint.Color color = written == null || written.isEmpty() ? null : ColorSwatches.colorOf(written.get(0));
+        if (color != null) {
+            // The first colour the line writes; the tooltip names every one.
+            javafx.scene.shape.Rectangle swatch = new javafx.scene.shape.Rectangle(10, 10, color);
+            swatch.getStyleClass().add("color-swatch");
+            cell.getChildren().add(swatch);
+            Tooltip.install(cell, new Tooltip(String.join("   ", written)));
         }
         return cell;
+    }
+
+    /** Shows a swatch beside each line that writes a colour. */
+    public void setColors(java.util.Map<Integer, List<String>> colors) {
+        this.colors = colors == null ? java.util.Map.of() : colors;
     }
 
     /** Shows run icons on these lines; clicking one opens what {@code menu} makes of its markers. */

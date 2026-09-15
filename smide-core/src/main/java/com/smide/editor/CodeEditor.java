@@ -671,6 +671,19 @@ public final class CodeEditor implements TextEditor {
         return disposed;
     }
 
+    /** The colours shown last, so a scan that found the same ones repaints nothing. */
+    private java.util.Map<Integer, List<String>> shownColors = java.util.Map.of();
+
+    /** Shows a swatch beside each line that writes a colour, by zero-based line. */
+    public void setColorSwatches(java.util.Map<Integer, List<String>> colors) {
+        if (gutter == null || disposed || colors.equals(shownColors)) {
+            return;
+        }
+        shownColors = colors;
+        gutter.setColors(colors);
+        gutter.refresh();
+    }
+
     /**
      * Marks this as source read out of a library rather than code from the project.
      *

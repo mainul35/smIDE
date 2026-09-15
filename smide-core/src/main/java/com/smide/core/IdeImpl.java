@@ -145,6 +145,8 @@ public final class IdeImpl implements Ide {
                 // While a debug session is stopped, pointing at a variable shows what is in it.
                 com.smide.debug.DebugHover.install(this, code, () -> debugWindow);
                 runMarkers.attach(code);
+                // The colour a stylesheet value writes, beside its line.
+                com.smide.editor.ColorSwatches.install(code);
             }
         });
         this.sessionStore = new SessionStore(homeDir.resolve("session.json"));

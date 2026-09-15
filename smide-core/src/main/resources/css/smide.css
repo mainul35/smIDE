@@ -707,6 +707,13 @@
     -fx-fill: -smide-success;
 }
 
+/* The colour a stylesheet line writes; the outline keeps white visible on a light gutter. */
+.color-swatch {
+    -fx-stroke: -smide-text-muted;
+    -fx-stroke-width: 0.8;
+    -fx-stroke-type: inside;
+}
+
 .run-marker:hover .run-marker-icon {
     -fx-fill: derive(-smide-success, 25%);
 }
