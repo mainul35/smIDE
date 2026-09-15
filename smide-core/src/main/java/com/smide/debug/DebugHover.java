@@ -52,6 +52,8 @@ public final class DebugHover {
     /** Sessions already told to close this popup when they move on. */
     private final Set<DebugSession> followed = Collections.newSetFromMap(new WeakHashMap<>());
     private int pointerOffset = -1;
+    /** True while a value is being asked for, between the delay ending and the popup showing. */
+    private boolean deciding;
     /** The word the popup is showing, while it is. */
     private Span shown;
 
@@ -122,7 +124,12 @@ public final class DebugHover {
             }
         });
         // Documentation waits while this is up: what a variable holds matters more here.
-        editor.claimHover(popup::isShowing);
+        /* And while one is about to show: the documentation hover waits 900 ms and this one
+           450 ms plus a round trip to the debugger, and when that trip ran long, the language
+           server's popup won the race and sat where the value should have been. Once this
+           gives up on a word - a type, a function - the documentation is free to show. */
+        editor.claimHover(() -> popup.isShowing()
+                || delay.getStatus() == javafx.animation.Animation.Status.RUNNING || deciding);
     }
 
     public void hide() {
@@ -165,6 +172,9 @@ public final class DebugHover {
             leave.playFromStart();
         }
         DebugSession session = session();
+        if (session != null) {
+            follow(session);
+        }
         if (session != null && session.isSuspended() && offset >= 0) {
             delay.playFromStart();
         } else {
@@ -173,6 +183,15 @@ public final class DebugHover {
     }
 
     private void show() {
+        deciding = true;
+        try {
+            showNow();
+        } finally {
+            deciding = false;
+        }
+    }
+
+    private void showNow() {
         DebugToolWindow w = window.get();
         DebugSession session = w == null ? null : w.session();
         if (session == null || !session.isSuspended() || pointerOffset < 0) {
@@ -204,11 +223,12 @@ public final class DebugHover {
         if (bounds == null) {
             return;
         }
-        follow(session);
         shown = span;
         /* Shown first, filled after. Rows built into a hidden popup are styled with no
            showing scene around them: every colour lookup in them failed, and although they
            came out right a pulse later, each show wrote a screenful of CSS warnings. */
+        // The documentation for the same word, if it got there first, would sit under the value.
+        editor.dismissOtherHovers();
         popup.show(editor.area(), bounds.getMinX(), bounds.getMaxY() + 4);
         tree.setShowRoot(true);
         tree.setRoot(variables.node(named));
@@ -244,14 +264,39 @@ public final class DebugHover {
         return sameFile == null ? null : new Target(sameFile, false);
     }
 
-    private static boolean same(Path a, Path b) {
-        return a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize());
+    /**
+     * Whether two paths name the same file.
+     *
+     * <p>Spelled alike first, then asked of the file system: a debugger reports the path the
+     * compiler recorded, which on Windows can differ from the editor's in case, in a short
+     * 8.3 name or through a junction, and a frame that seemed to be in another file gave the
+     * hover no frame to read the name in, so it showed nothing.
+     */
+    static boolean same(Path a, Path b) {
+        if (a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize())) {
+            return true;
+        }
+        try {
+            return a.getFileName() != null && b.getFileName() != null
+                    && a.getFileName().toString().equalsIgnoreCase(b.getFileName().toString())
+                    && java.nio.file.Files.isSameFile(a, b);
+        } catch (java.io.IOException | RuntimeException e) {
+            return false;
+        }
     }
 
     private void follow(DebugSession session) {
         // A step or a resume changes every value; an old one left on screen would be a lie.
         if (followed.add(session)) {
-            session.addListener(s -> hide());
+            session.addListener(s -> {
+                hide();
+                /* A step ends with the pointer where it was - often on the very name whose
+                   value just changed - and nothing moved to ask again, so the language
+                   server's documentation, shown while the program ran, stayed instead. */
+                if (s.isSuspended() && pointerOffset >= 0) {
+                    delay.playFromStart();
+                }
+            });
         }
     }
 

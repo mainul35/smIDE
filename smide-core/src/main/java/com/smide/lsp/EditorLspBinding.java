@@ -40,6 +40,8 @@ public final class EditorLspBinding {
     private boolean opened;
     private String lastTyped = "";
     private int hoverOffset = -1;
+    /** Closes the documentation when a hover that claims the pointer - a debugger's value - shows. */
+    private final Runnable dismissHover = this::dismissHover;
     /** The character that asked for the next completion, when one did. */
     private String pendingTrigger;
 
@@ -101,6 +103,7 @@ public final class EditorLspBinding {
 
     void attach() {
         editor.addTextListener(textListener);
+        editor.addHoverDismisser(dismissHover);
         CodeArea area = editor.area();
         area.addEventFilter(KeyEvent.KEY_PRESSED, keyHandler);
         area.addEventHandler(KeyEvent.KEY_TYPED, keyTyped);
@@ -132,8 +135,14 @@ public final class EditorLspBinding {
         }
     }
 
+    private void dismissHover() {
+        hoverDelay.stop();
+        hover.hide();
+    }
+
     void detach() {
         editor.removeTextListener(textListener);
+        editor.removeHoverDismisser(dismissHover);
         CodeArea area = editor.area();
         area.removeEventFilter(KeyEvent.KEY_PRESSED, keyHandler);
         area.removeEventHandler(KeyEvent.KEY_TYPED, keyTyped);

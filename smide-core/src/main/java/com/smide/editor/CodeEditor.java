@@ -702,6 +702,23 @@ public final class CodeEditor implements TextEditor {
         return hoverClaim.getAsBoolean();
     }
 
+    /** Popups that close when the claiming one shows: documentation under a value, say. */
+    private final List<Runnable> hoverDismissers = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Registers a popup to close when a claiming hover shows. */
+    public void addHoverDismisser(Runnable dismiss) {
+        hoverDismissers.add(dismiss);
+    }
+
+    public void removeHoverDismisser(Runnable dismiss) {
+        hoverDismissers.remove(dismiss);
+    }
+
+    /** Closes every registered popup; called by the hover that claims the pointer as it shows. */
+    public void dismissOtherHovers() {
+        hoverDismissers.forEach(Runnable::run);
+    }
+
     /** Right-click menu for the text itself; the actions decide what is in it. */
     public void setContextMenu(javafx.scene.control.ContextMenu menu) {
         area.setContextMenu(menu);
