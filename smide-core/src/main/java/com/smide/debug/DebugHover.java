@@ -197,7 +197,7 @@ public final class DebugHover {
         if (session == null || !session.isSuspended() || pointerOffset < 0) {
             return;
         }
-        Span span = expressionAt(editor.text(), pointerOffset);
+        Span span = expressionAt(editor.text(), pointerOffset, editor.language().lineComment());
         if (span == null) {
             return;
         }
@@ -344,6 +344,11 @@ public final class DebugHover {
      * comment - where a word is just a word.
      */
     static Span expressionAt(String text, int offset) {
+        return expressionAt(text, offset, "//");
+    }
+
+    /** @param lineComment what starts a comment to the end of the line in this language: // or # */
+    static Span expressionAt(String text, int offset, String lineComment) {
         if (text == null || offset < 0 || offset >= text.length()
                 || !Character.isJavaIdentifierPart(text.charAt(offset))) {
             return null;
@@ -360,7 +365,7 @@ public final class DebugHover {
             return null;
         }
         String word = text.substring(start, end);
-        if (KEYWORDS.contains(word) || followedByBracket(text, end) || insideStringOrComment(text, start)) {
+        if (KEYWORDS.contains(word) || followedByBracket(text, end) || insideStringOrComment(text, start, lineComment)) {
             return null;
         }
         if (start > 0 && text.charAt(start - 1) == '@') {
@@ -399,31 +404,54 @@ public final class DebugHover {
     /**
      * Whether a position is inside a string, a character literal or a comment.
      *
-     * <p>A scan of the line for strings and line comments, and a look back for an
-     * unclosed block comment. Not a lexer - a {@code /*} inside a string earlier in the
-     * file can fool it - but the cost of being fooled is a popup not shown.
+     * <p>Read from the top of the file, the way a lexer would. It used to look back for the
+     * nearest {@code /*} without a {@code *\/} after it, and a comment line written
+     * {@code //* Use accessGranted()} matched: every name below it counted as inside a block
+     * comment, and pointing at a variable while stopped showed the language server's
+     * documentation instead of its value.
+     *
+     * @param lineComment the language's line comment, {@code //} or {@code #}; block comments
+     *                    are read only where line comments are {@code //}
      */
-    private static boolean insideStringOrComment(String text, int position) {
-        int open = text.lastIndexOf("/*", position);
-        if (open >= 0 && text.lastIndexOf("*/", position) < open) {
-            return true;
-        }
-        int lineStart = text.lastIndexOf('\n', position - 1) + 1;
-        char quote = 0;
-        for (int i = lineStart; i < position; i++) {
+    static boolean insideStringOrComment(String text, int position, String lineComment) {
+        String line = lineComment == null || lineComment.isBlank() ? "//" : lineComment.strip();
+        boolean blocks = line.equals("//");
+        int i = 0;
+        while (i < position) {
             char c = text.charAt(i);
-            if (quote != 0) {
-                if (c == '\\') {
-                    i++;
-                } else if (c == quote) {
-                    quote = 0;
+            if (text.startsWith(line, i)) {
+                int end = text.indexOf('\n', i);
+                if (end < 0 || end >= position) {
+                    return true;
                 }
+                i = end + 1;
+            } else if (blocks && text.startsWith("/*", i)) {
+                int end = text.indexOf("*/", i + 2);
+                if (end < 0 || end + 2 > position) {
+                    return true;
+                }
+                i = end + 2;
             } else if (c == '"' || c == '\'') {
-                quote = c;
-            } else if (c == '/' && i + 1 < position && text.charAt(i + 1) == '/') {
-                return true;
+                // To the closing quote or the end of the line: an unclosed quote does not swallow the file.
+                int j = i + 1;
+                while (j < text.length() && text.charAt(j) != c && text.charAt(j) != '\n') {
+                    j += text.charAt(j) == '\\' ? 2 : 1;
+                }
+                if (j >= position) {
+                    return true;
+                }
+                i = j + 1;
+            } else if (c == '`') {
+                // A raw string, as Go and JavaScript have them, which may run over lines.
+                int end = text.indexOf('`', i + 1);
+                if (end < 0 || end >= position) {
+                    return true;
+                }
+                i = end + 1;
+            } else {
+                i++;
             }
         }
-        return quote != 0;
+        return false;
     }
 }
