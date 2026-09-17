@@ -106,6 +106,55 @@ final class CodeContext {
             + "|static\\s+|final\\s+|abstract\\s+|sealed\\s+|open\\s+|data\\s+|default\\s+)*"
             + "(?:class|interface|enum|record|struct|trait|object|type|def|func|fn)\\s+([A-Za-z_]\\w*)");
 
+    /**
+     * Whether the file under review has anything to do with a database.
+     *
+     * <p>The cost of the database evidence below is a second pass over the project's
+     * configuration, and a file that never speaks to a database should not pay it.
+     */
+    private static final Pattern DATABASE_WORK = Pattern.compile("(?i)"
+            + "\\bselect\\b[\\s\\S]{0,300}\\bfrom\\b|\\binsert\\s+into\\b|\\bdelete\\s+from\\b"
+            + "|\\bupdate\\b[\\s\\S]{0,200}\\bset\\b|\\bjoin\\b[\\s\\S]{0,120}\\bon\\b"
+            + "|jdbc|datasource|entitymanager|preparedstatement|createquery|@query|@table|@entity"
+            + "|repository|sqlalchemy|knex|sequelize|mybatis|jooq|hibernate|liquibase|flyway");
+
+    /**
+     * A line of configuration that says which database this project talks to.
+     *
+     * <p>The engine decides the whole of the SQL review - what EXPLAIN is spelled like,
+     * which plans are possible, how an index is chosen - and it is never written in the DAO
+     * being read. It is in a dependency, a URL, a dialect setting, a compose file. Those
+     * lines are found here and quoted into the prompt, so the answer comes from the
+     * project rather than from a guess about what a project like this usually uses.
+     */
+    private static final Pattern ENGINE_LINE = Pattern.compile("(?i)"
+            // A connection, wherever it is written.
+            + "jdbc:[a-z0-9]+:|(?:postgres(?:ql)?|mysql|mariadb|sqlserver|oracle|sqlite|h2|db2)://"
+            + "|datasource[.-]?url|database_url|db_url|flyway\\.url|liquibase\\.url|connectionstring"
+            // What the connection is made with.
+            + "|driver[-_.]?class|hibernate\\.dialect|database-platform|spring\\.jpa\\.database"
+            + "|org\\.postgresql|com\\.mysql|mysql-connector|mariadb-java-client|ojdbc\\d*|mssql-jdbc"
+            + "|com\\.h2database|sqlite-jdbc|psycopg2?|pg8000|mysql2|go-sql-driver|lib/pq|jackc/pgx"
+            + "|npgsql|microsoft\\.data\\.sqlclient|system\\.data\\.sqlclient|oracledb|cx_oracle"
+            // A dependency, however the build file of the day spells one.
+            + "|artifactid>\\s*[a-z0-9._-]*(?:postgres|mysql|mariadb|sqlite|oracle|mssql|h2)"
+            + "|[\"'](?:pg|mysql2|sqlite3|mssql|oracledb|tedious|better-sqlite3)[\"']\\s*:"
+            // What it is run against, and what an ORM was told to expect.
+            + "|image:\\s*[\"']?(?:postgres|mysql|mariadb|mcr\\.microsoft\\.com/mssql|.*/oracle)"
+            + "|provider\\s*=\\s*[\"'](?:postgresql|mysql|sqlite|sqlserver|oracle)"
+            + "|client:\\s*[\"'](?:pg|mysql2?|sqlite3|mssql|oracledb)");
+
+    /** A line of DDL: what a plan is actually decided by, where the project writes it down. */
+    private static final Pattern DDL_LINE = Pattern.compile("(?i)^\\s*(?:create\\s+(?:unique\\s+)?index"
+            + "|create\\s+table|alter\\s+table|add\\s+(?:constraint|index|key|primary|unique)"
+            + "|primary\\s+key|unique\\s*\\(|(?:unique\\s+)?key\\s+\\w+\\s*\\()");
+
+    /** Keys whose value is nobody's business, including the model's. */
+    private static final Pattern SECRET = Pattern.compile("(?i)pass|secret|token|credential|private[-_.]?key|apikey|api[-_.]key");
+
+    /** A password sitting inside a connection URL. */
+    private static final Pattern URL_CREDENTIALS = Pattern.compile("://[^/\\s:@]+:[^/\\s@]+@");
+
     /** How many files may be read while looking for neighbours. */
     private static final int MAX_SCANNED = 4000;
 
@@ -167,6 +216,11 @@ final class CodeContext {
                     .append(map).append("\n```\n\n");
         }
 
+        String database = databaseFacts(root, files, head, Math.max(1200, budget / 10));
+        if (!database.isBlank()) {
+            prompt.append(database);
+        }
+
         prompt.append("## The file under review\n\n").append(fence(file, head)).append('\n');
         included.add(new Source(file, relative, "the file under review"));
         int spent = prompt.length();
@@ -197,6 +251,91 @@ final class CodeContext {
             taken++;
         }
         return new Result(prompt.toString(), included, skipped);
+    }
+
+    // --------------------------------------------------------------- database
+
+    /**
+     * What the project says about its database, in its own words.
+     *
+     * <p>Two things a review of SQL cannot do without and neither of which is in the file
+     * being reviewed: which engine this is, and what the schema declares. Both are quoted
+     * as lines, with the file and the line number they came from, so the review can say
+     * where it read them and the reader can go and look. Nothing is concluded here - a
+     * dependency on postgresql and a URL to mysql happen in the same project, and which one
+     * wins is a judgement, not a scan.
+     *
+     * <p>Passwords do not travel. A line whose key looks like a secret is left out
+     * altogether, and credentials written into a URL are replaced before it is quoted.
+     */
+    static String databaseFacts(Path root, List<Path> files, String text, int budget) {
+        if (!DATABASE_WORK.matcher(text).find()) {
+            return "";
+        }
+        List<String> engine = new ArrayList<>();
+        List<String> schema = new ArrayList<>();
+        for (Path candidate : files) {
+            if (engine.size() + schema.size() >= 60) {
+                break;
+            }
+            String body = read(candidate);
+            if (body == null) {
+                continue;
+            }
+            boolean ddl = isSql(candidate);
+            String relative = relative(root, candidate);
+            String[] lines = body.split("\n", -1);
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i].strip();
+                if (line.isEmpty() || line.length() > 300) {
+                    continue;
+                }
+                if (engine.size() < 30 && ENGINE_LINE.matcher(line).find() && !SECRET.matcher(line).find()) {
+                    engine.add("  " + relative + ":" + (i + 1) + "  " + safe(line));
+                } else if (ddl && schema.size() < 40 && DDL_LINE.matcher(line).find()) {
+                    schema.add("  " + relative + ":" + (i + 1) + "  " + safe(line));
+                    /* A CREATE TABLE is taken whole. Its columns are half of what the review
+                       is for: a predicate that compares a BIGINT column to a string cannot
+                       use the index on it, and a nullable column changes what a join does
+                       with the rows that are missing - and neither can be seen from the
+                       first line of the statement. */
+                    if (line.toLowerCase(Locale.ROOT).startsWith("create table")) {
+                        while (!line.endsWith(";") && i + 1 < lines.length && schema.size() < 40) {
+                            line = lines[++i].strip();
+                            if (!line.isEmpty() && line.length() <= 300) {
+                                schema.add("  " + relative + ":" + (i + 1) + "  " + line);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (engine.isEmpty() && schema.isEmpty()) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder("## Database facts found in this project\n\n");
+        out.append("Lines quoted from the project's own files, with where each came from.")
+                .append(" They are evidence and not a conclusion: read the engine, its version and")
+                .append(" the indexes off them, and say which line you read it from.\n\n```\n");
+        if (!engine.isEmpty()) {
+            out.append("engine, from configuration and dependencies:\n");
+            engine.forEach(line -> out.append(line).append('\n'));
+        }
+        if (!schema.isEmpty()) {
+            out.append(engine.isEmpty() ? "" : "\n").append("schema, from migrations and DDL:\n");
+            schema.forEach(line -> out.append(line).append('\n'));
+        }
+        out.append("```\n\n");
+        return out.length() > budget ? out.substring(0, budget) + "\n```\n\n" : out.toString();
+    }
+
+    /** A line with any password taken out of it. */
+    private static String safe(String line) {
+        return URL_CREDENTIALS.matcher(line).replaceAll("://***@");
+    }
+
+    private static boolean isSql(Path file) {
+        return hasExtension(file, Set.of("sql"));
     }
 
     // ------------------------------------------------------------- neighbours

@@ -126,18 +126,32 @@ final class Prompts {
 
             Say, per query, what you actually know and how you know it:
 
-            - The dialect, taken from evidence - a driver dependency, a JDBC URL, an ORM
-              dialect setting, `LIMIT` against `TOP` against `ROWNUM`, `::` casts,
-              `NVL` against `IFNULL` against `COALESCE`. Name the evidence. Where there is
-              none, say the engine is unknown, and confine yourself to what is true of any
-              of them rather than picking one silently.
-            - The schema you were shown and the schema you were not: a migration, a DDL
-              file, an entity's annotations, a `@Table` or `@Index`, a unique constraint.
-              Indexes are the thing that decides this whole section, so be exact about which
-              ones you have evidence for. Where you have none, say the plan depends on
-              indexes you cannot see, and name what would show them - the migration file,
-              `\\d table_name` in psql, `SHOW INDEX FROM table_name` in MySQL - rather than
-              assuming either that an index exists or that it does not.
+            - The engine, and its version, worked out from the project rather than assumed.
+              Where lines of configuration were quoted to you under "Database facts found in
+              this project", the answer is in them: a driver dependency, a JDBC URL, a
+              `DATABASE_URL`, a Hibernate dialect, the image a compose file runs, a Prisma
+              provider, a Knex client. Read it off them and say which file and line you read
+              it from. Where those lines disagree - a PostgreSQL dependency and a MySQL URL,
+              a compose file for one and a production setting for another - say so and say
+              which one this code path uses, because that disagreement is itself worth
+              knowing about. Where no such lines were quoted, take what the query's own
+              syntax tells you: `LIMIT` against `TOP` against `ROWNUM`, `::` casts, `NVL`
+              against `IFNULL`, bracketed identifiers, `RETURNING`. Only when neither says
+              anything may you leave it open, and then name the file that would settle it -
+              the build file, `application.properties` or `application.yml`, `.env`, the
+              compose file - and keep to what holds for any engine rather than picking one
+              silently. Never invent a version you were not shown: the plan for a query
+              differs between MySQL 5.7 and 8 and between PostgreSQL 11 and 16, so say the
+              version when the evidence gives it and say it is unknown when it does not.
+            - The schema you were shown and the schema you were not: the DDL lines quoted
+              under "Database facts found in this project", a migration, an entity's
+              annotations, a `@Table` or `@Index`, a unique constraint. Indexes are the thing
+              that decides this whole section, so be exact about which ones you have evidence
+              for, and name the file and line for each one you rely on. Where a table has no
+              DDL among them, say the plan depends on indexes you cannot see rather than
+              assuming either that an index exists or that it does not, and name what would
+              show them - the migration that creates the table, `\\d table_name` in psql,
+              `SHOW INDEX FROM table_name` in MySQL, `sp_helpindex` in SQL Server.
             - Whether the query is on a request path, a batch, a startup, a loop - the code
               around it says so, and a query that runs once a night on 50M rows and one that
               runs per request are different findings.
