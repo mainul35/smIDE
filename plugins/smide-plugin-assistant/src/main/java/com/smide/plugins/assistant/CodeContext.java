@@ -83,9 +83,16 @@ final class CodeContext {
     /** Stylesheets, where what a file declares is a selector rather than a class. */
     private static final Set<String> STYLES = Set.of("css", "scss", "sass", "less");
 
+    /** Files that hold elements a stylesheet can reach. */
+    private static final Set<String> MARKUP = Set.of(
+            "html", "htm", "xhtml", "jsx", "tsx", "vue", "svelte", "fxml", "jsp");
+
     /** A custom property a stylesheet defines: --gap, -smide-accent. Not a vendor property. */
     private static final Pattern STYLE_PROPERTY = Pattern.compile(
             "(?m)^\\s*(--[A-Za-z][\\w-]*|-[A-Za-z][\\w-]*)\\s*:");
+
+    /** The element a selector starts with: table, button, a - before any class or state. */
+    private static final Pattern STYLE_TAG = Pattern.compile("^([A-Za-z][A-Za-z0-9]*)");
 
     /** A class or id in a selector: .run-column, #sidebar. */
     private static final Pattern STYLE_SELECTOR = Pattern.compile("[.#]([A-Za-z_][\\w-]*)");
@@ -251,7 +258,9 @@ final class CodeContext {
                 why.add(isStylesheet(candidate) ? "styles the same names as the file under review"
                         : "uses the style names the file under review defines");
             }
-            if (isStylesheet(candidate) && anyWord(text, styleNames(body))) {
+            if (isStylesheet(candidate)
+                    && (anyWord(text, styleNames(body))
+                        || (isMarkup(file) && opensAny(text, styleTags(body))))) {
                 score += 2;
                 why.add("styles what the file under review asks for");
             }
@@ -355,10 +364,61 @@ final class CodeContext {
         }
     }
 
+    /**
+     * The tags a stylesheet writes rules for: {@code table}, {@code button}, {@code a}.
+     *
+     * <p>Kept apart from the classes and ids because a bare tag is a common word and would
+     * drag in half a project on its own. It is only ever matched against markup, and only
+     * as an opening tag, so {@code button} in a stylesheet finds a page with a
+     * {@code <button>} in it and not every file that mentions buttons.
+     */
+    static Set<String> styleTags(String text) {
+        Set<String> tags = new LinkedHashSet<>();
+        int from = 0;
+        int brace = text.indexOf('{');
+        while (brace >= 0 && tags.size() < 200) {
+            int previous = Math.max(text.lastIndexOf('}', brace), text.lastIndexOf(';', brace));
+            String selectors = text.substring(Math.max(from, Math.max(previous + 1, brace - 400)), brace);
+            for (String selector : selectors.split(",")) {
+                Matcher m = STYLE_TAG.matcher(selector.strip());
+                if (m.find()) {
+                    tags.add(m.group(1).toLowerCase(Locale.ROOT));
+                }
+            }
+            from = brace + 1;
+            brace = text.indexOf('{', from);
+        }
+        return tags;
+    }
+
+    /** True where the markup opens any of these tags. */
+    private static boolean opensAny(String markup, Set<String> tags) {
+        String lower = markup.toLowerCase(Locale.ROOT);
+        for (String tag : tags) {
+            int at = lower.indexOf('<' + tag);
+            while (at >= 0) {
+                int after = at + tag.length() + 1;
+                if (after >= lower.length() || !isWordChar(lower.charAt(after))) {
+                    return true;
+                }
+                at = lower.indexOf('<' + tag, at + 1);
+            }
+        }
+        return false;
+    }
+
+    static boolean isMarkup(Path file) {
+        return hasExtension(file, MARKUP);
+    }
+
     static boolean isStylesheet(Path file) {
+        return hasExtension(file, STYLES);
+    }
+
+    private static boolean hasExtension(Path file, Set<String> extensions) {
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
         int dot = name.lastIndexOf('.');
-        return dot >= 0 && STYLES.contains(name.substring(dot + 1));
+        return dot >= 0 && extensions.contains(name.substring(dot + 1));
     }
 
     static Set<String> declarations(String text) {
