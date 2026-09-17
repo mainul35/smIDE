@@ -113,39 +113,111 @@ final class Prompts {
             Any SQL the file under review builds, holds or runs counts: a DAO, a repository,
             a mapper or migration file, a string handed to a driver, the query an ORM
             annotation or a criteria chain will send. Take each query that runs on a table
-            that grows, and give it a plan and a size.
+            that grows, and give it the facts, a plan, a size and a way forward.
 
-            The plan first, in the words EXPLAIN answers in: which table is driven first,
-            which predicate reaches an index and which one scans, what join strategy the
-            shape implies, and where a sort, a temporary table or a materialised subquery
-            has to happen. Name the column that wants an index, and name the index that
-            exists and cannot be used - because the column is wrapped in a function, because
-            the comparison crosses types, because the LIKE begins with a wildcard, because
-            the leading columns of a composite index are not the ones being filtered.
+            THE FACTS FIRST, AND THEY COME FROM THIS FILE
+
+            Everything you say about a query must be readable off the query in front of you.
+            Quote it, cite the line it starts on, and use its own table and column names
+            throughout - not `orders`, not `user_id`, unless those are what it says. Nothing
+            in this section may be advice that could have been written without reading this
+            file. Generic tuning lore is worth nothing to the reader: they can get that
+            anywhere, and it is how a review stops being read.
+
+            Say, per query, what you actually know and how you know it:
+
+            - The dialect, taken from evidence - a driver dependency, a JDBC URL, an ORM
+              dialect setting, `LIMIT` against `TOP` against `ROWNUM`, `::` casts,
+              `NVL` against `IFNULL` against `COALESCE`. Name the evidence. Where there is
+              none, say the engine is unknown, and confine yourself to what is true of any
+              of them rather than picking one silently.
+            - The schema you were shown and the schema you were not: a migration, a DDL
+              file, an entity's annotations, a `@Table` or `@Index`, a unique constraint.
+              Indexes are the thing that decides this whole section, so be exact about which
+              ones you have evidence for. Where you have none, say the plan depends on
+              indexes you cannot see, and name what would show them - the migration file,
+              `\\d table_name` in psql, `SHOW INDEX FROM table_name` in MySQL - rather than
+              assuming either that an index exists or that it does not.
+            - Whether the query is on a request path, a batch, a startup, a loop - the code
+              around it says so, and a query that runs once a night on 50M rows and one that
+              runs per request are different findings.
+
+            THE PLAN
+
+            In the words EXPLAIN answers in, for this query as written: which table is
+            driven first, which predicate reaches an index and which one scans, what join
+            strategy the shape implies, and where a sort, a temporary table or a
+            materialised subquery has to happen. Name the column that wants an index, and
+            name the index that exists and cannot be used - because the column is wrapped in
+            a function, because the comparison crosses types, because the LIKE begins with a
+            wildcard, because the leading columns of a composite index are not the ones
+            being filtered.
 
             You have not run EXPLAIN and cannot. Say so once, and give the command that
             would settle it, written out against this query: `EXPLAIN (ANALYZE, BUFFERS)`
             for PostgreSQL, `EXPLAIN ANALYZE` for MySQL 8, `EXPLAIN PLAN FOR` with
-            `DBMS_XPLAN.DISPLAY` for Oracle, `SET SHOWPLAN_ALL ON` for SQL Server. Take the
-            dialect from the driver, the dependency or the syntax you were shown, and say it
-            is a guess where you had to guess.
+            `DBMS_XPLAN.DISPLAY` for Oracle, `SET SHOWPLAN_ALL ON` for SQL Server. Where the
+            query takes parameters, say which values the plan is worth checking with - the
+            selective one and the one that matches half the table - because that is where a
+            plan chosen once and reused goes wrong.
 
-            Then the size. One Markdown table per query, a row per query and a column for
-            1M, 10M, 20M and 50M rows in the table it reads, saying for each what the
-            database has to work through: rows examined and rows returned, not milliseconds.
-            An index seek that stays flat as the table grows says so; a scan that grows with
-            the table says so; a join with no usable index grows with the product of the two
-            sides, and a sort or hash that no longer fits in the working memory spills to
-            disk between one column and the next - say which column that happens at. Give a
-            time only as an order of magnitude, say what it assumes about row width, cache
-            and disk, and never write a number that looks measured. You are reasoning about
-            the shape of the work, not reporting a run.
+            THE SIZE
 
-            Then say which of those four sizes is where it stops being acceptable, and what
-            changes that: an index, a covering index, a predicate rewritten so an index can
-            be used, keyset pagination instead of OFFSET, one statement instead of a
-            statement per row. A query that runs once a night on 50M rows and one that runs
-            per request are different findings; say which this is if the code tells you.
+            One Markdown table per query, a row per query and a column for 1M, 10M, 20M and
+            50M rows in the table it reads, saying for each what the database has to work
+            through: rows examined and rows returned, not milliseconds. An index seek that
+            stays flat as the table grows says so; a scan that grows with the table says so;
+            a join with no usable index grows with the product of the two sides, and a sort
+            or hash that no longer fits in the working memory spills to disk between one
+            column and the next - say which column that happens at. Give a time only as an
+            order of magnitude, say what it assumes about row width, cache and disk, and
+            never write a number that looks measured. You are reasoning about the shape of
+            the work from the query and the schema you were shown, not reporting a run.
+
+            Where the row counts depend on something you were not told - how many rows a
+            tenant has, how selective a status column is - say which assumption the numbers
+            rest on, and say what the answer becomes if it is wrong the other way.
+
+            WHAT WOULD MAKE IT FASTER
+
+            End each query with what to do about it: an ordered list, best first, each one
+            tied to the predicate, join or ordering in this query that makes it work. For
+            each, say what it changes in the plan, at which of the four sizes it starts to
+            matter, and what it costs - because every one of these is a trade, and a
+            suggestion without its cost is half an answer.
+
+            Draw on what the query is actually doing. An index on the columns it filters and
+            orders by, named in the order they should be declared in and with the reason for
+            that order - equality before range before the ordering column. A covering index
+            where the query selects few enough columns to be answered from the index alone.
+            A predicate rewritten so an existing index becomes usable: the function moved
+            off the column and onto the parameter, the cast removed, the leading wildcard
+            dropped or given a trigram or full-text index instead. Keyset pagination on the
+            ordering column instead of OFFSET, which reads and discards everything it skips.
+            `EXISTS` where `IN` with a subquery makes the engine materialise it, or the
+            reverse where that is the way round the optimiser handles better. A join
+            replaced by one query per batch of keys instead of one per row. Columns the
+            caller never reads dropped from the select list, which is what turns a covering
+            index into an available one. An aggregate over history moved into a summary
+            table or a materialised view where the data is not read at the moment it is
+            written. A `DISTINCT` or `GROUP BY` that exists only to undo a join that
+            multiplies rows - say so, because the fix is the join and not the grouping.
+            Batching writes, and the statement that does it in one round trip.
+
+            The costs are part of the suggestion: an index slows every insert, update and
+            delete on that table and takes space; building one on 50M rows locks the table
+            unless it is built concurrently, and the concurrent form is slower and can fail
+            and leave an invalid index behind; a materialised view is stale between
+            refreshes; denormalising moves the problem to whoever keeps the copy in step;
+            a larger work memory is per operation, not per query.
+
+            Say it in prose, with the columns and the order named - "a composite index on
+            (tenant_id, created_at), equality column first, so the ORDER BY is served by the
+            same index". Do not write out the statement. The reader is meant to write it,
+            and naming the columns and the order leaves them nothing to guess at.
+
+            If a query is already right for its size, say that in one line and move on. A
+            section that always finds a rewrite is a section nobody trusts.
 
             A query issued inside a loop, or one per element of a result, is a performance
             finding here and not a smell: say how many round trips one request makes at each
