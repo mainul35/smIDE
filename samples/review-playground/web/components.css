@@ -1,0 +1,35 @@
+/* A fixture for reviewing. Loaded SECOND by checkout.html. */
+
+.card {
+    padding: 4px;
+    border: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.card .title {
+    font-size: 16px;
+}
+
+#checkout .card {
+    padding: 24px;
+    background: #ffffff;
+}
+
+.btn {
+    background: #1f6feb;
+    padding: 6px 12px;
+}
+
+#buy .btn {
+    background: var(--danger);
+    color: #ffffff;
+}
+
+.summary td {
+    padding: 4px;
+    font-size: 13px;
+}
+
+.muted {
+    color: #999999;
+}

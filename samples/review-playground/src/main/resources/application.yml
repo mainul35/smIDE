@@ -1,0 +1,20 @@
+# The engine, its version and its dialect are all readable from this file and the two
+# beside it. The password below must never appear in a prompt: it is here to prove that.
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/shop
+    username: shop
+    password: hunter2-should-never-be-sent
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    properties:
+      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+
+reporting:
+  datasource:
+    url: jdbc:mysql://legacy-reporting:3306/reporting
+    username: report
+
+app:
+  page-size: 20

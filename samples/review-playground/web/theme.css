@@ -1,0 +1,32 @@
+/* A fixture for reviewing. Loaded THIRD by checkout.html. */
+
+:root {
+    --gap: 8px;
+}
+
+.dark-theme {
+    --brand: #3fb8cc;
+    --brand-text: #0f1620;
+    --danger: #ff6b5e;
+    color: #d7dee6;
+    background: #0f1620;
+}
+
+.card {
+    border-radius: 10px;
+}
+
+.btn {
+    color: #ffffff !important;
+    border-radius: 999px;
+}
+
+.muted {
+    color: #8a9aaa;
+    font-style: italic;
+}
+
+table {
+    border-collapse: separate;
+    border-spacing: 0;
+}

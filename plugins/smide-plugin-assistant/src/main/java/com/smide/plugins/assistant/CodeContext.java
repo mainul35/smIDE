@@ -392,16 +392,24 @@ final class CodeContext {
                what a change here collides with; a file that asks for those classes is what
                the change is seen in. Either one is what somebody editing a rule wants to
                have been shown, and neither is found by looking for declared types. */
+            String style = null;
             if (anyWord(body, styles)) {
                 score += 3;
-                why.add(isStylesheet(candidate) ? "styles the same names as the file under review"
-                        : "uses the style names the file under review defines");
+                style = isStylesheet(candidate) ? "styles the same names as the file under review"
+                        : "uses the style names the file under review defines";
             }
             if (isStylesheet(candidate)
                     && (anyWord(text, styleNames(body))
                         || (isMarkup(file) && opensAny(text, styleTags(body))))) {
                 score += 2;
-                why.add("styles what the file under review asks for");
+                style = style == null ? "styles what the file under review asks for" : style;
+            }
+            if (style != null) {
+                /* On its own. The two reasons above fire because a class name is in both
+                   files, which is what "used by" and "calls into" had already said in
+                   vaguer words - and three reasons on one line is a listing nobody reads. */
+                why.clear();
+                why.add(style);
             }
             if (sibling && score > 0) {
                 score += 1;

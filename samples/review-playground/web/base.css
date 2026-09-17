@@ -1,0 +1,52 @@
+/* A fixture for reviewing. Loaded FIRST by checkout.html. */
+
+:root {
+    --brand: #0b6e7f;
+    --brand-text: #ffffff;
+    --gap: 12px;
+    --danger: #c0392b;
+}
+
+body {
+    color: #333333;
+    font-family: Inter, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    background: #fafafa;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+td, th {
+    padding: var(--gap);
+    border-bottom: 1px solid #e4e4e4;
+    text-align: left;
+}
+
+.card {
+    padding: var(--gap);
+    border: 1px solid #dddddd;
+    border-radius: 6px;
+    background: #ffffff;
+}
+
+.card .title {
+    font-size: 18px;
+    color: #111111;
+}
+
+.btn {
+    background: var(--brand);
+    color: var(--brand-text);
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+}
+
+.muted {
+    color: #777777;
+    font-size: 12px;
+}

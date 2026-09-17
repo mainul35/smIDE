@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A fixture for reviewing. See EXPECTATIONS.md. -->
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="shop.OrderMapper">
+
+    <select id="findByCustomer" resultType="shop.Order">
+        SELECT o.*, c.display_name
+        FROM orders o
+        JOIN customers c ON c.id = o.customer_id
+        LEFT JOIN order_items i ON i.order_id = o.id
+        WHERE o.customer_id = #{customerId}
+        ORDER BY o.placed_at DESC
+    </select>
+
+    <select id="searchNotes" resultType="shop.Order">
+        SELECT * FROM orders
+        WHERE note LIKE '%${term}%'
+        ORDER BY ${sortColumn} ${direction}
+    </select>
+
+    <select id="topSpenders" resultType="shop.Customer">
+        SELECT c.*,
+               (SELECT SUM(o.total_cents) FROM orders o WHERE o.customer_id = c.id) AS spend
+        FROM customers c
+        WHERE c.country = #{country}
+        ORDER BY spend DESC
+        LIMIT 50
+    </select>
+
+    <update id="touchAll">
+        UPDATE orders SET status = #{status} WHERE CAST(customer_id AS TEXT) = #{reference}
+    </update>
+
+</mapper>

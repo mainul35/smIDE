@@ -1,0 +1,17 @@
+# Two engines on purpose. The application runs on PostgreSQL; a legacy MySQL is still
+# here for the reporting job that nobody has moved yet. A review that reads only one of
+# these lines and announces the engine has failed the test - see EXPECTATIONS.md.
+services:
+  db:
+    image: postgres:16.2
+    environment:
+      POSTGRES_DB: shop
+      DATABASE_URL: postgresql://shop:hunter2@db:5432/shop
+    ports:
+      - "5432:5432"
+
+  legacy-reporting:
+    image: mysql:5.7
+    environment:
+      MYSQL_DATABASE: reporting
+      MYSQL_ROOT_PASSWORD: do-not-send-this-anywhere
