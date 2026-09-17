@@ -191,8 +191,16 @@ final class LspClientImpl implements LanguageClient {
         WorkDoneProgressNotification n = value.getLeft();
         if (n instanceof WorkDoneProgressBegin begin) {
             com.smide.api.ui.StatusBar.Progress p = ide.statusBar().progress(
-                    session.displayName() + ": " + begin.getTitle(), false);
+                    session.displayName() + ": " + begin.getTitle(), Boolean.TRUE.equals(begin.getCancellable()));
             progress.put(token, p);
+            // What the protocol has for this: the server is told, and ends its own progress.
+            p.onCancel(cancelled -> {
+                progress.remove(token, cancelled);
+                org.eclipse.lsp4j.services.LanguageServer server = session.server();
+                if (server != null && Boolean.TRUE.equals(begin.getCancellable())) {
+                    server.cancelProgress(new org.eclipse.lsp4j.WorkDoneProgressCancelParams(params.getToken()));
+                }
+            });
             p.update(begin.getMessage(), begin.getPercentage() == null ? -1 : begin.getPercentage() / 100.0);
         } else if (n instanceof WorkDoneProgressReport report) {
             com.smide.api.ui.StatusBar.Progress p = progress.get(token);
@@ -205,6 +213,19 @@ final class LspClientImpl implements LanguageClient {
                 p.done();
             }
         }
+    }
+
+    /**
+     * Ends every progress this server had begun.
+     *
+     * <p>For when the server stops: what it was doing has stopped with it, and its tasks
+     * would otherwise keep counting in the status bar for as long as the window is open.
+     */
+    void endProgress() {
+        for (com.smide.api.ui.StatusBar.Progress p : progress.values()) {
+            p.done();
+        }
+        progress.clear();
     }
 
     @Override

@@ -152,12 +152,13 @@ final class BackgroundTasksPopup {
             Label title = new Label(task.title);
             title.getStyleClass().add("background-task-title");
             meta.getStyleClass().add("background-task-meta");
-            cancel = Icons.button("fth-x", "Cancel", task::cancel);
-            HBox head = new HBox(8, title, gap(), meta);
+            /* On every running task, not only the ones that can be called off. What a task
+               that cannot be called off does here is stop being shown, which is the only
+               thing left to want from a task whose owner has gone quiet for hours. */
+            cancel = Icons.button("fth-x", task.cancellable ? "Cancel this task"
+                    : "Stop showing this task - it cannot be cancelled", task::cancel);
+            HBox head = new HBox(8, title, gap(), meta, cancel);
             head.setAlignment(Pos.CENTER_LEFT);
-            if (task.cancellable) {
-                head.getChildren().add(cancel);
-            }
             bar.setMaxWidth(Double.MAX_VALUE);
             line.getStyleClass().add("background-task-meta");
             line.setMaxWidth(WIDTH);
@@ -185,7 +186,8 @@ final class BackgroundTasksPopup {
         void update() {
             boolean running = task.isRunning();
             String time = duration(task.elapsedMillis());
-            meta.setText(running ? time : (task.wasCancelled() ? "cancelled after " : "finished in ") + time);
+            meta.setText(running ? (task.isStopping() ? "stopping, " + time : time)
+                    : (task.wasCancelled() ? "cancelled after " : "finished in ") + time);
             bar.setVisible(running);
             bar.setManaged(running);
             double fraction = task.fraction() < 0 ? -1 : Math.min(1, task.fraction());
@@ -195,6 +197,9 @@ final class BackgroundTasksPopup {
                 drawnFraction = fraction;
             }
             cancel.setVisible(running);
+            cancel.setManaged(running);
+            // Once asked, there is nothing more to ask.
+            cancel.setDisable(task.isStopping());
             String message = task.message();
             line.setText(message.isEmpty() ? (running ? "Working..." : "") : message);
             line.setVisible(running);

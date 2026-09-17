@@ -80,6 +80,7 @@ public final class LspSession {
     private final ExecutorService executor;
     private Process process;
     private LanguageServer server;
+    private LspClientImpl client;
     private org.eclipse.lsp4j.jsonrpc.Endpoint endpoint;
     private ServerCapabilities capabilities;
     private volatile State state = State.STARTING;
@@ -233,6 +234,7 @@ public final class LspSession {
                 InputStream in = process.getInputStream();
                 OutputStream out = process.getOutputStream();
                 LspClientImpl client = new LspClientImpl(ide, this);
+                this.client = client;
                 Launcher<LanguageServer> jsonRpc = LSPLauncher.createClientLauncher(
                         client, in, out, LISTENERS, m -> m);
                 jsonRpc.startListening();
@@ -430,6 +432,10 @@ public final class LspSession {
             return;
         }
         setState(State.STOPPED, null);
+        if (client != null) {
+            // Whatever it was busy with, it is not busy with it any more.
+            client.endProgress();
+        }
         executor.execute(() -> {
             try {
                 if (server != null) {

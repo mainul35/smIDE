@@ -1,7 +1,9 @@
 package com.smide.ui;
 
 import com.smide.api.ui.StatusBar;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
+import javafx.util.Duration;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -22,6 +24,9 @@ final class BackgroundTask implements StatusBar.Progress {
 
     /** Lines kept per task; the oldest go first. */
     static final int MAX_LINES = 2000;
+
+    /** How long a task that was asked to stop is given to end itself. */
+    private static final int GRACE_SECONDS = 10;
 
     final String title;
     final boolean cancellable;
@@ -93,13 +98,40 @@ final class BackgroundTask implements StatusBar.Progress {
         this.onCancel = handler;
     }
 
+    /**
+     * Stops the task, as far as it can be stopped from here.
+     *
+     * <p>Whoever started it is asked, if they left a way to ask, and then given a moment to
+     * end it themselves so that it ends the way it would have. If they do not - a language
+     * server that never sends the end of a progress it began leaves a task running for
+     * hours, and one was found at 287 minutes - the task is ended here regardless, because
+     * a row nothing will ever finish is worth less than the space it takes. Where there is
+     * nobody to ask at all, that happens at once.
+     */
     void cancel() {
+        if (cancelled || !isRunning()) {
+            return;
+        }
         cancelled = true;
         Consumer<StatusBar.Progress> handler = onCancel;
-        if (handler != null) {
-            handler.accept(this);
+        if (handler == null) {
+            done();
+            return;
         }
-        done();
+        try {
+            handler.accept(this);
+        } catch (RuntimeException e) {
+            System.err.println("smIDE: " + title + " could not be cancelled: " + e);
+        }
+        changed.run();
+        PauseTransition grace = new PauseTransition(Duration.seconds(GRACE_SECONDS));
+        grace.setOnFinished(e -> done());
+        grace.play();
+    }
+
+    /** Asked to stop and not stopped yet. */
+    boolean isStopping() {
+        return cancelled && isRunning();
     }
 
     boolean isRunning() {
