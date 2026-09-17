@@ -47,9 +47,16 @@ public final class ColorSwatches {
         editor.setColorSwatches(find(editor.text()));
     }
 
+    /**
+     * A colour where it is written: the literal as it stands, and where in the document it
+     * stands, so exactly those characters can be replaced when another colour is chosen.
+     */
+    record Literal(int line, int start, int end, String text) {
+    }
+
     /** The colours written on each line, as written, by zero-based line. */
-    static Map<Integer, List<String>> find(String text) {
-        Map<Integer, List<String>> found = new TreeMap<>();
+    static Map<Integer, List<Literal>> find(String text) {
+        Map<Integer, List<Literal>> found = new TreeMap<>();
         int line = 0;
         int start = 0;
         while (start <= text.length()) {
@@ -63,7 +70,8 @@ public final class ColorSwatches {
                 Matcher m = COLOR.matcher(content);
                 while (m.find()) {
                     if (m.start() > colon && isColor(m.group())) {
-                        found.computeIfAbsent(line, l -> new ArrayList<>()).add(m.group());
+                        found.computeIfAbsent(line, l -> new ArrayList<>())
+                                .add(new Literal(line, start + m.start(), start + m.end(), m.group()));
                     }
                 }
             }
@@ -87,5 +95,95 @@ public final class ColorSwatches {
 
     private static boolean isColor(String literal) {
         return colorOf(literal) != null;
+    }
+
+    /**
+     * A colour written the way the one it replaces was written.
+     *
+     * <p>A stylesheet is somebody's to keep, and a picker that turned every {@code #fff}
+     * into {@code rgba(255, 255, 255, 1)} would be rewriting the file rather than changing
+     * a colour in it. Hex stays hex, in the same case and in three digits where the colour
+     * can still be said in three; {@code rgb()} stays {@code rgb()}, {@code hsl()} stays
+     * {@code hsl()}; and transparency is kept wherever the line already carried it.
+     */
+    static String format(String original, Color color) {
+        String text = original.trim();
+        String lower = text.toLowerCase(Locale.ROOT);
+        boolean carried = lower.startsWith("rgba") || lower.startsWith("hsla")
+                || text.length() == 5 || text.length() == 9;
+        boolean alpha = carried || color.getOpacity() < 1;
+        if (lower.startsWith("rgb")) {
+            String parts = channel(color.getRed()) + ", " + channel(color.getGreen())
+                    + ", " + channel(color.getBlue());
+            return alpha ? "rgba(" + parts + ", " + opacity(color) + ")" : "rgb(" + parts + ")";
+        }
+        if (lower.startsWith("hsl")) {
+            return hsl(color, alpha);
+        }
+        String hex = hex(color, alpha, text.length() <= 5 && sayableInThree(color, alpha));
+        // Upper case only where the line was already upper case: #C0392B stays shouting.
+        return text.chars().anyMatch(c -> c >= 'A' && c <= 'F') ? hex.toUpperCase(Locale.ROOT) : hex;
+    }
+
+    /** Whether every channel is a repeated digit, which is all #rgb can say. */
+    private static boolean sayableInThree(Color color, boolean alpha) {
+        return channel(color.getRed()) % 17 == 0 && channel(color.getGreen()) % 17 == 0
+                && channel(color.getBlue()) % 17 == 0 && (!alpha || channel(color.getOpacity()) % 17 == 0);
+    }
+
+    private static String hex(Color color, boolean alpha, boolean threeDigits) {
+        StringBuilder out = new StringBuilder("#");
+        int[] channels = alpha
+                ? new int[] {channel(color.getRed()), channel(color.getGreen()),
+                        channel(color.getBlue()), channel(color.getOpacity())}
+                : new int[] {channel(color.getRed()), channel(color.getGreen()), channel(color.getBlue())};
+        for (int value : channels) {
+            if (threeDigits) {
+                out.append(Integer.toHexString(value / 17));
+            } else {
+                out.append(value < 16 ? "0" : "").append(Integer.toHexString(value));
+            }
+        }
+        return out.toString();
+    }
+
+    /** The colour as hue, saturation and lightness, which is what an hsl() line is written in. */
+    private static String hsl(Color color, boolean alpha) {
+        double red = color.getRed();
+        double green = color.getGreen();
+        double blue = color.getBlue();
+        double max = Math.max(red, Math.max(green, blue));
+        double min = Math.min(red, Math.min(green, blue));
+        double lightness = (max + min) / 2;
+        double spread = max - min;
+        double hue = 0;
+        double saturation = 0;
+        if (spread > 0) {
+            saturation = lightness > 0.5 ? spread / (2 - max - min) : spread / (max + min);
+            if (max == red) {
+                hue = (green - blue) / spread + (green < blue ? 6 : 0);
+            } else if (max == green) {
+                hue = (blue - red) / spread + 2;
+            } else {
+                hue = (red - green) / spread + 4;
+            }
+            hue *= 60;
+        }
+        String parts = Math.round(hue) + ", " + Math.round(saturation * 100) + "%, "
+                + Math.round(lightness * 100) + "%";
+        return alpha ? "hsla(" + parts + ", " + opacity(color) + ")" : "hsl(" + parts + ")";
+    }
+
+    private static int channel(double value) {
+        return (int) Math.round(value * 255);
+    }
+
+    /** Transparency with no more digits than it needs: 1, 0.5, 0.22. */
+    private static String opacity(Color color) {
+        String text = String.format(Locale.ROOT, "%.2f", color.getOpacity());
+        while (text.contains(".") && (text.endsWith("0") || text.endsWith("."))) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return text;
     }
 }

@@ -61,7 +61,7 @@ public final class GutterFactory implements IntFunction<Node> {
     /** Run icons by line; empty when the file has nothing to run. */
     private java.util.Map<Integer, List<com.smide.api.execution.RunMarker>> runMarkers = java.util.Map.of();
     /** Colours written on each line, as written - a stylesheet's values - shown as swatches. */
-    private java.util.Map<Integer, List<String>> colors = java.util.Map.of();
+    private java.util.Map<Integer, List<ColorSwatches.Literal>> colors = java.util.Map.of();
     /** What a click on a run icon opens, made from the markers on its line. */
     private java.util.function.Function<List<com.smide.api.execution.RunMarker>, ContextMenu> runMenu;
 
@@ -233,20 +233,82 @@ public final class GutterFactory implements IntFunction<Node> {
                     ? "Run '" + here.get(0).name() + "'" : "Run " + here.size() + " ways from here"));
             return cell;
         }
-        List<String> written = colors.get(paragraph);
-        javafx.scene.paint.Color color = written == null || written.isEmpty() ? null : ColorSwatches.colorOf(written.get(0));
+        List<ColorSwatches.Literal> written = colors.get(paragraph);
+        javafx.scene.paint.Color color = written == null || written.isEmpty()
+                ? null : ColorSwatches.colorOf(written.get(0).text());
         if (color != null) {
             // The first colour the line writes; the tooltip names every one.
             javafx.scene.shape.Rectangle swatch = new javafx.scene.shape.Rectangle(10, 10, color);
             swatch.getStyleClass().add("color-swatch");
             cell.getChildren().add(swatch);
-            Tooltip.install(cell, new Tooltip(String.join("   ", written)));
+            // Found by the editor's mouse filter, as the run icon and the breakpoints are.
+            cell.getStyleClass().add("color-swatch-cell");
+            cell.setPickOnBounds(true);
+            cell.setCursor(javafx.scene.Cursor.HAND);
+            StringBuilder names = new StringBuilder();
+            for (ColorSwatches.Literal literal : written) {
+                names.append(names.length() == 0 ? "" : "   ").append(literal.text());
+            }
+            Tooltip.install(cell, new Tooltip(names + System.lineSeparator() + "Click to pick another colour"));
         }
         return cell;
     }
 
+    /**
+     * The picker, opened on the swatch that was clicked, writing what is chosen into the line.
+     *
+     * <p>JavaFX's own rather than a palette of our making: it carries the standard colours,
+     * the ones this window has chosen before, and a full picker behind "Custom Color...".
+     * It is a control, and a control has to be in the scene to open its palette, so one is
+     * put in the swatch's cell for as long as the palette is up - out of sight and out of
+     * the layout, leaving the swatch the only thing on screen.
+     */
+    void showColorPicker(javafx.scene.layout.Pane cell, int paragraph) {
+        List<ColorSwatches.Literal> written = colors.get(paragraph);
+        javafx.scene.paint.Color current = written == null || written.isEmpty()
+                ? null : ColorSwatches.colorOf(written.get(0).text());
+        if (current == null) {
+            return;
+        }
+        ColorSwatches.Literal literal = written.get(0);
+        javafx.scene.control.ColorPicker picker = new javafx.scene.control.ColorPicker(current);
+        picker.setVisible(false);
+        picker.setManaged(false);
+        picker.setPrefSize(0, 0);
+        picker.setOnAction(e -> {
+            javafx.scene.paint.Color chosen = picker.getValue();
+            picker.hide();
+            if (chosen != null && !chosen.equals(current)) {
+                writeColor(literal, chosen);
+            }
+        });
+        picker.showingProperty().addListener((property, was, showing) -> {
+            if (was && !showing) {
+                // After the palette has closed; removing it while open would close it first.
+                javafx.application.Platform.runLater(() -> cell.getChildren().remove(picker));
+            }
+        });
+        cell.getChildren().add(picker);
+        picker.show();
+    }
+
+    /**
+     * Writes a chosen colour over the literal it was picked from.
+     *
+     * <p>Only while those characters are still there: the scan that found them runs a
+     * moment behind the document, and replacing a range on trust would corrupt a line
+     * edited in the meantime. The next scan puts the swatch right either way.
+     */
+    private void writeColor(ColorSwatches.Literal literal, javafx.scene.paint.Color chosen) {
+        if (literal.end() > area.getLength()
+                || !area.getText(literal.start(), literal.end()).equals(literal.text())) {
+            return;
+        }
+        area.replaceText(literal.start(), literal.end(), ColorSwatches.format(literal.text(), chosen));
+    }
+
     /** Shows a swatch beside each line that writes a colour. */
-    public void setColors(java.util.Map<Integer, List<String>> colors) {
+    public void setColors(java.util.Map<Integer, List<ColorSwatches.Literal>> colors) {
         this.colors = colors == null ? java.util.Map.of() : colors;
     }
 

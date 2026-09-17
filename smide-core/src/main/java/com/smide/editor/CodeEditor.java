@@ -278,11 +278,31 @@ public final class CodeEditor implements TextEditor {
             gutter.showRunMenu(area, run, e.getScreenX(), e.getScreenY());
             return;
         }
+        javafx.scene.layout.Pane swatch = swatchCell(e.getPickResult());
         Integer line = gutterLine(e.getPickResult());
+        if (swatch != null && line != null) {
+            // The colour swatch offers another colour, rather than a breakpoint.
+            e.consume();
+            gutter.showColorPicker(swatch, line);
+            return;
+        }
         if (line != null) {
             e.consume();
             gutter.toggleAt(line);
         }
+    }
+
+    /** The colour swatch's cell under the pointer, or null where the pointer is not on one. */
+    private static javafx.scene.layout.Pane swatchCell(javafx.scene.input.PickResult pick) {
+        javafx.scene.Node picked = pick == null ? null : pick.getIntersectedNode();
+        while (picked != null && !picked.getStyleClass().contains("gutter")) {
+            if (picked.getStyleClass().contains("color-swatch-cell")
+                    && picked instanceof javafx.scene.layout.Pane cell) {
+                return cell;
+            }
+            picked = picked.getParent();
+        }
+        return null;
     }
 
     /**
@@ -672,10 +692,10 @@ public final class CodeEditor implements TextEditor {
     }
 
     /** The colours shown last, so a scan that found the same ones repaints nothing. */
-    private java.util.Map<Integer, List<String>> shownColors = java.util.Map.of();
+    private java.util.Map<Integer, List<ColorSwatches.Literal>> shownColors = java.util.Map.of();
 
     /** Shows a swatch beside each line that writes a colour, by zero-based line. */
-    public void setColorSwatches(java.util.Map<Integer, List<String>> colors) {
+    public void setColorSwatches(java.util.Map<Integer, List<ColorSwatches.Literal>> colors) {
         if (gutter == null || disposed || colors.equals(shownColors)) {
             return;
         }
