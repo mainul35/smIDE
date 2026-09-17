@@ -66,7 +66,9 @@ import javafx.stage.Stage;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -218,6 +220,22 @@ public final class IdeImpl implements Ide {
         });
         workspaces.addActiveListener(w -> mainWindow.refreshToolbarEnabled());
 
+        SessionStore.Session session = sessionStore.load();
+        SessionStore.WindowState win = session.window == null ? new SessionStore.WindowState() : session.window;
+        mainWindow.show(win.x, win.y, win.width, win.height, win.maximized);
+
+        /* Shown is not drawn. The toolkit draws between the tasks given to this thread and
+           never during one, so everything still to do - fifteen plugins to start, the files
+           the last session had open - would hold the first frame back until all of it was
+           finished. That is the white window somebody waits in front of, and on a machine
+           short of memory, with nothing yet compiled, it lasted minutes. Handed back as
+           tasks of their own, the window is drawn first and fills in while it can be used. */
+        statusBar.message("Starting up...");
+        Platform.runLater(() -> startPlugins(session, openOnStart));
+    }
+
+    /** The plugins, then whatever was open last: after the window has been drawn once. */
+    private void startPlugins(SessionStore.Session session, List<Path> openOnStart) {
         Set<String> disabled = new HashSet<>(settings.getList("plugins.disabled"));
         try {
             plugins.startAll(pluginsDir(), disabled);
@@ -228,11 +246,11 @@ public final class IdeImpl implements Ide {
             notifications.error("Plugins failed to load", String.valueOf(t));
         }
         reportPluginFailures();
+        statusBar.message("");
+        Platform.runLater(() -> openWhatWasOpen(session, openOnStart));
+    }
 
-        SessionStore.Session session = sessionStore.load();
-        SessionStore.WindowState win = session.window == null ? new SessionStore.WindowState() : session.window;
-        mainWindow.show(win.x, win.y, win.width, win.height, win.maximized);
-
+    private void openWhatWasOpen(SessionStore.Session session, List<Path> openOnStart) {
         boolean restore = settings.getBoolean("session.restore", true);
         if (restore && openOnStart.isEmpty()) {
             restoreSession(session);
@@ -360,42 +378,82 @@ public final class IdeImpl implements Ide {
 
     // ---------------------------------------------------------------- session
 
+    /** True from the first restored file until the last, so nothing saves half a session. */
+    private boolean restoring;
+
+    /**
+     * The window first, the files it had open after.
+     *
+     * <p>All of this used to run before the toolkit drew a single frame. It draws between
+     * the tasks given to this thread, never during one, and opening a file is not a small
+     * task: it is read, parsed, highlighted, laid out, and a language server is told about
+     * it. Ten remembered files on a cold JIT, on a machine with little memory left, was
+     * minutes of a white window with the title bar on it and nothing inside. Each file is
+     * now a task of its own, so the frame arrives first and the tabs fill in one by one
+     * where they can be watched, and the window answers while they do.
+     */
     private void restoreSession(SessionStore.Session session) {
-        for (SessionStore.WorkspaceState ws : session.workspaces) {
-            try {
-                Path root = Path.of(ws.root);
-                if (!Files.isDirectory(root)) {
-                    continue;
-                }
-                WorkspaceImpl workspace = workspaces.openImpl(root);
-                for (SessionStore.FileState f : ws.files) {
-                    Path file = Path.of(f.path);
-                    if (Files.isRegularFile(file) && workspace.contains(file)) {
-                        editors.open(file, f.line, f.column);
-                    }
-                }
-                if (ws.activeFile != null) {
-                    Path file = Path.of(ws.activeFile);
-                    if (Files.isRegularFile(file)) {
-                        editors.open(file);
-                    }
-                }
-            } catch (RuntimeException e) {
-                System.err.println("smIDE: cannot restore " + ws.root + ": " + e);
-            }
-        }
-        if (session.activeWorkspace != null) {
-            for (WorkspaceImpl w : workspaces.allImpl()) {
-                if (w.root().toString().equals(session.activeWorkspace)) {
-                    workspaces.select(w);
-                }
-            }
-        }
+        // The layout before the contents: the window looks like itself while they arrive.
         if (session.toolWindows != null && !session.toolWindows.isEmpty()) {
             toolWindows.restore(session.toolWindows, session.dividers);
         } else {
             toolWindows.show(ExplorerToolWindow.ID);
         }
+
+        Deque<Runnable> steps = new ArrayDeque<>();
+        for (SessionStore.WorkspaceState ws : session.workspaces) {
+            Path root = Path.of(ws.root);
+            if (!Files.isDirectory(root)) {
+                continue;
+            }
+            steps.add(() -> {
+                WorkspaceImpl workspace = workspaces.openImpl(root);
+                for (SessionStore.FileState f : ws.files) {
+                    Path file = Path.of(f.path);
+                    if (Files.isRegularFile(file) && workspace.contains(file)) {
+                        steps.add(() -> editors.open(file, f.line, f.column));
+                    }
+                }
+                if (ws.activeFile != null) {
+                    Path active = Path.of(ws.activeFile);
+                    if (Files.isRegularFile(active)) {
+                        // Last, so the tab left in front is the one that comes back in front.
+                        steps.add(() -> editors.open(active));
+                    }
+                }
+            });
+        }
+        if (session.activeWorkspace != null) {
+            steps.add(() -> {
+                for (WorkspaceImpl w : workspaces.allImpl()) {
+                    if (w.root().toString().equals(session.activeWorkspace)) {
+                        workspaces.select(w);
+                    }
+                }
+            });
+        }
+        restoring = !steps.isEmpty();
+        restoreStep(steps);
+    }
+
+    /** One step of the restore, then back to the toolkit so it can draw what that step made. */
+    private void restoreStep(Deque<Runnable> steps) {
+        Runnable next = steps.poll();
+        if (next == null) {
+            restoring = false;
+            statusBar.message("");
+            return;
+        }
+        try {
+            next.run();
+        } catch (RuntimeException e) {
+            System.err.println("smIDE: cannot restore part of the last session: " + e);
+        }
+        if (!steps.isEmpty()) {
+            statusBar.message("Restoring the last session, " + steps.size()
+                    + (steps.size() == 1 ? " file to open" : " files to open"));
+        }
+        Platform.runLater(() -> restoreStep(steps));
     }
 
     private SessionStore.Session captureSession() {
@@ -432,7 +490,11 @@ public final class IdeImpl implements Ide {
         if (!editors.closeAll()) {
             return;
         }
-        sessionStore.save(captureSession());
+        /* Not while the last session is still being opened: what is on screen then is a
+           part of it, and saving that would throw away the files it had not reached. */
+        if (!restoring) {
+            sessionStore.save(captureSession());
+        }
         shutdown();
         Platform.exit();
     }
