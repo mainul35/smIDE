@@ -380,8 +380,10 @@ if (Test-Path $mdviewerJar) {
 Write-Step "Building smIDE"
 Write-Host "Sixteen modules, then jpackage puts them beside a Java runtime. Two or three"
 Write-Host "minutes the first time; Maven has most of it cached afterwards."
+# From clean, every time - see the note in install.sh: an earlier build's classes left in
+# target/ once produced a smide-core the JVM refused to load, and this packaged it anyway.
 Invoke-Step -Message "Compiling the modules" -File "mvn" `
-    -Arguments @("install", "-DskipTests") -WorkingDirectory $SourceDir | Out-Null
+    -Arguments @("clean", "install", "-DskipTests") -WorkingDirectory $SourceDir | Out-Null
 Invoke-Step -Message "Packaging with a Java runtime" -File "mvn" `
     -Arguments @("-pl", "smide-dist", "-Pdist", "package") -WorkingDirectory $SourceDir | Out-Null
 

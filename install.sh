@@ -467,7 +467,11 @@ fi
 step "Building smIDE"
 echo "Sixteen modules, then jpackage puts them beside a Java runtime. Two or three"
 echo "minutes the first time; Maven has most of it cached afterwards."
-run_step --in "$SOURCE_DIR" "Compiling the modules" mvn install -DskipTests
+# From clean, every time. An earlier build's classes left in target/ once compiled into a
+# smide-core that the JVM refused to load - one method in it twice, a real one and a bridge
+# javac wrote against a stale view of the interface - and the installer packaged it, replaced
+# the working application with it, and reported success. Nobody has that long to spend.
+run_step --in "$SOURCE_DIR" "Compiling the modules" mvn clean install -DskipTests
 run_step --in "$SOURCE_DIR" "Packaging with a Java runtime"     mvn -pl smide-dist -Pdist package
 
 image="$SOURCE_DIR/smide-dist/target/dist/smIDE"

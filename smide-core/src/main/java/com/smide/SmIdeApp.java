@@ -5,7 +5,10 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.stage.Stage;
 
+import java.io.PrintWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,6 +20,44 @@ public class SmIdeApp extends Application {
 
     @Override
     public void start(Stage stage) {
+        try {
+            startIde(stage);
+        } catch (Throwable t) {
+            failedToStart(t);
+        }
+    }
+
+    /**
+     * A start that threw: said out loud, and written down.
+     *
+     * <p>Without this the terminal gets "Exception in Application start method" and nothing
+     * more. The toolkit, left with no window, ends the application, {@link #stop()} calls
+     * {@code System.exit(0)}, and the process is gone - with a success code - before the trace
+     * is printed. A broken build then looks like an IDE that closes without a word. Started
+     * from a desktop entry there is no terminal to read either, so it goes to a file as well.
+     */
+    private static void failedToStart(Throwable t) {
+        System.err.println("smIDE could not start.");
+        t.printStackTrace();
+        try {
+            Path logs = Path.of(System.getProperty("smide.userHome", System.getProperty("user.home")),
+                    ".smide", "logs");
+            Files.createDirectories(logs);
+            Path file = logs.resolve("startup-failure.log");
+            try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(file))) {
+                out.println("smIDE " + VERSION + " could not start, " + LocalDateTime.now());
+                t.printStackTrace(out);
+            }
+            System.err.println("Written to " + file);
+        } catch (Exception ignored) {
+            // Nowhere to write it is no reason to say less than has been said already.
+        }
+        System.err.flush();
+        // Not System.exit: stop() must not run, and no shutdown hook may cut the output short.
+        Runtime.getRuntime().halt(1);
+    }
+
+    private void startIde(Stage stage) {
         // Before any window is built, so the first frame is drawn in the right font
         // rather than in whatever the platform had and then repainted.
         com.smide.ui.Fonts.load();
