@@ -274,7 +274,11 @@ java_major() {
 
 find_jdk() {
     # JAVA_HOME first, then whatever is on PATH, then the usual install roots. A JDK,
-    # not a JRE: javac has to be there, and jpackage is what builds the application.
+    # not a JRE: javac has to be there, jpackage is what builds the application, and
+    # jmods is what jlink builds its runtime from. Some distributions ship their newer
+    # JDKs without jmods; such a JDK compiles smIDE and then cannot package it, which
+    # used to show up as "jlink failed" at the end of a build that had already run for
+    # minutes, so it is not a JDK this script picks.
     local candidates=()
     [ -n "${JAVA_HOME:-}" ] && candidates+=("$JAVA_HOME")
     if command -v javac >/dev/null 2>&1; then
@@ -288,7 +292,7 @@ find_jdk() {
 
     local best="" home major
     for home in "${candidates[@]}"; do
-        [ -x "$home/bin/javac" ] && [ -x "$home/bin/jpackage" ] || continue
+        [ -x "$home/bin/javac" ] && [ -x "$home/bin/jpackage" ] && [ -d "$home/jmods" ] || continue
         major=$(java_major "$home/bin/java")
         [ "${major:-0}" -ge 21 ] 2>/dev/null || continue
         # A JDK carrying lib/src.zip is worth preferring: it is what lets Ctrl+click
@@ -312,7 +316,7 @@ if jdk=$(find_jdk); then
     green "JDK 21+        $jdk"
     [ -f "$jdk/lib/src.zip" ] || needs_jdk_source=true
 else
-    red "JDK 21+        not found (needs javac and jpackage, so a JDK and not a JRE)"
+    red "JDK 21+        not found (needs javac, jpackage and jmods: a JDK, not a JRE)"
     missing+=("a JDK 21 or newer")
 fi
 

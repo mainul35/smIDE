@@ -16,6 +16,12 @@
     <description>Runs the IDE from source with every bundled plugin on the class path, and assembles app/</description>
 
     <properties>
+        <!--
+            jpackage, in whichever JDK Maven is running on. Overridden for Windows below,
+            where the file carries an extension; checked in the dist profile, because a
+            JRE or an IDE's bundled runtime has no jpackage at all.
+        -->
+        <jpackage.tool>${java.home}/bin/jpackage</jpackage.tool>
         <smide.debugLayout>false</smide.debugLayout>
         <smide.open></smide.open>
         <!-- jpackage rejects a version with a qualifier, so the shipped one is plain. -->
@@ -183,6 +189,14 @@
     </build>
 
     <profiles>
+
+        <profile>
+            <id>jpackage-on-windows</id>
+            <activation><os><family>windows</family></os></activation>
+            <properties>
+                <jpackage.tool>${java.home}/bin/jpackage.exe</jpackage.tool>
+            </properties>
+        </profile>
         <!--
             mvn -Pdist package
 
@@ -200,6 +214,57 @@
             <id>dist</id>
             <build>
                 <plugins>
+                    <!--
+                        Both of these used to be found out at the last step of a build that
+                        had already run for minutes, and neither said what was wrong: a
+                        runtime without jpackage gave "CreateProcess error=2", and a JDK
+                        without jmods gave "jlink failed with: This JDK does not support
+                        linking from the current run-time image". Checked here, the build
+                        stops in a second and names the Java it is unhappy with.
+
+                        jmods is where jlink reads the modules the runtime is built from.
+                        A JDK packaged without it - some distributions' 24 and newer - can
+                        compile smIDE perfectly well and still not package it.
+                    -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-enforcer-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>jdk-can-package</id>
+                                <phase>validate</phase>
+                                <goals><goal>enforce</goal></goals>
+                                <configuration>
+                                    <rules>
+                                        <requireFilesExist>
+                                            <files>
+                                                <file>${jpackage.tool}</file>
+                                            </files>
+                                            <message>
+This JDK has no jpackage, so the application cannot be built with it:
+    ${java.home}
+Point JAVA_HOME at a full JDK 21 or newer - not a JRE, and not the runtime
+bundled with another program - and build again.
+                                            </message>
+                                        </requireFilesExist>
+                                        <requireFilesExist>
+                                            <files>
+                                                <file>${java.home}/jmods</file>
+                                            </files>
+                                            <message>
+This JDK has no jmods directory, so jlink cannot build a runtime from it:
+    ${java.home}
+Some distributions package their newer JDKs without it. Point JAVA_HOME at one
+that has a jmods directory - a JDK 21 from the same distribution usually does,
+as does any build from Adoptium - and build again.
+                                            </message>
+                                        </requireFilesExist>
+                                    </rules>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
                     <!--
                         jpackage refuses to write into a directory that already exists,
                         so a second run has to start from nothing. Only target/dist is
@@ -234,7 +299,7 @@
                                 <phase>package</phase>
                                 <goals><goal>exec</goal></goals>
                                 <configuration>
-                                    <executable>${java.home}/bin/jpackage</executable>
+                                    <executable>${jpackage.tool}</executable>
                                     <!--
                                         Not merged with the plugin-level arguments above,
                                         which are how the IDE is run from source: without
@@ -258,6 +323,18 @@
                                         <argument>${project.build.directory}/dist</argument>
                                         <argument>--add-modules</argument>
                                         <argument>${app.modules}</argument>
+                                        <!--
+                                            What jlink is told, instead of what jpackage would tell
+                                            it. jpackage's own list begins by stripping native debug
+                                            symbols, which runs objcopy, a binutils program that a
+                                            machine with a JDK and Maven on it need not have. Without
+                                            it the whole build ran and then died at the last step,
+                                            jlink failing with: Cannot run program "objcopy". These
+                                            two need nothing beyond the JDK. The runtime is a few MB
+                                            larger for keeping its own libraries' debug symbols.
+                                        -->
+                                        <argument>--jlink-options</argument>
+                                        <argument>--no-man-pages --no-header-files</argument>
                                         <argument>--java-options</argument>
                                         <argument>-Xmx2g</argument>
                                         <argument>--vendor</argument>

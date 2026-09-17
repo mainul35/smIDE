@@ -249,7 +249,9 @@ function Get-JavaMajor($javaExe) {
 }
 
 function Find-Jdk {
-    # A JDK, not a JRE, and one with jpackage: that is what builds the application.
+    # A JDK, not a JRE: javac has to be there, jpackage is what builds the application,
+    # and jmods is what jlink builds its runtime from. A JDK missing jmods - some newer
+    # ones are packaged that way - compiles smIDE and then fails at the packaging step.
     $candidates = New-Object System.Collections.Generic.List[string]
     if ($env:JAVA_HOME) { $candidates.Add($env:JAVA_HOME) }
     $javac = Get-Command javac -ErrorAction SilentlyContinue
@@ -269,7 +271,8 @@ function Find-Jdk {
         if (-not $candidate) { continue }
         $javacExe = Join-Path $candidate "bin\javac.exe"
         $jpackageExe = Join-Path $candidate "bin\jpackage.exe"
-        if (-not (Test-Path $javacExe) -or -not (Test-Path $jpackageExe)) { continue }
+        $jmods = Join-Path $candidate "jmods"
+        if (-not (Test-Path $javacExe) -or -not (Test-Path $jpackageExe) -or -not (Test-Path $jmods)) { continue }
         if ((Get-JavaMajor (Join-Path $candidate "bin\java.exe")) -lt 21) { continue }
         # A JDK carrying lib\src.zip is worth preferring: it is what lets Ctrl+click into
         # java.util.List show source in the IDE afterwards.
@@ -291,7 +294,7 @@ if ($jdk) {
         Write-Host "  A Temurin, Zulu or Corretto build ships it; some bundled runtimes do not."
     }
 } else {
-    Write-Bad "JDK 21+        not found (needs javac and jpackage, so a JDK and not a JRE)"
+    Write-Bad "JDK 21+        not found (needs javac, jpackage and jmods: a JDK, not a JRE)"
     $missing.Add("a JDK 21 or newer - winget install EclipseAdoptium.Temurin.21.JDK")
 }
 
