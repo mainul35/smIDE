@@ -80,6 +80,19 @@ final class CodeContext {
     /** An identifier long enough to mean something. Two-letter names match everything. */
     private static final Pattern WORD = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{2,}");
 
+    /** Stylesheets, where what a file declares is a selector rather than a class. */
+    private static final Set<String> STYLES = Set.of("css", "scss", "sass", "less");
+
+    /** A custom property a stylesheet defines: --gap, -smide-accent. Not a vendor property. */
+    private static final Pattern STYLE_PROPERTY = Pattern.compile(
+            "(?m)^\\s*(--[A-Za-z][\\w-]*|-[A-Za-z][\\w-]*)\\s*:");
+
+    /** A class or id in a selector: .run-column, #sidebar. */
+    private static final Pattern STYLE_SELECTOR = Pattern.compile("[.#]([A-Za-z_][\\w-]*)");
+
+    /** Properties whose prefix belongs to a rendering engine, not to this project. */
+    private static final Set<String> VENDOR = Set.of("-fx-", "-webkit-", "-moz-", "-ms-", "-o-");
+
     /** What a file declares, by the shapes most languages share. */
     private static final Pattern DECLARED = Pattern.compile(
             "(?m)^\\s*(?:@\\w+\\s+)*(?:export\\s+|public\\s+|private\\s+|protected\\s+|internal\\s+"
@@ -187,6 +200,7 @@ final class CodeContext {
     private static List<Neighbour> neighbours(Path root, Path file, String text, List<Path> files) {
         Set<String> mentioned = words(text);
         Set<String> declares = declarations(text);
+        Set<String> styles = isStylesheet(file) ? styleNames(text) : Set.of();
         String stem = stem(file);
         Path folder = file.getParent();
 
@@ -228,6 +242,19 @@ final class CodeContext {
                 score += 3;
                 why.add("calls into the file under review");
             }
+            /* Stylesheets, both ways round. A file that writes rules for the same class is
+               what a change here collides with; a file that asks for those classes is what
+               the change is seen in. Either one is what somebody editing a rule wants to
+               have been shown, and neither is found by looking for declared types. */
+            if (anyWord(body, styles)) {
+                score += 3;
+                why.add(isStylesheet(candidate) ? "styles the same names as the file under review"
+                        : "uses the style names the file under review defines");
+            }
+            if (isStylesheet(candidate) && anyWord(text, styleNames(body))) {
+                score += 2;
+                why.add("styles what the file under review asks for");
+            }
             if (sibling && score > 0) {
                 score += 1;
             } else if (sibling && score == 0) {
@@ -243,6 +270,16 @@ final class CodeContext {
         found.sort(Comparator.comparingDouble(Neighbour::score).reversed()
                 .thenComparing(Neighbour::relative));
         return found;
+    }
+
+    /** True if any of {@code needles} appears in {@code text} as a whole word. */
+    private static boolean anyWord(String text, Set<String> needles) {
+        for (String needle : needles) {
+            if (containsWord(text, needle)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** True if {@code needle} appears in {@code text} as a whole word. */
@@ -271,6 +308,57 @@ final class CodeContext {
             names.add(m.group());
         }
         return names;
+    }
+
+    /**
+     * The names a stylesheet owns: the classes and ids it writes rules for, and the custom
+     * properties it defines.
+     *
+     * <p>What makes a stylesheet dangerous to edit is that these names are shared. The same
+     * class is styled in another file, the same custom property is defined again in a theme
+     * block, and a rule that looks local decides how something three views away is drawn. So
+     * they are what a stylesheet is matched to its neighbours by - other stylesheets that
+     * claim the same names, and the code that asks for them - and the review is asked to say
+     * what a change to one of them reaches.
+     *
+     * <p>Short names are left out. A rule for {@code .tab} would pull in every file with the
+     * word tab in it, which is a worse prompt than one that admits it found nothing.
+     */
+    static Set<String> styleNames(String text) {
+        Set<String> names = new LinkedHashSet<>();
+        Matcher property = STYLE_PROPERTY.matcher(text);
+        while (property.find()) {
+            String name = property.group(1);
+            if (VENDOR.stream().noneMatch(name::startsWith)) {
+                add(names, name.replaceFirst("^-+", ""));
+            }
+        }
+        // Selectors, taken from what stands before each brace: a list may span lines.
+        int from = 0;
+        int brace = text.indexOf('{');
+        while (brace >= 0 && names.size() < 400) {
+            int previous = Math.max(text.lastIndexOf('}', brace), text.lastIndexOf(';', brace));
+            String selector = text.substring(Math.max(from, Math.max(previous + 1, brace - 400)), brace);
+            Matcher m = STYLE_SELECTOR.matcher(selector);
+            while (m.find()) {
+                add(names, m.group(1));
+            }
+            from = brace + 1;
+            brace = text.indexOf('{', from);
+        }
+        return names;
+    }
+
+    private static void add(Set<String> names, String name) {
+        if (name.length() >= 4) {
+            names.add(name);
+        }
+    }
+
+    static boolean isStylesheet(Path file) {
+        String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 && STYLES.contains(name.substring(dot + 1));
     }
 
     static Set<String> declarations(String text) {

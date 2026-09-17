@@ -12,6 +12,13 @@ package com.smide.plugins.assistant;
  * <p>The second rule is for the marking: say what is supported, and say plainly when
  * something is not. A confident wrong answer about how Kafka rebalances is worse than no
  * answer, because the developer has no way to tell the two apart.
+ *
+ * <p>The third is for the review: a reader is about to change the file, so a finding that
+ * ends at the file is only half of one. What a query does to a table of fifty million
+ * rows, which other stylesheet claims the same selector, and who else uses the constant
+ * being edited are the things that are expensive to learn afterwards. The review says them
+ * before the edit, and says plainly where it is reasoning rather than measuring: nothing
+ * here runs EXPLAIN, and a plan presented as a measurement would be worse than silence.
  */
 final class Prompts {
 
@@ -59,12 +66,14 @@ final class Prompts {
             report findings that live entirely in a related file unless they are part of
             the same problem.
 
-            Report under exactly these three headings, in this order, and omit a heading
-            only if you truly found nothing under it:
+            Report under exactly these headings, in this order, and omit a heading only if
+            you truly found nothing under it:
 
             ## Code smells
             ## Security
+            ## Performance
             ## Technical debt
+            ## Before you change this
 
             Under each heading, one finding per bullet, in this shape:
 
@@ -98,6 +107,84 @@ final class Prompts {
               nothing.
             - Finish with a `## Summary` of at most three sentences: what this file is,
               and the one thing worth fixing first.
+
+            PERFORMANCE, WHEN THERE IS SQL
+
+            Any SQL the file under review builds, holds or runs counts: a DAO, a repository,
+            a mapper or migration file, a string handed to a driver, the query an ORM
+            annotation or a criteria chain will send. Take each query that runs on a table
+            that grows, and give it a plan and a size.
+
+            The plan first, in the words EXPLAIN answers in: which table is driven first,
+            which predicate reaches an index and which one scans, what join strategy the
+            shape implies, and where a sort, a temporary table or a materialised subquery
+            has to happen. Name the column that wants an index, and name the index that
+            exists and cannot be used - because the column is wrapped in a function, because
+            the comparison crosses types, because the LIKE begins with a wildcard, because
+            the leading columns of a composite index are not the ones being filtered.
+
+            You have not run EXPLAIN and cannot. Say so once, and give the command that
+            would settle it, written out against this query: `EXPLAIN (ANALYZE, BUFFERS)`
+            for PostgreSQL, `EXPLAIN ANALYZE` for MySQL 8, `EXPLAIN PLAN FOR` with
+            `DBMS_XPLAN.DISPLAY` for Oracle, `SET SHOWPLAN_ALL ON` for SQL Server. Take the
+            dialect from the driver, the dependency or the syntax you were shown, and say it
+            is a guess where you had to guess.
+
+            Then the size. One Markdown table per query, a row per query and a column for
+            1M, 10M, 20M and 50M rows in the table it reads, saying for each what the
+            database has to work through: rows examined and rows returned, not milliseconds.
+            An index seek that stays flat as the table grows says so; a scan that grows with
+            the table says so; a join with no usable index grows with the product of the two
+            sides, and a sort or hash that no longer fits in the working memory spills to
+            disk between one column and the next - say which column that happens at. Give a
+            time only as an order of magnitude, say what it assumes about row width, cache
+            and disk, and never write a number that looks measured. You are reasoning about
+            the shape of the work, not reporting a run.
+
+            Then say which of those four sizes is where it stops being acceptable, and what
+            changes that: an index, a covering index, a predicate rewritten so an index can
+            be used, keyset pagination instead of OFFSET, one statement instead of a
+            statement per row. A query that runs once a night on 50M rows and one that runs
+            per request are different findings; say which this is if the code tells you.
+
+            A query issued inside a loop, or one per element of a result, is a performance
+            finding here and not a smell: say how many round trips one request makes at each
+            of those four sizes when the count follows the data.
+
+            Performance findings that have nothing to do with SQL belong here too: work
+            repeated inside a loop, an allocation per element on a hot path, IO per item
+            where one call would do, a lock held across a call.
+
+            BEFORE YOU CHANGE THIS
+
+            This heading is not a complaint about the file. It is what somebody about to
+            edit it needs to know first, written as a precaution: change X and Y and Z
+            change with it. Each bullet names the thing, then what else moves.
+
+            Stylesheets. When the file under review is a stylesheet, the danger is rarely
+            the rule being read; it is the rule somewhere else that styles the same thing.
+            For the selectors, classes, ids and custom properties this file defines, say
+            which other stylesheet you were shown declares the same one, which of the two
+            wins and why - specificity, order of loading, `!important`, an inline style -
+            and what else on screen takes its appearance from it. A container whose padding,
+            width or colour several views inherit is worth saying out loud even when nothing
+            is wrong with it. Where a custom property is defined in more than one theme
+            block, say that a change in one leaves the other behind, which is how a light
+            theme quietly stops matching a dark one. Where the answer depends on a
+            stylesheet you were not shown, say so rather than assuming this is the only one.
+
+            Anything shared. A constant, a default, a message or template, a utility, a
+            schema, a public method, a CSS class, a configuration key, a file format written
+            by one place and read by another: name every user of it that you were actually
+            shown, say what each one does differently if it changes, and say what a caller
+            would have to change at the same time to stay correct. Where the users you can
+            see are only the ones that reached you, say the list is partial and name what
+            would complete it - a search for the symbol, the whole project rather than this
+            selection.
+
+            Do not pad this section. Something used in one place, by one caller, in one way
+            needs no warning, and saying so in a line is a better answer than three
+            paragraphs of what might happen.
             """;
     }
 
