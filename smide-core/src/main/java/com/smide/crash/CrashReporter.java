@@ -54,6 +54,22 @@ public final class CrashReporter {
     public static final String TOKEN_KEY = "crash.token";
     /** Settings: whether to show the dialog at all; the report is saved either way. */
     public static final String DIALOG_KEY = "crash.dialog";
+    /** Settings: the GitHub repository issues are filed in, a token to file them with, and the API. */
+    public static final String GITHUB_REPO_KEY = "crash.github.repo";
+    public static final String GITHUB_TOKEN_KEY = "crash.github.token";
+    public static final String GITHUB_API_KEY = "crash.github.api";
+
+    /** What the reader chose in the dialog. */
+    public enum Choice {
+        /** Carry on: the IDE is still running. */
+        CLOSED,
+        /** Start smIDE again. */
+        RESTART,
+        /** Start smIDE again without plugins or the last session. */
+        RESTART_SAFE,
+        /** Stop: only offered when smIDE could not start. */
+        QUIT
+    }
 
     /** Reports kept on disk; the oldest go first. */
     private static final int KEEP = 100;
@@ -73,6 +89,10 @@ public final class CrashReporter {
     private volatile Supplier<Window> owner = () -> null;
     private volatile Consumer<Window> styler = w -> { };
     private volatile CrashReport pending;
+    /** How the running IDE restarts itself, safely or not; null until there is an IDE. */
+    private volatile Consumer<Boolean> restarter;
+    /** How the running IDE opens an address; null until there is one. */
+    private volatile Consumer<String> browser;
 
     private CrashReporter(Path homeDir, String version) {
         this.crashes = homeDir.resolve("logs").resolve("crashes");
@@ -111,6 +131,34 @@ public final class CrashReporter {
         this.settings = settings;
         this.owner = owner == null ? () -> null : owner;
         this.styler = styler == null ? w -> { } : styler;
+    }
+
+    /**
+     * How the running IDE restarts itself - closing its editors the usual way first, so
+     * nothing unsaved is lost - and how it opens an address. Only a supervised IDE can be
+     * restarted, because only then is there something outside it to start it again.
+     */
+    public void onRestart(Consumer<Boolean> restarter, Consumer<String> browser) {
+        this.restarter = restarter;
+        this.browser = browser;
+    }
+
+    /** Whether the dialog may offer to restart the running IDE. */
+    boolean canRestart() {
+        return restarter != null && com.smide.Supervisor.supervised();
+    }
+
+    /** Whether smIDE is supervised, so that a failed start can be tried again. */
+    boolean canRetryStart() {
+        return com.smide.Supervisor.supervised();
+    }
+
+    /** Restarts the running IDE; the dialog calls this once it has closed. */
+    void restart(boolean safe) {
+        Consumer<Boolean> r = restarter;
+        if (r != null) {
+            r.accept(safe);
+        }
     }
 
     /** Shows the report left by a session that died, once the window is there to show it in. */
@@ -188,18 +236,32 @@ public final class CrashReporter {
         Platform.runLater(() -> show(report));
     }
 
-    /** Shows the dialog now, on this thread, which must be the JavaFX one. */
-    public void show(CrashReport report) {
+    /**
+     * Shows the dialog now, on this thread, which must be the JavaFX one, and does what the
+     * reader chose in it. Returns the choice; null when the dialog could not be shown.
+     */
+    public Choice show(CrashReport report) {
         if (!dialogOpen.compareAndSet(false, true)) {
-            return;
+            return Choice.CLOSED;
         }
+        Choice choice;
         try {
-            new CrashDialog(this, report, owner.get(), styler).showAndWait();
+            choice = new CrashDialog(this, report, owner.get(), styler).showAndWait();
         } catch (Throwable t) {
             System.err.println("smIDE: could not show the crash dialog: " + t);
+            return null;
         } finally {
             dialogOpen.set(false);
         }
+        // A failed start decides for itself what to do with the choice; a running IDE is restarted here.
+        if (!CrashReport.STARTUP.equals(report.kind())) {
+            if (choice == Choice.RESTART) {
+                restart(false);
+            } else if (choice == Choice.RESTART_SAFE) {
+                restart(true);
+            }
+        }
+        return choice;
     }
 
     private static boolean toolkitRunning() {
@@ -244,6 +306,38 @@ public final class CrashReporter {
         for (Path old : reports.subList(0, reports.size() - KEEP)) {
             Files.deleteIfExists(old);
         }
+    }
+
+    // ------------------------------------------------------------------ GitHub
+
+    /** Where issues go, as the settings say; the defaults when there is nothing set. */
+    public GitHubIssues github() {
+        Settings s = settings;
+        return new GitHubIssues(
+                s == null ? "" : s.get(GITHUB_REPO_KEY, ""),
+                s == null ? "" : s.get(GITHUB_TOKEN_KEY, ""),
+                s == null ? "" : s.get(GITHUB_API_KEY, ""));
+    }
+
+    /** Opens an address in the reader's browser: the IDE's way when there is an IDE, the desktop's otherwise. */
+    void browse(String url) {
+        Consumer<String> b = browser;
+        if (b != null) {
+            b.accept(url);
+            return;
+        }
+        Thread opener = new Thread(() -> {
+            try {
+                if (java.awt.Desktop.isDesktopSupported()
+                        && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                    java.awt.Desktop.getDesktop().browse(URI.create(url));
+                }
+            } catch (Exception e) {
+                System.err.println("smIDE: cannot open " + url + ": " + e);
+            }
+        }, "smide-browse");
+        opener.setDaemon(true);
+        opener.start();
     }
 
     // ------------------------------------------------------------------ sending

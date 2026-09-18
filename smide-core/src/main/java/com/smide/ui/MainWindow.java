@@ -145,7 +145,8 @@ public final class MainWindow {
         // Menus, dialogs and completion lists are windows of their own; they follow.
         zoom.followEverything(stage);
 
-        stage.setTitle("smIDE");
+        // Safe mode is said where it cannot be missed: no plugins means half the IDE is not there.
+        stage.setTitle(com.smide.Supervisor.safeMode() ? "smIDE - safe mode" : "smIDE");
         stage.setScene(scene);
         stage.setMinWidth(Math.min(MIN_WIDTH, screen.getWidth()));
         stage.setMinHeight(Math.min(MIN_HEIGHT, screen.getHeight()));

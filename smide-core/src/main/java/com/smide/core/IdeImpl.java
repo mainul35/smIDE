@@ -229,6 +229,7 @@ public final class IdeImpl implements Ide {
            so that a failure building it would still be caught. */
         com.smide.crash.CrashReporter.installed().ifPresent(reporter -> {
             reporter.attach(settings, () -> stage, theme::style);
+            reporter.onRestart(this::requestRestart, window::browse);
             registry.addSettingsPage(new com.smide.crash.CrashSettingsPage(reporter));
         });
 
@@ -244,6 +245,18 @@ public final class IdeImpl implements Ide {
 
     /** The plugins, then whatever was open last: after the window has been drawn once. */
     private void startPlugins(SessionStore.Session session, List<Path> openOnStart) {
+        if (safeMode) {
+            /* Started this way after failing again and again, or on request: the things most
+               likely to be failing - a plugin, a file the last session reopens - are left out,
+               so the reader can get in, look, and change what needs changing. */
+            notifications.warn("Safe mode",
+                    "smIDE started without plugins and without reopening the last session's files, after"
+                            + " failing to start normally. The crash reports are in ~/.smide/logs/crashes.",
+                    new com.smide.api.ui.Notifications.NotificationAction("Restart normally", () -> requestRestart(false)));
+            statusBar.message("");
+            Platform.runLater(() -> openWhatWasOpen(session, openOnStart));
+            return;
+        }
         Set<String> disabled = new HashSet<>(settings.getList("plugins.disabled"));
         try {
             plugins.startAll(pluginsDir(), disabled);
@@ -259,7 +272,7 @@ public final class IdeImpl implements Ide {
     }
 
     private void openWhatWasOpen(SessionStore.Session session, List<Path> openOnStart) {
-        boolean restore = settings.getBoolean("session.restore", true);
+        boolean restore = settings.getBoolean("session.restore", true) && !safeMode;
         if (restore && openOnStart.isEmpty()) {
             restoreSession(session);
         } else if (session.toolWindows == null || session.toolWindows.isEmpty()) {
@@ -281,6 +294,13 @@ public final class IdeImpl implements Ide {
            takes a second or two on its own and would be reported at every start. */
         freezes = new FreezeReporter(homeDir.resolve("logs").resolve("freezes"), statusBar::message, 10_000);
         freezes.start();
+        /* Written down every half minute, not only at a proper close. When smIDE is started
+           again after dying, it reopens the last session that was saved - and a session only
+           saved at exit is the one from before this run began. */
+        javafx.animation.Timeline keepSession = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(javafx.util.Duration.seconds(30), e -> saveSession()));
+        keepSession.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        keepSession.play();
         // If the Java runtime died under the last session, say so now there is a window to say it in.
         com.smide.crash.CrashReporter.installed().ifPresent(com.smide.crash.CrashReporter::showPending);
     }
@@ -390,6 +410,9 @@ public final class IdeImpl implements Ide {
 
     /** True from the first restored file until the last, so nothing saves half a session. */
     private boolean restoring;
+
+    /** Started without plugins or the last session; see {@link #startPlugins}. */
+    private final boolean safeMode = com.smide.Supervisor.safeMode();
 
     /**
      * The window first, the files it had open after.
@@ -510,13 +533,40 @@ public final class IdeImpl implements Ide {
         if (!editors.closeAll()) {
             return;
         }
-        /* Not while the last session is still being opened: what is on screen then is a
-           part of it, and saving that would throw away the files it had not reached. */
-        if (!restoring) {
-            sessionStore.save(captureSession());
-        }
+        saveSession();
         shutdown();
         Platform.exit();
+    }
+
+    /**
+     * Closes smIDE and has its supervisor start it again: the same as closing it - editors
+     * asked about unsaved changes, the session saved - and then it comes back.
+     */
+    public void requestRestart(boolean safe) {
+        if (!editors.closeAll()) {
+            return;
+        }
+        saveSession();
+        SmIdeApp.exitWith(safe ? com.smide.Supervisor.RESTART_SAFE : com.smide.Supervisor.RESTART);
+        shutdown();
+        Platform.exit();
+    }
+
+    /**
+     * Writes down what is open. Not while the last session is still being opened - what is
+     * on screen then is part of it, and saving that would throw away the files it had not
+     * reached - and not in safe mode, where the session was deliberately left out and saving
+     * the empty one would lose it for good.
+     */
+    private void saveSession() {
+        if (restoring || safeMode) {
+            return;
+        }
+        try {
+            sessionStore.save(captureSession());
+        } catch (RuntimeException e) {
+            System.err.println("smIDE: could not save the session: " + e);
+        }
     }
 
     public void shutdown() {
