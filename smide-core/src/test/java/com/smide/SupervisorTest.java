@@ -133,6 +133,24 @@ class SupervisorTest {
     }
 
     @Test
+    void theChildIsNotHandedTheLauncherStateItsParentWasStartedWith() {
+        // What the packaged launcher on Linux leaves in the environment of the process it starts.
+        java.util.Map<String, String> environment = new java.util.HashMap<>(java.util.Map.of(
+                "_JPACKAGE_LAUNCHER", "0",
+                "LD_LIBRARY_PATH", ":/home/me/.local/opt/smide/lib/app",
+                "PATH", "/usr/bin",
+                "JAVA_TOOL_OPTIONS", "-Dsmide.userHome=/tmp/h"));
+        Supervisor.prepare(environment, "safe");
+
+        assertFalse(environment.containsKey("_JPACKAGE_LAUNCHER"),
+                "inherited, it makes the child's launcher start Java with nothing to run");
+        assertEquals("1", environment.get("SMIDE_SUPERVISED"));
+        assertEquals("safe", environment.get("SMIDE_MODE"));
+        assertEquals("/usr/bin", environment.get("PATH"), "everything else is passed on as it was");
+        assertEquals("-Dsmide.userHome=/tmp/h", environment.get("JAVA_TOOL_OPTIONS"));
+    }
+
+    @Test
     void aClassPathRunIsRepeatedFromItsParts() {
         List<String> first = Supervisor.command(new String[] {"README.md"}, true);
         List<String> again = Supervisor.command(new String[] {"README.md"}, false);

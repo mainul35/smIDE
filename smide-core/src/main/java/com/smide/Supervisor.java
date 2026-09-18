@@ -143,8 +143,7 @@ public final class Supervisor {
         try {
             code = supervisor.supervise((mode, first) -> {
                 ProcessBuilder builder = new ProcessBuilder(command(args, first)).inheritIO();
-                builder.environment().put(SUPERVISED, "1");
-                builder.environment().put(MODE, mode);
+                prepare(builder.environment(), mode);
                 return builder.start().waitFor();
             });
         } catch (IOException | InterruptedException e) {
@@ -155,6 +154,24 @@ public final class Supervisor {
             return;
         }
         System.exit(code);
+    }
+
+    /**
+     * The child's environment: this process's, told it is supervised and in which mode, and
+     * without what the packaged launcher left behind for itself.
+     *
+     * <p>On Linux the launcher starts in two stages, and hands the second what it needs in
+     * {@code _JPACKAGE_LAUNCHER}. The supervisor's own environment still has it. Passed on,
+     * it tells the child's launcher that it is that second stage, so the launcher skips the
+     * application's configuration and starts Java with nothing to run - and the child dies at
+     * once, printing Java's usage. Found on a real machine, where every child did exactly
+     * that until the supervisor gave up. Windows's launcher does not do this, which is why it
+     * never showed there.
+     */
+    static void prepare(java.util.Map<String, String> environment, String mode) {
+        environment.keySet().removeIf(name -> name.startsWith("_JPACKAGE"));
+        environment.put(SUPERVISED, "1");
+        environment.put(MODE, mode);
     }
 
     /**
