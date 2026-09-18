@@ -28,7 +28,16 @@ final class ThemedSettingsProvider extends DefaultSettingsProvider {
     private static final List<String> PREFERRED_FONTS = List.of("Cascadia Mono", "Cascadia Code", "Consolas");
 
     private final Ide ide;
-    private final String fontFamily;
+    /**
+     * The family every terminal uses, worked out once and not at startup.
+     *
+     * <p>Asking the JVM for the machine's font families is half a second's work the first
+     * time - it starts AWT and reads the system's font configuration - and it was being
+     * done while this plugin started, on the thread drawing the window, for a terminal
+     * nobody had opened yet. The answer cannot change while the IDE runs, so it is worked
+     * out when a terminal first wants it and kept.
+     */
+    private static volatile String family;
     private volatile TerminalColor foreground;
     private volatile TerminalColor background;
     private volatile TextStyle selection;
@@ -36,7 +45,6 @@ final class ThemedSettingsProvider extends DefaultSettingsProvider {
 
     ThemedSettingsProvider(Ide ide) {
         this.ide = ide;
-        this.fontFamily = pickFontFamily();
         refresh();
     }
 
@@ -82,7 +90,7 @@ final class ThemedSettingsProvider extends DefaultSettingsProvider {
 
     @Override
     public Font getTerminalFont() {
-        return new Font(fontFamily, Font.PLAIN, Math.round(fontSize));
+        return new Font(fontFamily(), Font.PLAIN, Math.round(fontSize));
     }
 
     @Override
@@ -129,6 +137,15 @@ final class ThemedSettingsProvider extends DefaultSettingsProvider {
         } catch (RuntimeException e) {
             return TerminalColor.rgb(r, g, b);
         }
+    }
+
+    private static String fontFamily() {
+        String known = family;
+        if (known == null) {
+            known = pickFontFamily();
+            family = known;
+        }
+        return known;
     }
 
     /** The first preferred family the JVM knows about, else the logical monospaced font. */

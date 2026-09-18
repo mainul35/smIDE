@@ -16,8 +16,22 @@ public final class EditorTab {
 
     public EditorTab(Editor editor, String iconLiteral) {
         this.editor = editor;
-        tab.setContent(editor.node());
         tab.setUserData(this);
+        /* The editor's node joins the window when this tab is first brought to the front,
+           and not before. JavaFX keeps the content of every tab in the scene, selected or
+           not, and a node in the scene is styled and laid out whether or not anybody can
+           see it - which, restoring a session of ten files, is nine editors' worth of work
+           done for nobody. The editor itself is built either way; this is about what the
+           window has to draw. */
+        tab.selectedProperty().addListener((property, was, selected) -> {
+            if (selected) {
+                if (tab.getContent() == null) {
+                    tab.setContent(editor.node());
+                }
+                // And what the editor keeps back for a reader, it builds now.
+                editor.shown();
+            }
+        });
         Node icon = Icons.of(iconLiteral, 13);
         if (icon != null) {
             tab.setGraphic(icon);

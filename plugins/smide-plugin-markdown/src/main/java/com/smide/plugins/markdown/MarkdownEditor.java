@@ -96,7 +96,9 @@ public final class MarkdownEditor implements TextEditor {
 
     private final CodeArea area = new CodeArea();
     private final VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(area);
-    private final MarkdownPreview preview;
+    /** Built when this editor first reaches the screen; null until then. See {@link #preview()}. */
+    private MarkdownPreview preview;
+    private final DiagramService diagramService;
     private final SplitPane split = new SplitPane();
     private final BorderPane root = new BorderPane();
     private final MarkdownFindBar findBar;
@@ -119,6 +121,8 @@ public final class MarkdownEditor implements TextEditor {
     private int highlightGeneration;
     private Mode mode;
     private boolean previewStale = true;
+    /** Whether this editor's tab has ever been the one on show. See {@link #shown()}. */
+    private boolean seen;
     private boolean disposed;
 
     public MarkdownEditor(Ide ide, Workspace workspace, Path path, LanguageSupport language,
@@ -138,9 +142,13 @@ public final class MarkdownEditor implements TextEditor {
         area.setStyle("-fx-font-family: \"" + family + "\", \"Cascadia Mono\", Consolas, monospace;"
                 + " -fx-font-size: " + size + "px;");
 
-        preview = new MarkdownPreview(diagramService, ide.theme().isDark(), this::openLocalLink,
-                url -> ide.window().browse(url));
-        themeSubscription = ide.events().subscribe(Events.ThemeChanged.class, e -> preview.setDark(e.dark()));
+        this.diagramService = diagramService;
+        themeSubscription = ide.events().subscribe(Events.ThemeChanged.class, e -> {
+            if (preview != null) {
+                preview.setDark(e.dark());
+            }
+        });
+
 
         findBar = new MarkdownFindBar(this, area);
         root.getStyleClass().add("code-editor");
@@ -215,13 +223,19 @@ public final class MarkdownEditor implements TextEditor {
         // Take both panes out of wherever they are before placing them again.
         split.getItems().clear();
         root.setCenter(null);
+        boolean canPreview = mode != Mode.RAW && seen;
         switch (mode) {
             case RAW -> root.setCenter(scroll);
-            case PREVIEW -> root.setCenter(preview.node());
+            // Until this editor is on screen the source stands alone: see preview().
+            case PREVIEW -> root.setCenter(canPreview ? preview().node() : scroll);
             case SPLIT -> {
-                split.getItems().addAll(scroll, preview.node());
-                split.setDividerPositions(0.5);
-                root.setCenter(split);
+                if (canPreview) {
+                    split.getItems().addAll(scroll, preview().node());
+                    split.setDividerPositions(0.5);
+                    root.setCenter(split);
+                } else {
+                    root.setCenter(scroll);
+                }
             }
         }
         if (changed) {
@@ -236,11 +250,28 @@ public final class MarkdownEditor implements TextEditor {
     // ----------------------------------------------------------------- preview
 
     /**
+     * The preview pane, built the first time it is going to be seen.
+     *
+     * <p>It is a WebView, and a WebView is the most expensive thing this editor builds: a
+     * second and a half of the ten seconds a ten-file session took to come back was
+     * Markdown tabs building previews of files nobody had opened yet. A restored tab that
+     * is never clicked never builds one.
+     */
+    private MarkdownPreview preview() {
+        if (preview == null) {
+            preview = new MarkdownPreview(diagramService, ide.theme().isDark(), this::openLocalLink,
+                    url -> ide.window().browse(url));
+        }
+        return preview;
+    }
+
+    /**
      * Renders on the FX thread ({@link MarkdownService} is fast) and hands the result to
      * the preview, which fills PlantUML placeholders asynchronously.
      */
     private void renderPreview() {
-        if (disposed || mode == Mode.RAW) {
+        if (disposed || mode == Mode.RAW || preview == null) {
+            // Nothing to render into yet; building it renders what is current.
             return;
         }
         previewStale = false;
@@ -582,12 +613,26 @@ public final class MarkdownEditor implements TextEditor {
         themeSubscription.cancel();
         split.getItems().clear();
         root.setCenter(null);
-        preview.dispose();
+        if (preview != null) {
+            preview.dispose();
+        }
+    }
+
+    /** The reader has arrived, so the preview is worth building. */
+    @Override
+    public void shown() {
+        if (disposed || seen) {
+            return;
+        }
+        seen = true;
+        if (mode != Mode.RAW) {
+            setMode(mode);
+        }
     }
 
     @Override
     public void focus() {
-        if (mode == Mode.PREVIEW) {
+        if (mode == Mode.PREVIEW && preview != null) {
             preview.node().requestFocus();
         } else {
             area.requestFocus();

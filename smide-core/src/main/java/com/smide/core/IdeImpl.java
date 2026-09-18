@@ -411,7 +411,8 @@ public final class IdeImpl implements Ide {
                 for (SessionStore.FileState f : ws.files) {
                     Path file = Path.of(f.path);
                     if (Files.isRegularFile(file) && workspace.contains(file)) {
-                        steps.add(() -> editors.open(file, f.line, f.column));
+                        // Behind, not in front: only the tab that comes back in front is drawn.
+                        steps.add(() -> editors.openInBackground(file, f.line, f.column));
                     }
                 }
                 if (ws.activeFile != null) {
@@ -442,6 +443,15 @@ public final class IdeImpl implements Ide {
         if (next == null) {
             restoring = false;
             statusBar.message("");
+            /* A session that did not say which file was in front - or said one that has
+               since been deleted - would otherwise come back as a row of tabs over an
+               empty space, because files restored behind do not select themselves. */
+            for (com.smide.workspace.WorkspaceImpl workspace : workspaces.allImpl()) {
+                javafx.scene.control.TabPane tabs = workspace.documentTabs();
+                if (!tabs.getTabs().isEmpty() && tabs.getSelectionModel().getSelectedItem() == null) {
+                    tabs.getSelectionModel().selectFirst();
+                }
+            }
             return;
         }
         try {

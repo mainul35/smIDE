@@ -40,6 +40,19 @@ public interface Editor {
     /** Give keyboard focus to the content. */
     void focus();
 
+    /**
+     * Called the first time this editor's tab is brought to the front, and on every later
+     * return to it.
+     *
+     * <p>For anything expensive that is only worth having once somebody is looking. A
+     * session restored at startup opens its files into tabs behind the one that was left
+     * in front, and a tab that is never clicked should cost no more than reading the file:
+     * JavaFX keeps every tab's content in the scene whether or not it is the tab on show,
+     * so this, and not the scene, is what says a reader has arrived.
+     */
+    default void shown() {
+    }
+
     /** Re-read the file from disk because it changed outside the IDE. */
     void reload();
 

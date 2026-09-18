@@ -188,6 +188,24 @@ public final class EditorManager implements Editors {
 
     @Override
     public Editor open(Path file, int line, int column) {
+        return open(file, line, column, true);
+    }
+
+    /**
+     * Opens a file into a tab without bringing it to the front.
+     *
+     * <p>For restoring a session. A tab that is selected has its editor laid out, styled
+     * and drawn, and anything expensive inside it built - a Markdown file's preview is a
+     * WebView, and that alone was a second and a half. Restoring used to select each file
+     * as it arrived, so every one of them paid the whole cost of being looked at, one after
+     * another, before the window was usable. Opened this way they cost what a file costs to
+     * read and no more, and the rest is paid by the tab somebody actually clicks.
+     */
+    public Editor openInBackground(Path file, int line, int column) {
+        return open(file, line, column, false);
+    }
+
+    private Editor open(Path file, int line, int column, boolean reveal) {
         Path target = file.toAbsolutePath().normalize();
         /* A jump is anything that asks for a position: a declaration, a search hit, a
            stack frame. Where the caret is leaving from is recorded first, so Back returns
@@ -244,7 +262,14 @@ public final class EditorManager implements Editors {
             }
             events.publish(new Events.EditorOpened(editor));
         }
-        workspace.documentTabs().getSelectionModel().select(tab.tab());
+        if (reveal) {
+            workspace.documentTabs().getSelectionModel().select(tab.tab());
+        } else if (workspace.documentTabs().getSelectionModel().getSelectedItem() == tab.tab()) {
+            /* An empty tab pane selects the first tab put into it. A file opened behind
+               should not become the file in front merely for having arrived first: the one
+               that comes back in front is the one the session says was in front. */
+            workspace.documentTabs().getSelectionModel().clearSelection();
+        }
         Editor editor = tab.editor();
         if (line >= 0) {
             editor.asText().ifPresent(t -> t.moveCaret(line, Math.max(0, column)));
@@ -252,7 +277,9 @@ public final class EditorManager implements Editors {
                 history.record(new NavigationHistory.Place(target, line, Math.max(0, column)));
             }
         }
-        Platform.runLater(editor::focus);
+        if (reveal) {
+            Platform.runLater(editor::focus);
+        }
         return editor;
     }
 
