@@ -11,3 +11,6 @@ hs_err_pid*.log
 .classpath
 .project
 .settings/
+
+# The crash report server's data when run from here: reports, and its token.
+crash-data/

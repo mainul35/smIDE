@@ -17,6 +17,8 @@
         <module>smide-core</module>
         <module>plugins</module>
         <module>smide-dist</module>
+        <!-- Not part of the IDE: the server its crash reports can be sent to. -->
+        <module>smide-crash-server</module>
     </modules>
 
     <properties>

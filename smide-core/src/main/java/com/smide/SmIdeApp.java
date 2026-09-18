@@ -20,11 +20,19 @@ public class SmIdeApp extends Application {
 
     @Override
     public void start(Stage stage) {
+        /* Before anything else can fail: from here on, an exception nothing handles - on this
+           thread or any other - is saved and offered to the reader instead of being printed
+           to a terminal a desktop launch does not have. */
+        com.smide.crash.CrashReporter.install(homeDir(), VERSION);
         try {
             startIde(stage);
         } catch (Throwable t) {
             failedToStart(t);
         }
+    }
+
+    private static Path homeDir() {
+        return Path.of(System.getProperty("smide.userHome", System.getProperty("user.home")), ".smide");
     }
 
     /**
@@ -53,6 +61,22 @@ public class SmIdeApp extends Application {
             // Nowhere to write it is no reason to say less than has been said already.
         }
         System.err.flush();
+        /* And shown, because a launch from the desktop has no terminal to print to: the
+           dialog is the only way somebody who clicked an icon learns anything at all. This
+           is the toolkit's own thread, inside start(), so it may wait for the dialog. If the
+           failure was in the classes the dialog is made of, it will not appear, and what was
+           written above is what there is. */
+        try {
+            com.smide.crash.CrashReporter reporter = com.smide.crash.CrashReporter.install(homeDir(), VERSION);
+            reporter.attach(new com.smide.settings.JsonSettings(homeDir().resolve("settings.json")), null, null);
+            com.smide.crash.CrashReport report = reporter.report(com.smide.crash.CrashReport.STARTUP, t,
+                    Thread.currentThread().getName(), false);
+            if (report != null) {
+                reporter.show(report);
+            }
+        } catch (Throwable dialogFailed) {
+            System.err.println("smIDE: the crash dialog could not be shown either: " + dialogFailed);
+        }
         // Not System.exit: stop() must not run, and no shutdown hook may cut the output short.
         Runtime.getRuntime().halt(1);
     }

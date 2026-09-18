@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>smIDE crash reports</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230b6e7f'/%3E%3Cpath d='M8 3v6M8 11.5v1' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+    <script src="app.js" defer></script>
+</head>
+<body>
+
+<header class="top">
+    <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <div>
+            <h1>smIDE crash reports</h1>
+            <p class="sub" id="sub">Failures people chose to send, grouped by what went wrong.</p>
+        </div>
+    </div>
+    <button id="signOut" class="quiet" hidden>Forget token</button>
+</header>
+
+<section id="signIn" class="sign-in" hidden>
+    <form id="tokenForm">
+        <h2>This server needs its token</h2>
+        <p>It was printed when the server first started, and is kept in the <code>token</code> file in its data folder.
+            It is remembered for this tab only.</p>
+        <label for="token">Token</label>
+        <div class="row">
+            <input id="token" type="password" autocomplete="off" spellcheck="false" required>
+            <button type="submit">Open the dashboard</button>
+        </div>
+        <p class="error" id="tokenError" role="alert"></p>
+    </form>
+</section>
+
+<main id="app" hidden>
+    <section class="tiles" aria-label="Summary">
+        <div class="tile"><span class="n" id="tReports">-</span><span class="l">reports</span></div>
+        <div class="tile"><span class="n" id="tDay">-</span><span class="l">in the last day</span></div>
+        <div class="tile open"><span class="n" id="tOpen">-</span><span class="l">open</span></div>
+        <div class="tile investigating"><span class="n" id="tInvestigating">-</span><span class="l">investigating</span></div>
+        <div class="tile fixed"><span class="n" id="tFixed">-</span><span class="l">fixed</span></div>
+        <div class="tile ignored"><span class="n" id="tIgnored">-</span><span class="l">ignored</span></div>
+    </section>
+
+    <div class="layout">
+        <section class="list" aria-label="Failures">
+            <div class="filters">
+                <label class="visually-hidden" for="status">Status</label>
+                <select id="status">
+                    <option value="open">Open</option>
+                    <option value="investigating">Investigating</option>
+                    <option value="fixed">Fixed</option>
+                    <option value="ignored">Ignored</option>
+                    <option value="all">Everything</option>
+                </select>
+                <label class="visually-hidden" for="search">Search</label>
+                <input id="search" type="search" placeholder="Search exceptions, messages, notes, signatures">
+                <button id="refresh" class="quiet" title="Load again">Refresh</button>
+            </div>
+            <p class="empty" id="empty" hidden></p>
+            <ol id="failures" class="failures"></ol>
+        </section>
+
+        <section class="detail" id="detail" aria-label="Failure" hidden>
+            <div class="detail-head">
+                <p class="kind" id="dKind"></p>
+                <h2 id="dTitle"></h2>
+                <p class="where" id="dWhere"></p>
+                <dl class="facts">
+                    <div><dt>Seen</dt><dd id="dSeen"></dd></div>
+                    <div><dt>Versions</dt><dd id="dVersions"></dd></div>
+                    <div><dt>Signature</dt><dd><code id="dSignature"></code></dd></div>
+                </dl>
+            </div>
+
+            <form id="triage" class="triage">
+                <label for="dStatus">Status</label>
+                <select id="dStatus">
+                    <option value="open">Open</option>
+                    <option value="investigating">Investigating</option>
+                    <option value="fixed">Fixed</option>
+                    <option value="ignored">Ignored</option>
+                </select>
+                <label for="dComment">Note for whoever looks next</label>
+                <textarea id="dComment" rows="3" placeholder="What is known, who is on it, which commit fixed it"></textarea>
+                <div class="row">
+                    <button type="submit">Save</button>
+                    <span class="saved" id="dSaved" role="status"></span>
+                </div>
+            </form>
+
+            <h3>Occurrences</h3>
+            <ol id="occurrences" class="occurrences"></ol>
+
+            <div class="report" id="report" hidden>
+                <div class="report-head">
+                    <h3 id="rTitle">Report</h3>
+                    <button id="copy" class="quiet">Copy</button>
+                </div>
+                <pre id="rText"></pre>
+            </div>
+        </section>
+    </div>
+</main>
+
+</body>
+</html>

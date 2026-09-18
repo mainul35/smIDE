@@ -224,6 +224,14 @@ public final class IdeImpl implements Ide {
         SessionStore.WindowState win = session.window == null ? new SessionStore.WindowState() : session.window;
         mainWindow.show(win.x, win.y, win.width, win.height, win.maximized);
 
+        /* The crash dialog now has settings to read the report server from, a window to sit
+           in front of, and the theme's colours. It was installed before any of this existed,
+           so that a failure building it would still be caught. */
+        com.smide.crash.CrashReporter.installed().ifPresent(reporter -> {
+            reporter.attach(settings, () -> stage, theme::style);
+            registry.addSettingsPage(new com.smide.crash.CrashSettingsPage(reporter));
+        });
+
         /* Shown is not drawn. The toolkit draws between the tasks given to this thread and
            never during one, so everything still to do - fifteen plugins to start, the files
            the last session had open - would hold the first frame back until all of it was
@@ -273,6 +281,8 @@ public final class IdeImpl implements Ide {
            takes a second or two on its own and would be reported at every start. */
         freezes = new FreezeReporter(homeDir.resolve("logs").resolve("freezes"), statusBar::message, 10_000);
         freezes.start();
+        // If the Java runtime died under the last session, say so now there is a window to say it in.
+        com.smide.crash.CrashReporter.installed().ifPresent(com.smide.crash.CrashReporter::showPending);
     }
 
     private final javafx.scene.layout.StackPane centerHolder = new javafx.scene.layout.StackPane();
@@ -510,6 +520,8 @@ public final class IdeImpl implements Ide {
     }
 
     public void shutdown() {
+        // Closing properly: the next start has no crashed session to report.
+        com.smide.crash.CrashReporter.installed().ifPresent(com.smide.crash.CrashReporter::closedCleanly);
         try {
             if (freezes != null) {
                 // Stopping language servers takes a while, and is not the window freezing.
