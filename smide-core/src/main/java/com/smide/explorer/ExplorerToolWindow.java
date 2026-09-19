@@ -337,7 +337,9 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
      */
     public boolean reveal(Path file, boolean focus) {
         for (TreeItem<Path> rootItem : hiddenRoot.getChildren()) {
-            if (rootItem instanceof PathTreeItem p && file.startsWith(p.getValue())) {
+            // A dependency's file is shown in its library, even where an open folder happens to hold it.
+            if (rootItem instanceof PathTreeItem p && file.startsWith(p.getValue())
+                    && com.smide.editor.EditorManager.owns(p.getValue(), file)) {
                 PathTreeItem item = descend(p, file, true);
                 if (item != null) {
                     select(item, focus);

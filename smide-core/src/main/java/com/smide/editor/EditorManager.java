@@ -230,10 +230,10 @@ public final class EditorManager implements Editors {
            walked it for run configurations, and started a second gopls on it - minutes of
            work, with the editor waiting. Opening a file deliberately, with no position,
            still opens its project. */
-        Optional<WorkspaceImpl> owner = workspaces.containingImpl(target);
+        Optional<WorkspaceImpl> owner = workspaces.containingImpl(target).filter(w -> owns(w.root(), target));
         boolean library = owner.isEmpty() && staysInCurrentProject(target, line, workspaces.activeImpl().isPresent());
         WorkspaceImpl workspace = owner
-                .or(() -> library ? workspaces.activeImpl() : Optional.empty())
+                .or(() -> library ? readingProject(target) : Optional.empty())
                 .orElseGet(() -> workspaces.openImpl(projectRootFor(target)));
         workspaces.select(workspace);
 
@@ -319,7 +319,41 @@ public final class EditorManager implements Editors {
         return hasActiveProject && (target.startsWith(LIBRARY_SOURCES) || line >= 0 || inPackageCache(target));
     }
 
-    static boolean inPackageCache(Path file) {
+    /**
+     * The project a dependency's file opens beside: the active one - unless that is a folder
+     * that only holds the file, the home folder opened as a project, when a real project open
+     * beside it is the better home.
+     */
+    private Optional<WorkspaceImpl> readingProject(Path target) {
+        Optional<WorkspaceImpl> active = workspaces.activeImpl();
+        if (active.isEmpty() || !target.startsWith(active.get().root())) {
+            return active;
+        }
+        for (WorkspaceImpl w : workspaces.allImpl()) {
+            if (!target.startsWith(w.root())) {
+                return Optional.of(w);
+            }
+        }
+        return active;
+    }
+
+    /**
+     * Whether a project whose folder holds a file is the file's project. Not when the file is
+     * in a package cache the project merely sits above: a project opened on the home folder
+     * holds ~/.m2 and every dependency in it, and took each pom followed with Ctrl+click as its
+     * own - opening it there instead of beside the project being read, and out of reach of the
+     * Libraries window. A project inside the cache itself - a checkout under node_modules -
+     * still owns its files.
+     */
+    public static boolean owns(Path projectRoot, Path file) {
+        return !inPackageCache(file) || inPackageCache(projectRoot.resolve("x"));
+    }
+
+    public static boolean inPackageCache(Path file) {
+        // Sources the IDE took out of library jars are as much the dependency's as the jar.
+        if (file.toAbsolutePath().normalize().startsWith(LIBRARY_SOURCES)) {
+            return true;
+        }
         String text = file.toAbsolutePath().normalize().toString().replace('\\', '/').toLowerCase(java.util.Locale.ROOT);
         return DEPENDENCY_FOLDERS.stream().anyMatch(text::contains);
     }
