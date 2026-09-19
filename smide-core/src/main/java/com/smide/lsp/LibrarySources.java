@@ -141,6 +141,62 @@ final class LibrarySources {
         return Optional.of(new com.smide.editor.LibraryOrigins.Origin(path, packagePath + "/" + name));
     }
 
+    /**
+     * A jar's coordinates from where it is kept: Gradle's cache,
+     * {@code .../files-2.1/<group>/<artifact>/<version>/<hash>/<artifact>-<version>.jar}, or a
+     * Maven repository, {@code .../repository/<group path>/<artifact>/<version>/<artifact>-<version>.jar}.
+     */
+    static Optional<Artifact> artifactOfJar(Path jar) {
+        int n = jar.getNameCount();
+        String file = jar.getFileName() == null ? "" : jar.getFileName().toString();
+        for (int i = 0; i < n; i++) {
+            if (jar.getName(i).toString().equals("files-2.1") && n - i == 6) {
+                String group = jar.getName(i + 1).toString();
+                String artifact = jar.getName(i + 2).toString();
+                String version = jar.getName(i + 3).toString();
+                return file.startsWith(artifact + "-" + version) ? Optional.of(new Artifact(group, artifact, version))
+                        : Optional.empty();
+            }
+        }
+        for (int i = n - 1; i >= 0; i--) {
+            if (jar.getName(i).toString().equals("repository") && n - i >= 5) {
+                String version = jar.getName(n - 2).toString();
+                String artifact = jar.getName(n - 3).toString();
+                if (!file.startsWith(artifact + "-" + version)) {
+                    return Optional.empty();
+                }
+                StringBuilder group = new StringBuilder();
+                for (int g = i + 1; g < n - 3; g++) {
+                    group.append(group.length() == 0 ? "" : ".").append(jar.getName(g));
+                }
+                return Optional.of(new Artifact(group.toString(), artifact, version));
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** A sources jar already on disk: beside the jar, in another of the folders Gradle keeps a version's files in, or in ~/.m2. */
+    static Optional<Path> sourcesOnDisk(Path jar, Artifact artifact) {
+        Path beside = jar.resolveSibling(artifact.sourcesJar());
+        if (Files.isRegularFile(beside)) {
+            return Optional.of(beside);
+        }
+        Path version = jar.getParent() == null ? null : jar.getParent().getParent();
+        if (version != null && version.getFileName() != null && version.getFileName().toString().equals(artifact.version())) {
+            try (java.util.stream.Stream<Path> hashes = Files.list(version)) {
+                for (Path hash : hashes.toList()) {
+                    Path candidate = hash.resolve(artifact.sourcesJar());
+                    if (Files.isRegularFile(candidate)) {
+                        return Optional.of(candidate);
+                    }
+                }
+            } catch (IOException | RuntimeException e) {
+                // Nothing there.
+            }
+        }
+        return Files.isRegularFile(artifact.localPath()) ? Optional.of(artifact.localPath()) : Optional.empty();
+    }
+
     private static Optional<Type> typeOf(String uri) {
         Matcher matcher = CONTENTS.matcher(uri == null ? "" : uri);
         if (!matcher.find()) {
@@ -184,11 +240,19 @@ final class LibrarySources {
             // A JDK class: its source is in the JDK's own src.zip, if this JDK has one.
             return fromJdk(ide, module.get(), type.get(), open);
         }
-        Optional<Artifact> found = artifactOf(uri);
+        /* The coordinates are in the URI for a Maven project; a Gradle project's URI has none,
+           and they are read from where Gradle keeps the jar instead. */
+        Path jar = originOf(uri).map(com.smide.editor.LibraryOrigins.Origin::archive).orElse(null);
+        Optional<Artifact> found = artifactOf(uri).or(() -> jar == null ? Optional.empty() : artifactOfJar(jar));
         if (found.isEmpty()) {
             return false;
         }
         Artifact artifact = found.get();
+        // A sources jar the build tool already fetched: Gradle keeps it in a folder of its own.
+        Optional<Path> onDisk = jar == null ? Optional.empty() : sourcesOnDisk(jar, artifact);
+        if (onDisk.isPresent() && openFromJar(ide, onDisk.get(), type.get(), artifact.label(), open)) {
+            return true;
+        }
         String attached = ide.settings().get(attachmentKey(artifact), "");
         if (!attached.isBlank() && Files.isRegularFile(Path.of(attached))
                 && openFromJar(ide, Path.of(attached), type.get(), artifact.label(), open)) {
@@ -199,13 +263,9 @@ final class LibrarySources {
             reconfigureQuietly(session, fileInProject, artifact);
             return true;
         }
-        boolean yes = ide.window().confirm("Download sources",
-                "There are no sources for " + artifact.label() + ", so its code cannot be shown.\n\n"
-                        + "Download " + artifact.sourcesJar() + " from Maven Central and open it?");
-        if (!yes) {
-            ide.statusBar().message("No sources for " + artifact.label());
-            return true;
-        }
+        /* The library itself is resolved - the code compiles against it - so its sources are
+           fetched without asking, as IntelliJ follows a class into a library: from Maven Central
+           into the local repository, where the next Ctrl+click finds them. */
         StatusBar.Progress progress = ide.statusBar().progress("Downloading sources for "
                 + artifact.artifactId(), false);
         ide.window().runInBackground(() -> {
