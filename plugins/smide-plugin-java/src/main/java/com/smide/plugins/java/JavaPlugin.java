@@ -49,6 +49,11 @@ public final class JavaPlugin implements Plugin {
         context.registerProjectImporter(new MavenImporter(registry));
         context.registerProjectImporter(new GradleImporter(registry));
 
+        // In a pom: a dependency Maven does not have is red, and Ctrl+click on one that it has opens its pom.
+        com.smide.plugins.java.maven.MavenPomSupport poms = new com.smide.plugins.java.maven.MavenPomSupport(ide);
+        poms.install();
+        context.registerDeclarationProvider(poms);
+
         /* Spring Boot first, and Tomcat before the plain application: detection order is
            the order the run chooser offers them in, and for a web application the server
            is the configuration that actually serves the thing. */
@@ -123,6 +128,9 @@ public final class JavaPlugin implements Plugin {
     }
 
     private void build(Workspace w, String mavenGoals, String gradleTasks, boolean skipTests) {
+        if (!ide.execution().proceedDespiteErrors(w, "Build")) {
+            return;
+        }
         JavaProjectInfo info = registry.get(w).orElse(null);
         boolean gradle = info != null && info.isGradle();
         // Where the build file is, which is not always the folder that was opened.

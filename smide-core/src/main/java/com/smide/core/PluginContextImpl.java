@@ -95,4 +95,9 @@ final class PluginContextImpl implements PluginContext {
     public void registerToolchain(com.smide.api.lang.Toolchain toolchain) {
         registry.addToolchain(toolchain);
     }
+
+    @Override
+    public void registerDeclarationProvider(com.smide.api.editor.DeclarationProvider provider) {
+        registry.addDeclarationProvider(provider);
+    }
 }

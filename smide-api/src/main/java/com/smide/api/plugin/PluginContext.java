@@ -50,4 +50,10 @@ public interface PluginContext {
      * can say what is missing, and where to get it, when such a project is opened without it.
      */
     void registerToolchain(com.smide.api.lang.Toolchain toolchain);
+
+    /**
+     * Where names in a kind of file lead, for Go to Declaration to ask before the language
+     * server - a Maven artifact named in a pom, say, which the XML server cannot follow.
+     */
+    void registerDeclarationProvider(com.smide.api.editor.DeclarationProvider provider);
 }

@@ -238,8 +238,15 @@ public final class CodeEditor implements TextEditor {
                 end = Math.min(length, start + 1);
             }
             if (end > start) {
-                overlays.add(new EditorStyles.Overlay(start, end, "diag-" + d.severity().name().toLowerCase(Locale.ROOT)));
+                String style = Diagnostic.UNRESOLVED.equals(d.code())
+                        ? "diag-unresolved"
+                        : "diag-" + d.severity().name().toLowerCase(Locale.ROOT);
+                overlays.add(new EditorStyles.Overlay(start, end, style));
             }
+        }
+        if (link != null && link[1] <= length && link[1] > link[0]) {
+            // Last, so the link's colour is the one that shows.
+            overlays.add(new EditorStyles.Overlay(link[0], link[1], "ctrl-link"));
         }
         List<Token> safe = tokens;
         try {
@@ -937,6 +944,62 @@ public final class CodeEditor implements TextEditor {
     @Override
     public int lineCount() {
         return area.getParagraphs().size();
+    }
+
+    /** The span drawn as a link while Ctrl is held over it; null when there is none. */
+    private int[] link;
+
+    /**
+     * Draws a run of characters as a link - the accent colour, underlined, a hand for a
+     * pointer - to say that Ctrl+click will follow it. Shown only while Ctrl is held over it.
+     */
+    public void showLink(int start, int end) {
+        if (link != null && link[0] == start && link[1] == end) {
+            return;
+        }
+        link = new int[] {start, end};
+        area.setCursor(javafx.scene.Cursor.HAND);
+        applyStyles();
+    }
+
+    /** Draws the text as text again. */
+    public void clearLink() {
+        if (link == null) {
+            return;
+        }
+        link = null;
+        area.setCursor(null);
+        applyStyles();
+    }
+
+    /** The span being drawn as a link, or null. */
+    public int[] link() {
+        return link == null ? null : link.clone();
+    }
+
+    /**
+     * The character under a point of the text area, or -1 where there is none.
+     *
+     * <p>RichTextFX's own hit test throws an AssertionError - "unreachable code" - for a
+     * point below the last line of a short file, instead of saying it hit nothing. Called
+     * from a mouse handler, that is an uncaught error on every Ctrl+click in the empty space
+     * under a file. Every hit test on the text goes through here or {@link #insertionAt}.
+     */
+    public int characterAt(double x, double y) {
+        try {
+            return area.hit(x, y).getCharacterIndex().orElse(-1);
+        } catch (AssertionError | RuntimeException e) {
+            return -1;
+        }
+    }
+
+    /** Where the caret would go for a click at this point, or -1 where the text cannot say. */
+    public int insertionAt(double x, double y) {
+        try {
+            return area.hit(x, y).getInsertionIndex();
+        } catch (AssertionError | RuntimeException e) {
+            return -1;
+        }
     }
 
     @Override

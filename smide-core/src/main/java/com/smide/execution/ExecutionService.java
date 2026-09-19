@@ -163,7 +163,16 @@ public final class ExecutionService implements Execution {
      * @return null, because the process does not exist yet
      */
     @Override
+    public boolean proceedDespiteErrors(com.smide.api.workspace.Workspace workspace, String action) {
+        return com.smide.problems.ProjectErrors.proceed(ide, workspace, action);
+    }
+
+    @Override
     public ConsoleHandle run(RunConfiguration configuration, ExecutionMode mode) {
+        // A project with errors the IDE already knows of is shown them before it is started.
+        if (!proceedDespiteErrors(configuration.workspace(), mode == ExecutionMode.DEBUG ? "Debug" : "Run")) {
+            return null;
+        }
         selectConfiguration(configuration);
         lastRun = configuration;
         lastMode = mode;

@@ -53,8 +53,10 @@ public final class LspActions {
         registry.addAction(Action.of("code.codeActions", "Show Context Actions").menu("Code").shortcut("alt+ENTER")
                 .order(201).enabledWhen(ctx -> bound(manager, ctx).isPresent())
                 .perform(ctx -> code(ctx).ifPresent(c -> codeActions(ide, manager, c))));
+        // Enabled without a language server too: a plugin may know where a name leads when no server does.
         registry.addAction(Action.of("navigate.declaration", "Go to Declaration").menu("Navigate").shortcut("shortcut+B")
-                .order(40).enabledWhen(ctx -> bound(manager, ctx).isPresent())
+                .order(40).enabledWhen(ctx -> bound(manager, ctx).isPresent()
+                        || code(ctx).isPresent() && !registry.declarationProviders().isEmpty())
                 .perform(ctx -> code(ctx).ifPresent(c -> gotoDefinition(ide, manager, c))));
         registry.addAction(Action.of("navigate.usages", "Find Usages").menu("Navigate").shortcut("alt+F7").order(41)
                 .enabledWhen(ctx -> bound(manager, ctx).isPresent())
@@ -85,7 +87,64 @@ public final class LspActions {
 
     // -------------------------------------------------------------- definition
 
+    /**
+     * The characters to draw as a link under Ctrl at this offset, if the language server can
+     * go anywhere from here; empty otherwise, or while there is no server ready to ask.
+     *
+     * <p>The span is the one the server says it resolved from, when it says - a
+     * {@code LocationLink} carries it - and otherwise the identifier under the pointer.
+     */
+    public static java.util.concurrent.CompletableFuture<Optional<int[]>> linkAt(LspManager manager,
+                                                                                  CodeEditor editor, int offset) {
+        Optional<EditorLspBinding> b = ready(manager, editor);
+        int[] word = wordAt(editor.text(), offset);
+        if (b.isEmpty() || word == null) {
+            return java.util.concurrent.CompletableFuture.completedFuture(Optional.empty());
+        }
+        b.get().flush();
+        Position at = new Position(editor.lineOf(offset), editor.columnOf(offset));
+        return b.get().session().server().getTextDocumentService()
+                .definition(new DefinitionParams(id(editor), at))
+                .orTimeout(5, TimeUnit.SECONDS)
+                .handle((result, error) -> {
+                    if (error != null || targets(result).isEmpty()) {
+                        return Optional.<int[]>empty();
+                    }
+                    if (result.isRight() && !result.getRight().isEmpty()
+                            && result.getRight().get(0).getOriginSelectionRange() != null) {
+                        Range origin = result.getRight().get(0).getOriginSelectionRange();
+                        return Optional.of(new int[] {
+                                editor.offsetOf(origin.getStart().getLine(), origin.getStart().getCharacter()),
+                                editor.offsetOf(origin.getEnd().getLine(), origin.getEnd().getCharacter())});
+                    }
+                    return Optional.of(word);
+                });
+    }
+
+    /** The identifier the offset is in, or null where there is none. */
+    static int[] wordAt(String text, int offset) {
+        if (offset < 0 || offset >= text.length() || !isWordChar(text.charAt(offset))) {
+            return null;
+        }
+        int start = offset;
+        int end = offset;
+        while (start > 0 && isWordChar(text.charAt(start - 1))) {
+            start--;
+        }
+        while (end < text.length() && isWordChar(text.charAt(end))) {
+            end++;
+        }
+        return new int[] {start, end};
+    }
+
+    private static boolean isWordChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$';
+    }
+
     public static void gotoDefinition(Ide ide, LspManager manager, CodeEditor editor) {
+        if (declaredByPlugin(ide, editor)) {
+            return;
+        }
         Optional<EditorLspBinding> b = ready(manager, editor);
         if (b.isEmpty()) {
             ide.statusBar().message(manager.bindingOf(editor).isPresent()
@@ -122,6 +181,43 @@ public final class LspActions {
                         choose(ide, session, "Declarations", targets);
                     }
                 }));
+    }
+
+    /**
+     * Asks the plugins that know a kind of file where the name under the caret leads.
+     *
+     * <p>First, because a language server that understands the syntax of a file need not
+     * understand what its names mean: the XML server has nothing to say about an
+     * {@code <artifactId>}, and asked anyway it answers with nothing, which is then read as
+     * "already at the declaration". Returns whether a plugin answered - with a place to go,
+     * or with why there is none.
+     */
+    public static boolean declaredByPlugin(Ide ide, CodeEditor editor) {
+        if (!(ide instanceof com.smide.core.IdeImpl impl)) {
+            return false;
+        }
+        String text = editor.text();
+        int offset = editor.caretOffset();
+        for (com.smide.api.editor.DeclarationProvider provider : impl.registry().declarationProviders()) {
+            Optional<com.smide.api.editor.DeclarationProvider.Declaration> found;
+            try {
+                found = provider.declarationAt(editor.path(), text, offset);
+            } catch (RuntimeException e) {
+                System.err.println("smIDE: a declaration provider failed: " + e);
+                continue;
+            }
+            if (found.isEmpty()) {
+                continue;
+            }
+            com.smide.api.editor.DeclarationProvider.Declaration declaration = found.get();
+            if (declaration.file() == null) {
+                ide.statusBar().message(declaration.unavailable());
+            } else {
+                ide.editors().open(declaration.file(), declaration.line(), declaration.column());
+            }
+            return true;
+        }
+        return false;
     }
 
     /**

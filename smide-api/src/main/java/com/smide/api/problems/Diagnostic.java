@@ -20,4 +20,12 @@ public record Diagnostic(Path file,
     public enum Severity {
         ERROR, WARNING, INFO, HINT
     }
+
+    /**
+     * The {@code code} of a diagnostic that names something which cannot be found: a
+     * dependency that is not in the local repository, a reference to nothing. It is drawn as
+     * IntelliJ draws an unresolved reference - the name itself in red - rather than
+     * underlined, because what is wrong is the name, not the code around it.
+     */
+    public static final String UNRESOLVED = "unresolved";
 }

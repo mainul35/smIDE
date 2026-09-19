@@ -48,11 +48,31 @@ public final class EditorTab {
         return editor;
     }
 
+    /** Errors reported in this tab's file; shown on the tab so a broken file is seen without opening it. */
+    private int errors;
+
+    /** Marks the tab as holding a file with this many errors; zero clears it. */
+    public void setErrors(int count) {
+        if (count == errors) {
+            return;
+        }
+        errors = count;
+        updateLabel();
+    }
+
     public void updateLabel() {
         Path path = editor.path();
         String name = path.getFileName() == null ? path.toString() : path.getFileName().toString();
         tab.setText(editor.isModified() ? name + " •" : name);
-        tab.setTooltip(new Tooltip(path.toString()));
+        tab.setTooltip(new Tooltip(errors == 0 ? path.toString()
+                : path + "\n" + errors + (errors == 1 ? " error" : " errors")));
+        if (errors > 0) {
+            if (!tab.getStyleClass().contains("tab-errors")) {
+                tab.getStyleClass().add("tab-errors");
+            }
+        } else {
+            tab.getStyleClass().remove("tab-errors");
+        }
         if (editor.isModified()) {
             if (!tab.getStyleClass().contains("tab-modified")) {
                 tab.getStyleClass().add("tab-modified");

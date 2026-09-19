@@ -162,7 +162,7 @@ public final class DebugHover {
             delay.stop();
             return;
         }
-        int offset = editor.area().hit(e.getX(), e.getY()).getCharacterIndex().orElse(-1);
+        int offset = editor.characterAt(e.getX(), e.getY());
         pointerOffset = offset;
         if (shown != null && offset >= shown.start() && offset < shown.end()) {
             leave.stop();

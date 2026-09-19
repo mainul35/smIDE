@@ -817,6 +817,15 @@
 .code-area .tok-text { -fx-fill: -smide-text; }
 
 .code-area .diag-error { -fx-underline: true; -fx-fill: -smide-danger; }
+/* A name that leads nowhere - a dependency not in the local repository - is red, as IntelliJ draws it. */
+.code-area .diag-unresolved { -fx-fill: -smide-danger; }
+/* Under Ctrl, what Ctrl+click would follow: the colour of a link, and underlined like one. */
+.code-area .ctrl-link { -fx-fill: -smide-accent; -fx-underline: true; }
+
+/* A file with errors, and every folder above it, is red in the tree; its tab is red too. */
+.file-tree .tree-cell.has-errors { -fx-text-fill: -smide-danger; }
+.file-tree .tree-cell.has-errors:selected { -fx-text-fill: -smide-row-selected-text; -fx-underline: true; }
+.tab.tab-errors .tab-label { -fx-text-fill: -smide-danger; }
 .code-area .diag-warning { -fx-underline: true; }
 .code-area .diag-info { -fx-underline: true; -fx-opacity: 0.9; }
 .code-area .search-hit { -fx-fill: -smide-search-hit; -fx-font-weight: bold; }

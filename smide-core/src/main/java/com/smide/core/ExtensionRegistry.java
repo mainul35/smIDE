@@ -34,6 +34,8 @@ public final class ExtensionRegistry {
     private final List<NewProjectTemplate> templates = new ArrayList<>();
     private final List<StatusBarWidget> statusWidgets = new ArrayList<>();
     private final List<com.smide.api.lang.Toolchain> toolchains = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<com.smide.api.editor.DeclarationProvider> declarationProviders =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private final List<Consumer<ToolWindowFactory>> toolWindowListeners = new ArrayList<>();
     private final List<Consumer<Action>> actionListeners = new ArrayList<>();
@@ -97,6 +99,14 @@ public final class ExtensionRegistry {
 
     public void addToolchain(com.smide.api.lang.Toolchain t) {
         toolchains.add(t);
+    }
+
+    public void addDeclarationProvider(com.smide.api.editor.DeclarationProvider p) {
+        declarationProviders.add(p);
+    }
+
+    public List<com.smide.api.editor.DeclarationProvider> declarationProviders() {
+        return declarationProviders;
     }
 
     public List<com.smide.api.lang.Toolchain> toolchains() {

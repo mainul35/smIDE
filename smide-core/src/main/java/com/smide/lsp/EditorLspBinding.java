@@ -230,8 +230,7 @@ public final class EditorLspBinding {
     }
 
     private void onMouseMoved(MouseEvent e) {
-        var hit = editor.area().hit(e.getX(), e.getY());
-        int offset = hit.getCharacterIndex().orElse(-1);
+        int offset = editor.characterAt(e.getX(), e.getY());
         if (offset != hoverOffset) {
             hoverOffset = offset;
             hover.hide();
@@ -261,8 +260,7 @@ public final class EditorLspBinding {
             return;
         }
         e.consume();
-        var hit = editor.area().hit(e.getX(), e.getY());
-        int offset = hit.getInsertionIndex();
+        int offset = editor.insertionAt(e.getX(), e.getY());
         if (offset < 0) {
             return;
         }

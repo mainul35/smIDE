@@ -89,8 +89,10 @@ public final class EditorManager implements Editors {
             WorkspaceImpl impl = (WorkspaceImpl) ws;
             impl.documentTabs().getSelectionModel().selectedItemProperty().addListener((o, a, b) -> fireActive());
         });
-        problems.addListener(file -> find(file).flatMap(Editor::asText)
-                .ifPresent(t -> t.setDiagnostics(problems.forFile(file))));
+        problems.addListener(file -> {
+            find(file).flatMap(Editor::asText).ifPresent(t -> t.setDiagnostics(problems.forFile(file)));
+            markErrors(file);
+        });
         // A breakpoint added anywhere - the gutter, an action, a session - repaints its file.
         breakpoints.addListener(file -> find(file)
                 .filter(e -> e instanceof CodeEditor)
@@ -256,6 +258,7 @@ public final class EditorManager implements Editors {
                 close(editor);
             });
             editor.asText().ifPresent(t -> t.setDiagnostics(problems.forFile(target)));
+            tab.setErrors(errorCount(target));
             rememberRecent(target);
             for (Consumer<Editor> l : List.copyOf(openedListeners)) {
                 l.accept(editor);
@@ -281,6 +284,24 @@ public final class EditorManager implements Editors {
             Platform.runLater(editor::focus);
         }
         return editor;
+    }
+
+    /** Puts the file's error count on its tab, wherever it is open. */
+    private void markErrors(Path file) {
+        int count = errorCount(file);
+        for (com.smide.workspace.WorkspaceImpl w : workspaces.allImpl()) {
+            w.tabFor(file).ifPresent(tab -> tab.setErrors(count));
+        }
+    }
+
+    private int errorCount(Path file) {
+        int count = 0;
+        for (com.smide.api.problems.Diagnostic d : problems.forFile(file)) {
+            if (d.severity() == com.smide.api.problems.Diagnostic.Severity.ERROR) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**

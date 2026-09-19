@@ -149,6 +149,26 @@ public final class IdeImpl implements Ide {
                 runMarkers.attach(code);
                 // The colour a stylesheet value writes, beside its line.
                 com.smide.editor.ColorSwatches.install(code);
+                /* Ctrl+click where no language server is listening. The server's own binding
+                   handles it when there is one, asking the plugins first; without one, a name a
+                   plugin can follow - a Maven artifact in a pom - should still be followed.
+                   Consumed only when a plugin answered, so a Ctrl+click elsewhere is untouched. */
+                // Under Ctrl, what Ctrl+click would follow is drawn as a link.
+                com.smide.lsp.CtrlHoverLinks.install(this, () -> lsp, code);
+                code.area().addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, e -> {
+                    if (e.getButton() != javafx.scene.input.MouseButton.PRIMARY || !e.isShortcutDown()
+                            || e.isShiftDown() || lsp == null || lsp.bindingOf(code).isPresent()) {
+                        return;
+                    }
+                    int offset = code.insertionAt(e.getX(), e.getY());
+                    if (offset < 0) {
+                        return;
+                    }
+                    code.moveCaret(code.lineOf(offset), code.columnOf(offset));
+                    if (com.smide.lsp.LspActions.declaredByPlugin(this, code)) {
+                        e.consume();
+                    }
+                });
             }
         });
         this.sessionStore = new SessionStore(homeDir.resolve("session.json"));

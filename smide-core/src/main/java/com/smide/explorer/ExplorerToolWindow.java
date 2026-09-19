@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -63,6 +64,8 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
         tree.getStyleClass().add("file-tree");
         tree.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
         tree.setCellFactory(v -> new PathCell());
+        // A file with errors is red in the tree, and so is every folder above it.
+        ide.problems().addListener(file -> javafx.application.Platform.runLater(this::refreshErrors));
         /* Double click opens a file. It does not touch a folder, and that is the fix:
            the tree's own cells already expand a folder on a double click, and this
            handler was toggling it a second time - open and shut inside the one gesture,
@@ -380,11 +383,49 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
         }
     }
 
+    /** Files with errors, and how many each has: read by the cells, rebuilt when problems change. */
+    private Map<Path, Integer> errorFiles = Map.of();
+
+    /**
+     * Recounts the errors per file and repaints the tree.
+     *
+     * <p>From every source - language servers, the pom check, builds - because a file is
+     * broken whoever noticed. Errors only: a warning is not a reason to paint a file red.
+     */
+    private void refreshErrors() {
+        Map<Path, Integer> counted = new java.util.HashMap<>();
+        for (com.smide.api.problems.Diagnostic d : ide.problems().all()) {
+            if (d.severity() == com.smide.api.problems.Diagnostic.Severity.ERROR && d.file() != null) {
+                counted.merge(d.file().toAbsolutePath().normalize(), 1, Integer::sum);
+            }
+        }
+        if (!counted.equals(errorFiles)) {
+            errorFiles = Map.copyOf(counted);
+            tree.refresh();
+        }
+    }
+
+    /** How many errors are in this file, or - for a folder - in everything under it. */
+    private int errorsIn(Path path, boolean dir) {
+        Path at = path.toAbsolutePath().normalize();
+        if (!dir) {
+            return errorFiles.getOrDefault(at, 0);
+        }
+        int total = 0;
+        for (Map.Entry<Path, Integer> e : errorFiles.entrySet()) {
+            if (e.getKey().startsWith(at)) {
+                total += e.getValue();
+            }
+        }
+        return total;
+    }
+
     private final class PathCell extends TreeCell<Path> {
         @Override
         protected void updateItem(Path path, boolean empty) {
             super.updateItem(path, empty);
-            getStyleClass().removeAll("workspace-root", "dimmed");
+            getStyleClass().removeAll("workspace-root", "dimmed", "has-errors");
+            setTooltip(null);
             if (empty || path == null) {
                 setText(null);
                 setGraphic(null);
@@ -399,6 +440,12 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
                 getStyleClass().add("dimmed");
             }
             boolean dir = getTreeItem() instanceof PathTreeItem p ? p.isDirectory() : Files.isDirectory(path);
+            int errors = errorsIn(path, dir);
+            if (errors > 0) {
+                getStyleClass().add("has-errors");
+                setTooltip(new javafx.scene.control.Tooltip(errors + (errors == 1 ? " error" : " errors")
+                        + (dir ? " in files under " + name : " in " + name)));
+            }
             FontIcon icon;
             if (dir) {
                 icon = Icons.of(getTreeItem() != null && getTreeItem().isExpanded() ? "fth-folder-minus" : "fth-folder");
