@@ -14,6 +14,16 @@ public interface RunConfigurationType {
 
     String iconLiteral();
 
+    /**
+     * Where this kind comes among the others - lower first - in what is detected and offered.
+     * A more specific kind goes before a general one: Spring Boot before a plain application,
+     * so a Spring application is offered as one. Kinds of equal order keep the order their
+     * plugins registered them in.
+     */
+    default int order() {
+        return 100;
+    }
+
     /** Whether Debug is offered for this kind. */
     default boolean supportsDebug() {
         return false;

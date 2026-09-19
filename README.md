@@ -94,6 +94,7 @@ On Windows, `run.ps1` does both steps.
 |---|---|
 | `smide-plugin-java` | Java, Maven/Gradle, JDT LS, run configurations, debugger, Deploy |
 | `smide-plugin-lombok` | Lombok inside the Java language server, so its generated code is known |
+| `smide-plugin-spring-boot` | Spring Boot run configurations, new projects from start.spring.io, actuator and Spring Lens in Deploy |
 | `smide-plugin-markdown` | MDViewer: Markdown editing and preview |
 | `smide-plugin-git` | Git changes, log, diffs, branches |
 | `smide-plugin-terminal` | Terminal tool window |

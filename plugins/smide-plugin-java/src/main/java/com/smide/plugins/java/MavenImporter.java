@@ -104,14 +104,14 @@ public final class MavenImporter implements ProjectImporter {
         List<JavaProjectInfo.WebModule> webModules = new ArrayList<>();
         List<BuildTask> tasks = new ArrayList<>();
         Set<String> profiles = new LinkedHashSet<>();
-        boolean[] flags = new boolean[2];
+        Set<String> artifacts = new LinkedHashSet<>();
         int[] javaVersion = {0};
 
         Path rootPom = root.resolve("pom.xml");
         Model rootModel = null;
         if (Files.isRegularFile(rootPom)) {
             rootModel = read(rootPom);
-            collect(root, rootModel, modules, webModules, tasks, profiles, flags, javaVersion, 0);
+            collect(root, rootModel, modules, webModules, tasks, profiles, artifacts, javaVersion, 0);
         } else {
             // No aggregator at the top: adopt each nested build as a module of this workspace.
             for (Path pom : nestedPoms(root)) {
@@ -120,7 +120,7 @@ public final class MavenImporter implements ProjectImporter {
                     if (rootModel == null) {
                         rootModel = model;
                     }
-                    collect(pom.getParent(), model, modules, webModules, tasks, profiles, flags, javaVersion, 0);
+                    collect(pom.getParent(), model, modules, webModules, tasks, profiles, artifacts, javaVersion, 0);
                 } catch (IOException e) {
                     System.err.println("smIDE: cannot read " + pom + ": " + e);
                 }
@@ -135,7 +135,7 @@ public final class MavenImporter implements ProjectImporter {
         SourceScanner.Result scanned = SourceScanner.scan(model);
         String version = rootModel.getVersion() != null ? rootModel.getVersion()
                 : rootModel.getParent() != null ? rootModel.getParent().getVersion() : "";
-        registry.put(workspace.root(), new JavaProjectInfo("maven", model, flags[0], flags[1], scanned.mains(), scanned.tests(),
+        registry.put(workspace.root(), new JavaProjectInfo("maven", model, Set.copyOf(artifacts), scanned.mains(), scanned.tests(),
                 rootModel.getPackaging() == null ? "jar" : rootModel.getPackaging(), name, version,
                 webModules, new ArrayList<>(profiles), javaVersion[0]));
         return model;
@@ -143,7 +143,7 @@ public final class MavenImporter implements ProjectImporter {
 
     private void collect(Path dir, Model model, List<ProjectModule> modules,
                          List<JavaProjectInfo.WebModule> webModules, List<BuildTask> tasks,
-                         Set<String> profiles, boolean[] flags, int[] javaVersion, int depth) {
+                         Set<String> profiles, Set<String> artifacts, int[] javaVersion, int depth) {
         String name = model.getArtifactId() == null ? dir.getFileName().toString() : model.getArtifactId();
         Path src = resolve(dir, model.getBuild() == null ? null : model.getBuild().getSourceDirectory(), "src/main/java");
         Path test = resolve(dir, model.getBuild() == null ? null : model.getBuild().getTestSourceDirectory(), "src/test/java");
@@ -188,23 +188,16 @@ public final class MavenImporter implements ProjectImporter {
                     tasks.add(new BuildTask(prefix + ":" + goal, "mvn " + prefix + ":" + goal + " in " + name,
                             "Plugins/" + name, List.of("mvn", prefix + ":" + goal), dir));
                 }
-                if (artifact.contains("spring-boot")) {
-                    flags[0] = true;
-                }
+                artifacts.add((p.getGroupId() == null ? "org.apache.maven.plugins" : p.getGroupId()) + ":" + artifact);
             }
         }
         for (Dependency d : model.getDependencies()) {
             String a = d.getArtifactId() == null ? "" : d.getArtifactId();
             String g = d.getGroupId() == null ? "" : d.getGroupId();
-            if (a.startsWith("spring-boot") || g.equals("org.springframework.boot")) {
-                flags[0] = true;
-            }
-            if (a.contains("spring-lens")) {
-                flags[1] = true;
-            }
+            artifacts.add(g + ":" + a);
         }
-        if (model.getParent() != null && "spring-boot-starter-parent".equals(model.getParent().getArtifactId())) {
-            flags[0] = true;
+        if (model.getParent() != null) {
+            artifacts.add(model.getParent().getGroupId() + ":" + model.getParent().getArtifactId());
         }
         for (Profile p : model.getProfiles()) {
             if (p.getId() != null) {
@@ -221,7 +214,7 @@ public final class MavenImporter implements ProjectImporter {
                 Path pom = Files.isDirectory(child) ? child.resolve("pom.xml") : child;
                 if (Files.isRegularFile(pom)) {
                     try {
-                        collect(pom.getParent(), read(pom), modules, webModules, tasks, profiles, flags, javaVersion, depth + 1);
+                        collect(pom.getParent(), read(pom), modules, webModules, tasks, profiles, artifacts, javaVersion, depth + 1);
                     } catch (IOException e) {
                         System.err.println("smIDE: cannot read " + pom + ": " + e);
                     }
@@ -249,9 +242,20 @@ public final class MavenImporter implements ProjectImporter {
         return 0;
     }
 
+    /** Goals other plugins know for a Maven plugin - Spring Boot's for spring-boot-maven-plugin. */
+    private static final java.util.Map<String, List<String>> CONTRIBUTED_GOALS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Lists these goals of a Maven plugin in the Maven tool window when a pom uses it. */
+    public static void addKnownGoals(String pluginArtifactId, List<String> goals) {
+        CONTRIBUTED_GOALS.put(pluginArtifactId, List.copyOf(goals));
+    }
+
     private static List<String> knownGoals(String artifactId) {
+        List<String> contributed = CONTRIBUTED_GOALS.get(artifactId);
+        if (contributed != null) {
+            return contributed;
+        }
         return switch (artifactId) {
-            case "spring-boot-maven-plugin" -> List.of("run", "build-image", "repackage");
             case "maven-dependency-plugin" -> List.of("tree", "analyze");
             case "maven-surefire-plugin" -> List.of("test");
             case "exec-maven-plugin" -> List.of("java", "exec");

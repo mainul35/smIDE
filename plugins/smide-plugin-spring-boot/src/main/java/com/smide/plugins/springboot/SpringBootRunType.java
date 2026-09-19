@@ -1,4 +1,4 @@
-package com.smide.plugins.java.run;
+package com.smide.plugins.springboot;
 
 import com.smide.api.Ide;
 import com.smide.api.execution.BaseRunConfiguration;
@@ -11,6 +11,7 @@ import com.smide.api.workspace.Workspace;
 import com.smide.plugins.java.JavaProjectInfo;
 import com.smide.plugins.java.JavaProjectRegistry;
 import com.smide.plugins.java.JavaTools;
+import com.smide.plugins.java.run.MavenLayout;
 import javafx.scene.Node;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
@@ -47,6 +48,12 @@ public final class SpringBootRunType implements RunConfigurationType {
         return "mdi2l-leaf";
     }
 
+    /** Before the plain Java application and Tomcat: a Spring application is offered as one. */
+    @Override
+    public int order() {
+        return 10;
+    }
+
     @Override
     public boolean supportsDebug() {
         return true;
@@ -60,7 +67,7 @@ public final class SpringBootRunType implements RunConfigurationType {
     @Override
     public List<RunConfiguration> detect(Workspace workspace) {
         Optional<JavaProjectInfo> info = registry.get(workspace);
-        if (info.isEmpty() || !info.get().springBoot()) {
+        if (info.isEmpty() || !SpringBoot.isSpringBoot(info.get())) {
             return List.of();
         }
         List<RunConfiguration> out = new ArrayList<>();

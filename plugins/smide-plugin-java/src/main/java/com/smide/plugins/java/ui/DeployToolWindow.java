@@ -39,10 +39,25 @@ import java.util.stream.Stream;
 
 /**
  * Everything between "it compiles" and "it is running somewhere else": package, run the
- * artifact, Docker image, installer, copy to a server, health check, Spring Lens.
+ * artifact, Docker image, installer, copy to a server, health check - and what other plugins add to it.
  * Every field is remembered per workspace under {@code deploy.*}.
  */
 public final class DeployToolWindow implements ToolWindowFactory {
+
+    /**
+     * What a plugin built on this one adds under Health - Spring Boot's actuator and Spring
+     * Lens - for a project, or null when it has nothing to say about it. Given the window for
+     * its fields, which remember what was typed per project, and its buttons and notes.
+     */
+    public interface HealthExtra {
+        Node build(DeployToolWindow window, Workspace workspace, JavaProjectInfo project);
+    }
+
+    private static final List<HealthExtra> HEALTH_EXTRAS = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public static void addHealthExtra(HealthExtra extra) {
+        HEALTH_EXTRAS.add(extra);
+    }
 
     public static final String ID = "deploy";
 
@@ -128,14 +143,14 @@ public final class DeployToolWindow implements ToolWindowFactory {
         return label;
     }
 
-    private static Label note(String text) {
+    public static Label note(String text) {
         Label label = new Label(text);
         label.getStyleClass().add("settings-note");
         label.setWrapText(true);
         return label;
     }
 
-    private static Button button(String text, String icon, Runnable action) {
+    public static Button button(String text, String icon, Runnable action) {
         Button b = new Button(text);
         if (icon != null) {
             b.setGraphic(new FontIcon(icon));
@@ -144,7 +159,7 @@ public final class DeployToolWindow implements ToolWindowFactory {
         return b;
     }
 
-    private TextField field(Workspace ws, String key, String def, String prompt) {
+    public TextField field(Workspace ws, String key, String def, String prompt) {
         TextField f = new TextField(ws.settings().get(key, def));
         f.setPromptText(prompt);
         f.textProperty().addListener((o, a, b) -> ws.settings().set(key, b));
@@ -271,12 +286,15 @@ public final class DeployToolWindow implements ToolWindowFactory {
         Button open = button("Open in browser", "fth-external-link", () -> ide.window().browse(url.getText()));
         HBox row = new HBox(6, url, check, open);
         VBox box = new VBox(6, heading("Health"), row);
-        if (p.springLens()) {
-            TextField lens = field(ws, "deploy.lens.url", "http://localhost:8080/spring-lens", "Spring Lens URL");
-            Button openLens = button("Open Spring Lens", "fth-eye", () -> ide.window().browse(lens.getText()));
-            box.getChildren().addAll(new HBox(6, lens, openLens), note("Spring Lens is on this project's classpath."));
-        } else if (p.springBoot()) {
-            box.getChildren().add(note("Add spring-boot-starter-actuator for /actuator/health. Spring Lens (the user's observability tool) can be added as a dependency for runtime insight."));
+        for (HealthExtra extra : HEALTH_EXTRAS) {
+            try {
+                Node added = extra.build(this, ws, p);
+                if (added != null) {
+                    box.getChildren().add(added);
+                }
+            } catch (RuntimeException e) {
+                System.err.println("smIDE: a Deploy addition failed: " + e);
+            }
         }
         return box;
     }

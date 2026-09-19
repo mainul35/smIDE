@@ -12,10 +12,8 @@ import com.smide.api.workspace.Workspace;
 import com.smide.plugins.java.run.ApplicationRunType;
 import com.smide.plugins.java.run.BuildToolRunType;
 import com.smide.plugins.java.run.JUnitRunType;
-import com.smide.plugins.java.run.SpringBootRunType;
 import com.smide.plugins.java.run.TomcatRunType;
 import com.smide.plugins.java.templates.MavenQuickstartTemplate;
-import com.smide.plugins.java.templates.SpringBootTemplate;
 import com.smide.plugins.java.ui.DeployToolWindow;
 import com.smide.plugins.java.ui.JavaSettingsPage;
 import com.smide.plugins.java.ui.MavenToolWindow;
@@ -33,11 +31,18 @@ public final class JavaPlugin implements Plugin {
 
     private Ide ide;
     private final JavaProjectRegistry registry = new JavaProjectRegistry();
+    private static volatile JavaProjectRegistry shared;
+
+    /** What is known of each Java project, for plugins built on this one - Spring Boot's. Null before this starts. */
+    public static JavaProjectRegistry projects() {
+        return shared;
+    }
     private JdtLauncher jdt;
     private MavenToolWindow mavenWindow;
 
     @Override
     public void start(PluginContext context) {
+        shared = registry;
         ide = context.ide();
         jdt = new JdtLauncher(ide, registry);
 
@@ -56,10 +61,9 @@ public final class JavaPlugin implements Plugin {
         // Its dependencies, jar and pom, under External Libraries in the Project tree.
         context.registerLibraryProvider(poms.libraries());
 
-        /* Spring Boot first, and Tomcat before the plain application: detection order is
-           the order the run chooser offers them in, and for a web application the server
-           is the configuration that actually serves the thing. */
-        context.registerRunConfigurationType(new SpringBootRunType(ide, registry));
+        /* Tomcat before the plain application: detection order is the order the run chooser
+           offers them in, and for a web application the server is the configuration that
+           actually serves the thing. Spring Boot's, from its own plugin, goes before both. */
         context.registerRunConfigurationType(new TomcatRunType(ide, registry));
         context.registerRunConfigurationType(new ApplicationRunType(ide, registry));
         context.registerRunConfigurationType(new JUnitRunType(ide, registry));
@@ -73,7 +77,6 @@ public final class JavaPlugin implements Plugin {
         context.registerToolWindow(new DeployToolWindow(ide, registry));
 
         context.registerNewProjectTemplate(new MavenQuickstartTemplate());
-        context.registerNewProjectTemplate(new SpringBootTemplate());
         context.registerSettingsPage(new JavaSettingsPage(ide, jdt, registry, this::installJdt));
 
         registerActions(context);

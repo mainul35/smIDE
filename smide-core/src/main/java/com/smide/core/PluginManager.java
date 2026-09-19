@@ -98,17 +98,74 @@ public final class PluginManager {
                 return;
             }
             start(d, all, started, visiting, disabled);
+            if (!isStarted(dep)) {
+                // A plugin whose dependency is off or broken would start half-working.
+                loaded.add(new LoadedPlugin(c.descriptor, c.plugin, c.loader, "needs " + d.descriptor.name()
+                        + ", which is " + (disabled.contains(dep) ? "disabled" : "not running")));
+                started.add(id);
+                return;
+            }
+            // A plugin built on another sees its classes: Spring Boot's run type is a Java one.
+            if (c.loader instanceof PluginLoader own) {
+                own.dependOn(d.loader);
+            }
         }
         String error = null;
+        Plugin plugin = c.plugin;
         try {
-            c.plugin.start(new PluginContextImpl(c.descriptor, ide, registry));
+            if (plugin == null) {
+                // Loaded only now, with its dependencies running and their classes reachable.
+                plugin = (Plugin) Class.forName(c.mainClass, true, c.loader).getDeclaredConstructor().newInstance();
+            }
+            plugin.start(new PluginContextImpl(c.descriptor, ide, registry));
         } catch (Throwable t) {
             error = t.toString();
             System.err.println("smIDE: plugin " + id + " failed to start: " + t);
             t.printStackTrace();
         }
-        loaded.add(new LoadedPlugin(c.descriptor, c.plugin, c.loader, error));
+        loaded.add(new LoadedPlugin(c.descriptor, plugin, c.loader, error));
         started.add(id);
+    }
+
+    private boolean isStarted(String id) {
+        return loaded.stream().anyMatch(p -> p.descriptor().id().equals(id) && p.isStarted());
+    }
+
+    /**
+     * A directory plugin's own jars, and through them the plugins it depends on.
+     *
+     * <p>Each directory plugin has a loader of its own over the core's, so plugins share the API
+     * and nothing else - except that a plugin that names another in {@code depends} can use
+     * its classes, which it is built against.
+     */
+    static final class PluginLoader extends URLClassLoader {
+        private final List<ClassLoader> dependencies = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        PluginLoader(String name, URL[] urls, ClassLoader parent) {
+            super(name, urls, parent);
+        }
+
+        void dependOn(ClassLoader loader) {
+            if (loader != this && loader != getParent() && !dependencies.contains(loader)) {
+                dependencies.add(loader);
+            }
+        }
+
+        @Override
+        protected Class<?> findClass(String name) throws ClassNotFoundException {
+            try {
+                return super.findClass(name);
+            } catch (ClassNotFoundException notMine) {
+                for (ClassLoader dependency : dependencies) {
+                    try {
+                        return dependency.loadClass(name);
+                    } catch (ClassNotFoundException notThere) {
+                        // The next one, then.
+                    }
+                }
+                throw notMine;
+            }
+        }
     }
 
     public void stopAll() {
@@ -126,7 +183,8 @@ public final class PluginManager {
 
     // ------------------------------------------------------------ discovery
 
-    private record Candidate(PluginDescriptor descriptor, Plugin plugin, ClassLoader loader) {
+    /** @param plugin null for a directory plugin, which is created from {@code mainClass} when it starts */
+    private record Candidate(PluginDescriptor descriptor, Plugin plugin, ClassLoader loader, String mainClass) {
     }
 
     private List<Candidate> fromDirectory(Path pluginsDir) {
@@ -160,7 +218,7 @@ public final class PluginManager {
         if (urls.isEmpty()) {
             return null;
         }
-        URLClassLoader loader = new URLClassLoader(
+        PluginLoader loader = new PluginLoader(
                 "smide-plugin:" + dir.getFileName(), urls.toArray(URL[]::new), PluginManager.class.getClassLoader());
         try (InputStream in = loader.getResourceAsStream(DESCRIPTOR)) {
             if (in == null) {
@@ -171,9 +229,11 @@ public final class PluginManager {
             props.load(in);
             PluginDescriptor descriptor = descriptor(props, dir);
             String mainClass = props.getProperty("mainClass", "").strip();
-            Class<?> type = Class.forName(mainClass, true, loader);
-            Plugin plugin = (Plugin) type.getDeclaredConstructor().newInstance();
-            return new Candidate(descriptor, plugin, loader);
+            if (mainClass.isEmpty()) {
+                System.err.println("smIDE: " + dir + " names no mainClass; ignored");
+                return null;
+            }
+            return new Candidate(descriptor, null, loader, mainClass);
         } catch (Exception e) {
             System.err.println("smIDE: cannot load plugin in " + dir + ": " + e);
             return null;
@@ -219,7 +279,7 @@ public final class PluginManager {
                 props.setProperty("id", plugin.getClass().getName());
                 props.setProperty("name", plugin.getClass().getSimpleName());
             }
-            out.add(new Candidate(descriptor(props, null), plugin, loader));
+            out.add(new Candidate(descriptor(props, null), plugin, loader, plugin.getClass().getName()));
         }
         return out;
     }

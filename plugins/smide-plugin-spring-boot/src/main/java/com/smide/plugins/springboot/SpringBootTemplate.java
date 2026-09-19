@@ -1,4 +1,4 @@
-package com.smide.plugins.java.templates;
+package com.smide.plugins.springboot;
 
 import com.smide.api.Ide;
 import com.smide.api.project.NewProjectTemplate;

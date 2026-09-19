@@ -21,7 +21,7 @@ final class SourceScanner {
 
     private static final Pattern MAIN = Pattern.compile(
             "public\\s+static\\s+void\\s+main\\s*\\(|static\\s+public\\s+void\\s+main\\s*\\(|(?m)^\\s*void\\s+main\\s*\\(\\s*\\)");
-    private static final Pattern TEST = Pattern.compile("@(?:Test|ParameterizedTest|RepeatedTest|TestFactory|SpringBootTest)\\b");
+    private static final Pattern TEST = Pattern.compile("@(?:Test|ParameterizedTest|RepeatedTest|TestFactory)\\b");
     private static final Pattern PACKAGE = Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)\\s*;");
     private static final int MAX_FILES = 20_000;
 

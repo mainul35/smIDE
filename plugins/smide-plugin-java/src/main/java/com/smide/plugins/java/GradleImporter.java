@@ -25,7 +25,18 @@ public final class GradleImporter implements ProjectImporter {
     private static final Pattern INCLUDE = Pattern.compile("include\\s*\\(?\\s*([^)\\n]+)");
     private static final Pattern QUOTED = Pattern.compile("[\"']([^\"']+)[\"']");
     public static final List<String> TASKS = List.of("build", "clean", "assemble", "test", "check", "jar", "run",
-            "bootRun", "bootJar", "dependencies", "tasks");
+            "dependencies", "tasks");
+
+    /** Tasks other plugins know, for a build that uses what they are keyed by - bootRun for the Spring Boot plugin. */
+    private static final java.util.Map<String, List<String>> CONTRIBUTED_TASKS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Offers these tasks for each module whose script uses {@code what}: a plugin as
+     * {@code plugin:<id>}, or a dependency as {@code group:artifact}.
+     */
+    public static void addTasksFor(String what, List<String> tasks) {
+        CONTRIBUTED_TASKS.put(what, List.copyOf(tasks));
+    }
 
     /** A version as a build script writes it: JavaVersion.VERSION_17, '17', "1.8" or 21. */
     private static final String VERSION =
@@ -79,8 +90,7 @@ public final class GradleImporter implements ProjectImporter {
                 moduleDirs.add(dir);
             }
         }
-        boolean springBoot = false;
-        boolean springLens = false;
+        java.util.Set<String> artifacts = new java.util.LinkedHashSet<>();
         int release = 0;
         List<JavaProjectInfo.WebModule> webModules = new ArrayList<>();
         for (Path dir : moduleDirs) {
@@ -94,20 +104,26 @@ public final class GradleImporter implements ProjectImporter {
             if (release == 0) {
                 release = releaseOf(script);
             }
-            springBoot |= script.contains("org.springframework.boot");
-            springLens |= script.contains("spring-lens");
+            java.util.Set<String> used = artifactsIn(script);
+            artifacts.addAll(used);
             if (script.contains("'war'") || script.contains("\"war\"") || script.contains("apply plugin: war")) {
                 // The war plugin is how a Gradle build says "this is a web application".
                 webModules.add(new JavaProjectInfo.WebModule(name, dir));
             }
-            for (String task : TASKS) {
+            List<String> moduleTasks = new ArrayList<>(TASKS);
+            CONTRIBUTED_TASKS.forEach((what, extra) -> {
+                if (used.contains(what)) {
+                    moduleTasks.addAll(extra);
+                }
+            });
+            for (String task : moduleTasks) {
                 String qualified = dir.equals(root) ? task : name + ":" + task;
                 tasks.add(new BuildTask(task, "gradle " + qualified, "Tasks/" + name, List.of("gradle", qualified), root));
             }
         }
         ProjectModel model = new ProjectModel("gradle", root.getFileName().toString(), root, modules, tasks);
         SourceScanner.Result scanned = SourceScanner.scan(model);
-        registry.put(workspace.root(), new JavaProjectInfo("gradle", model, springBoot, springLens, scanned.mains(), scanned.tests(),
+        registry.put(workspace.root(), new JavaProjectInfo("gradle", model, java.util.Set.copyOf(artifacts), scanned.mains(), scanned.tests(),
                 "jar", root.getFileName().toString(), "", webModules, List.of(), release));
         return model;
     }
@@ -135,6 +151,29 @@ public final class GradleImporter implements ProjectImporter {
             }
         }
         return 0;
+    }
+
+    /** A dependency as a script writes it: {@code 'org.projectlombok:lombok:1.18.42'}. */
+    private static final Pattern COORDINATES = Pattern.compile("[\"']([\\w.\\-]+):([\\w.\\-]+)(?::[^\"']*)?[\"']");
+    /** A plugin: {@code id 'org.springframework.boot' version ...}, {@code apply plugin: 'war'}. */
+    private static final Pattern PLUGIN = Pattern.compile("(?:\\bid\\s*\\(?|apply\\s+plugin\\s*:)\\s*[\"']([\\w.\\-]+)[\"']");
+
+    /**
+     * What a build script uses, read from its text: {@code group:artifact} for each dependency
+     * it names, {@code plugin:<id>} for each plugin. Not Gradle's resolution - a version
+     * catalog or a platform is not followed - but what the script plainly says.
+     */
+    public static java.util.Set<String> artifactsIn(String script) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        Matcher coordinates = COORDINATES.matcher(script);
+        while (coordinates.find()) {
+            out.add(coordinates.group(1) + ":" + coordinates.group(2));
+        }
+        Matcher plugin = PLUGIN.matcher(script);
+        while (plugin.find()) {
+            out.add("plugin:" + plugin.group(1));
+        }
+        return out;
     }
 
     private static List<String> includes(Path root) {

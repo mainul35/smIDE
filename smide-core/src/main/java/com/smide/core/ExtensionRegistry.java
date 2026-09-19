@@ -75,6 +75,8 @@ public final class ExtensionRegistry {
 
     public void addRunType(RunConfigurationType t) {
         runTypes.add(t);
+        // Stable: equal orders keep the order they were registered in.
+        runTypes.sort(java.util.Comparator.comparingInt(RunConfigurationType::order));
     }
 
     public void addDebugger(com.smide.api.debug.Debugger d) {

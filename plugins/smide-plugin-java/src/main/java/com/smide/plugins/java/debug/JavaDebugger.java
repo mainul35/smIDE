@@ -5,7 +5,6 @@ import com.smide.api.debug.DebugSession;
 import com.smide.api.debug.Debugger;
 import com.smide.api.execution.RunConfiguration;
 import com.smide.plugins.java.run.ApplicationRunType;
-import com.smide.plugins.java.run.SpringBootRunType;
 
 /**
  * Debugs anything the Java plugin can run: the process is started with a JDWP agent, and
@@ -18,10 +17,18 @@ public final class JavaDebugger implements Debugger {
         return "java.jdi";
     }
 
+    /** Run configuration kinds of other plugins that start a JVM waiting for this debugger - Spring Boot's. */
+    private static final java.util.Set<String> ALSO = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Debugs configurations of this kind too: they start the JVM with the JDWP agent, suspended, as Application does. */
+    public static void alsoDebug(String runTypeId) {
+        ALSO.add(runTypeId);
+    }
+
     @Override
     public boolean supports(RunConfiguration configuration) {
         String type = configuration.type().id();
-        return ApplicationRunType.ID.equals(type) || SpringBootRunType.ID.equals(type);
+        return ApplicationRunType.ID.equals(type) || ALSO.contains(type);
     }
 
     @Override

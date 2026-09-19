@@ -6,12 +6,13 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * What the importer learned beyond the generic model: build tool, packaging, Spring Boot,
+ * What the importer learned beyond the generic model: build tool, packaging, what the build uses,
  * and the classes that can be run. Kept by the plugin per workspace root.
  *
  * @param buildTool   {@code maven} or {@code gradle}
- * @param springBoot  true when Spring Boot is on the build
- * @param springLens  true when the user's Spring Lens is on the build
+ * @param artifacts   what the build uses, as {@code group:artifact} - dependencies, the parent,
+ *                    build plugins - and Gradle plugin ids as {@code plugin:<id>}; how plugins
+ *                    built on this one, Spring Boot's, tell what kind of project it is
  * @param mainClasses fully qualified names of classes with a {@code main} method, with their module root
  * @param testClasses fully qualified names of classes containing tests, with their module root
  * @param packaging   {@code jar}, {@code war}, {@code pom}
@@ -23,8 +24,7 @@ import java.util.List;
  */
 public record JavaProjectInfo(String buildTool,
                               ProjectModel model,
-                              boolean springBoot,
-                              boolean springLens,
+                              java.util.Set<String> artifacts,
                               List<RunnableClass> mainClasses,
                               List<RunnableClass> testClasses,
                               String packaging,
@@ -48,6 +48,12 @@ public record JavaProjectInfo(String buildTool,
 
     public boolean isMaven() {
         return "maven".equals(buildTool);
+    }
+
+    /** Whether the build uses anything of this group - {@code org.springframework.boot} - or this group:artifact. */
+    public boolean uses(String groupOrArtifact) {
+        String prefix = groupOrArtifact.contains(":") ? groupOrArtifact : groupOrArtifact + ":";
+        return artifacts.stream().anyMatch(a -> a.equals(groupOrArtifact) || a.startsWith(prefix));
     }
 
     public boolean isGradle() {
