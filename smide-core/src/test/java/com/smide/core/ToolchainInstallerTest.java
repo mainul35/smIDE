@@ -94,4 +94,33 @@ class ToolchainInstallerTest {
                 "Unpacking Go 1.25.1", "Extracting go\\src\\fmt\\fmt.go"));
         assertEquals("Checking", ToolchainInstaller.describe("Checking", ""));
     }
+
+    @Test
+    void theNewestVersionDownloadedBeforeIsFoundOnDiskWithoutTheNetwork(@TempDir Path tools) throws Exception {
+        Path runtimes = ToolchainInstaller.runtimesDir(tools, TOOL);
+        for (String version : new String[] {"1.9.7", "1.10.2", "1.2.0"}) {
+            Files.createDirectories(runtimes.resolve(version).resolve("go").resolve("bin"));
+            Files.writeString(runtimes.resolve(version).resolve("go").resolve("bin").resolve("tool"), "");
+        }
+        // Newer, but never finished unpacking: not an installation.
+        Files.createDirectories(runtimes.resolve("1.11.0").resolve("go"));
+        assertEquals(Optional.of(runtimes.resolve("1.10.2").resolve("go")), ToolchainInstaller.newestIn(runtimes, TOOL));
+    }
+
+    @Test
+    void nothingDownloadedMeansNothingFound(@TempDir Path tools) {
+        assertTrue(ToolchainInstaller.newestIn(ToolchainInstaller.runtimesDir(tools, TOOL), TOOL).isEmpty());
+    }
+
+    @Test
+    void runtimesAreKeptApartFromTheNpmPackagesFolder(@TempDir Path tools) {
+        assertEquals(tools.resolve("runtimes").resolve("tool"), ToolchainInstaller.runtimesDir(tools, TOOL));
+    }
+
+    @Test
+    void versionsCompareAsNumbers() {
+        assertTrue(ToolchainInstaller.compareVersions("1.10.2", "1.9.7") > 0);
+        assertTrue(ToolchainInstaller.compareVersions("24.9.0", "24.10.0") < 0);
+        assertEquals(0, ToolchainInstaller.compareVersions("3.14.7", "3.14.7"));
+    }
 }

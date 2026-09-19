@@ -31,9 +31,15 @@ final class PyrightLanguageServer implements LanguageServerLauncher {
     @Override
     public Optional<InstallRecipe> installRecipe() {
         return Optional.of(NpmTools.install(
-                "Install pyright with npm into ~/.smide/tools/node. Requires Node.js on PATH.", "pyright"));
+                "Install pyright with npm into ~/.smide/tools/node. Requires Node.js - the one on PATH, or one the IDE downloaded.", "pyright"));
     }
 
+    @Override
+    public java.util.Map<String, String> environment(Ide ide, Workspace workspace) {
+        // Its launcher runs "node" by name: the Node.js the IDE downloaded or was pointed at goes first.
+        return NpmTools.environment(ide);
+    }
+    
     @Override
     public List<String> command(Ide ide, Workspace workspace) {
         Path executable = NpmTools.locate(ide, EXECUTABLE)

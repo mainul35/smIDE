@@ -100,6 +100,7 @@ public final class IdeImpl implements Ide {
     private final ActionManager actions;
     private final PluginManager plugins;
     private final SessionStore sessionStore;
+    private final ToolchainInstaller toolchainInstaller;
     private final FileIndex fileIndex = new FileIndex();
     private final com.smide.debug.dap.DebugAdaptersImpl debugAdapters = new com.smide.debug.dap.DebugAdaptersImpl(this);
     private ToolWindowManager toolWindows;
@@ -177,7 +178,8 @@ public final class IdeImpl implements Ide {
         /* An editor on a file its language has nothing to run says so across its top, and
            either way offers to download it - asking first - as IntelliJ does. */
         ToolchainBanners banners = new ToolchainBanners(this, registry);
-        ToolchainInstaller installer = new ToolchainInstaller(this, t -> banners.refresh());
+        this.toolchainInstaller = new ToolchainInstaller(this, t -> banners.refresh());
+        ToolchainInstaller installer = toolchainInstaller;
         banners.setInstaller(installer);
         this.editors.addOpenedListener(banners::opened);
         workspaces.addOpenedListener(new ToolchainCheck(this, registry, installer)::check);
@@ -293,6 +295,9 @@ public final class IdeImpl implements Ide {
             notifications.error("Plugins failed to load", String.valueOf(t));
         }
         reportPluginFailures();
+        // A runtime downloaded before is used again, even if its setting was lost.
+        List<com.smide.api.lang.Toolchain> toolchains = registry.toolchains();
+        window.runInBackground(() -> toolchainInstaller.adoptAll(toolchains));
         statusBar.message("");
         Platform.runLater(() -> openWhatWasOpen(session, openOnStart));
     }

@@ -207,7 +207,14 @@ public final class DownloadsImpl implements Downloads {
 
     @Override
     public void runTool(List<String> command, Path workingDir, ProgressReporter progress) throws IOException {
+        runTool(command, workingDir, java.util.Map.of(), progress);
+    }
+
+    @Override
+    public void runTool(List<String> command, Path workingDir, java.util.Map<String, String> environment,
+                        ProgressReporter progress) throws IOException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
+        pb.environment().putAll(environment);
         if (workingDir != null) {
             // The tools folder does not exist until something is installed into it.
             Files.createDirectories(workingDir);

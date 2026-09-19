@@ -228,6 +228,12 @@ public final class ShellPlugin implements Plugin {
         }
 
         @Override
+        public java.util.Map<String, String> environment(Ide ide, Workspace workspace) {
+            // Its launcher runs "node" by name: the Node.js the IDE downloaded or was pointed at goes first.
+            return NpmTools.environment(ide);
+        }
+        
+        @Override
         public List<String> command(Ide ide, Workspace workspace) {
             Path exe = NpmTools.locate(ide, "bash-language-server")
                     .orElseThrow(() -> new IllegalStateException("bash-language-server is not installed"));

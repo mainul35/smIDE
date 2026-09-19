@@ -22,4 +22,8 @@ public interface Downloads {
 
     /** Runs a command to completion, streaming output to the reporter; throws on a non-zero exit. */
     void runTool(java.util.List<String> command, Path workingDir, ProgressReporter progress) throws IOException;
+
+    /** {@link #runTool(java.util.List, Path, ProgressReporter)} with these variables set - a PATH, say - over the IDE's own. */
+    void runTool(java.util.List<String> command, Path workingDir, java.util.Map<String, String> environment,
+                 ProgressReporter progress) throws IOException;
 }

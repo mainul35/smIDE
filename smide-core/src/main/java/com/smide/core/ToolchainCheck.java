@@ -40,7 +40,11 @@ public final class ToolchainCheck {
         ide.window().runInBackground(() -> {
             for (Toolchain toolchain : toolchains) {
                 try {
-                    if (!toolchain.isNeededBy(workspace.root()) || toolchain.locate(ide).isPresent()) {
+                    if (!toolchain.isNeededBy(workspace.root())) {
+                        continue;
+                    }
+                    installer.adopt(toolchain);
+                    if (toolchain.locate(ide).isPresent()) {
                         continue;
                     }
                     if (asked.add(toolchain.id() + "|" + workspace.root())) {

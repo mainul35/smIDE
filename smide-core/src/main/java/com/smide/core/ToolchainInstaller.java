@@ -32,6 +32,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
@@ -43,7 +44,11 @@ import java.util.stream.Stream;
  * Downloads a missing toolchain, the way IntelliJ offers "Download Python...": asks first,
  * naming the version, the size and who it comes from, then downloads with a Cancel button,
  * checks the archive against its publisher's checksum, unpacks it under
- * {@code ~/.smide/tools/<id>/<version>} and points the toolchain's setting at it.
+ * {@code ~/.smide/tools/runtimes/<id>/<version>} and points the toolchain's setting at it.
+ *
+ * <p>Downloaded once, used from then on: the setting is saved at once, and what is on disk
+ * is taken up again whenever the setting is missing or points nowhere - so a restart, a
+ * reset settings file or a second Download click never fetches it again.
  *
  * <p>Nothing is installed on the machine itself - no installer runs, no PATH changes - so
  * removing the folder undoes it. Where a toolchain offers no portable archive, its download
@@ -72,6 +77,18 @@ public final class ToolchainInstaller {
             return;
         }
         ide.window().runInBackground(() -> {
+            // One downloaded before is used as it is: no asking, no network.
+            Optional<Path> earlier = downloaded(toolchain);
+            if (earlier.isPresent()) {
+                running.remove(toolchain.id());
+                ide.window().runLater(() -> {
+                    ide.settings().set(toolchain.homeSetting(), earlier.get().toString());
+                    ide.notifications().info(toolchain.displayName(), "Using the one downloaded earlier, in "
+                            + earlier.get() + ".");
+                    installed.accept(toolchain);
+                });
+                return;
+            }
             Optional<Download> download;
             try {
                 download = toolchain.homeSetting() == null ? Optional.empty() : toolchain.latestDownload(ide);
@@ -136,9 +153,106 @@ public final class ToolchainInstaller {
         }
     }
 
+    /** Where downloaded runtimes live, apart from the servers and packages beside them in tools. */
+    Path runtimes(Toolchain toolchain) {
+        return runtimesDir(ide.downloads().toolsDir(), toolchain);
+    }
+
+    static Path runtimesDir(Path toolsDir, Toolchain toolchain) {
+        return toolsDir.resolve("runtimes").resolve(toolchain.id());
+    }
+
     /** The folder a version is unpacked into. */
     Path target(Toolchain toolchain, Download download) {
-        return ide.downloads().toolsDir().resolve(toolchain.id()).resolve(folderName(download.version()));
+        return runtimes(toolchain).resolve(folderName(download.version()));
+    }
+
+    /** The newest complete installation downloaded before, if any. Looks at the disk only. */
+    Optional<Path> downloaded(Toolchain toolchain) {
+        return newestIn(runtimes(toolchain), toolchain);
+    }
+
+    static Optional<Path> newestIn(Path runtimes, Toolchain toolchain) {
+        if (!Files.isDirectory(runtimes)) {
+            return Optional.empty();
+        }
+        List<Path> versions;
+        try (Stream<Path> list = Files.list(runtimes)) {
+            // A half-written download is named *.download.*; only unpacked versions count.
+            versions = list.filter(Files::isDirectory).filter(p -> !p.getFileName().toString().contains(".download"))
+                    .sorted(Comparator.comparing((Path p) -> p.getFileName().toString(), ToolchainInstaller::compareVersions)
+                            .reversed())
+                    .toList();
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+        for (Path version : versions) {
+            try {
+                Optional<Path> home = home(toolchain, version);
+                if (home.isPresent()) {
+                    return home;
+                }
+            } catch (IOException | RuntimeException e) {
+                // An unreadable folder is not an installation; try the next.
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** 1.10.2 after 1.9.7: numbers compared as numbers, part by part. */
+    static int compareVersions(String a, String b) {
+        String[] x = a.split("[^0-9]+");
+        String[] y = b.split("[^0-9]+");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            long p = i < x.length && !x[i].isEmpty() ? Long.parseLong(x[i]) : 0;
+            long q = i < y.length && !y[i].isEmpty() ? Long.parseLong(y[i]) : 0;
+            if (p != q) {
+                return Long.compare(p, q);
+            }
+        }
+        return a.compareTo(b);
+    }
+
+    /**
+     * Takes up a runtime downloaded earlier when the setting that should point at it is empty
+     * or points at nothing, and nothing else is found on the machine. A home someone chose
+     * that still works is never touched. Off the UI thread: finding means looking at disks.
+     *
+     * @return whether the setting was changed
+     */
+    public boolean adopt(Toolchain toolchain) {
+        String key = toolchain.homeSetting();
+        if (key == null) {
+            return false;
+        }
+        String current = ide.settings().get(key, "");
+        try {
+            if (!current.isBlank() && Files.isDirectory(Path.of(current)) && toolchain.accepts(Path.of(current))) {
+                return false;
+            }
+        } catch (RuntimeException e) {
+            // An unreadable setting is as good as none.
+        }
+        Optional<Path> earlier = downloaded(toolchain);
+        if (earlier.isEmpty()) {
+            return false;
+        }
+        if (current.isBlank() && toolchain.locate(ide).isPresent()) {
+            return false;
+        }
+        ide.settings().set(key, earlier.get().toString());
+        return true;
+    }
+
+    /** {@link #adopt} for every toolchain, once the plugins are in. Call off the UI thread. */
+    public void adoptAll(List<Toolchain> toolchains) {
+        for (Toolchain t : toolchains) {
+            try {
+                adopt(t);
+            } catch (RuntimeException e) {
+                System.err.println("smIDE: could not look for a downloaded " + t.id() + ": " + e);
+            }
+        }
     }
 
     static String folderName(String version) {

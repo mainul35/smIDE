@@ -65,6 +65,53 @@ final class NpmTools {
         return Files.isRegularFile(local) ? Optional.of(local) : findOnPath(executable);
     }
 
+    /** The setting Node.js is found by - the same one the web plugin's toolchain writes. */
+    static final String NODE_HOME = "node.home";
+
+    /** The folder the node the IDE was pointed at, or downloaded, runs from; null when there is none. */
+    static Path nodeDir(Ide ide) {
+        String home = ide.settings().get(NODE_HOME, "");
+        if (home.isBlank()) {
+            return null;
+        }
+        try {
+            Path root = Path.of(home);
+            for (Path dir : List.of(root, root.resolve("bin"))) {
+                if (Files.isRegularFile(dir.resolve(WINDOWS ? "node.exe" : "node"))) {
+                    return dir;
+                }
+            }
+        } catch (RuntimeException e) {
+            // Not a path; as good as not set.
+        }
+        return null;
+    }
+
+    /** npm beside that node, else on PATH. */
+    static Optional<Path> npm(Ide ide) {
+        Path dir = nodeDir(ide);
+        if (dir != null) {
+            Path npm = dir.resolve(WINDOWS ? "npm.cmd" : "npm");
+            if (Files.isRegularFile(npm)) {
+                return Optional.of(npm);
+            }
+        }
+        return findOnPath("npm");
+    }
+
+    /**
+     * PATH with that node's folder first. npm and the launchers it writes run "node" by
+     * name, so a Node.js that is not on PATH - one the IDE downloaded - is found only this way.
+     */
+    static java.util.Map<String, String> environment(Ide ide) {
+        Path dir = nodeDir(ide);
+        if (dir == null) {
+            return java.util.Map.of();
+        }
+        String path = System.getenv("PATH");
+        return java.util.Map.of("PATH", dir + File.pathSeparator + (path == null ? "" : path));
+    }
+
     /** An install that runs {@code npm install --prefix ~/.smide/tools/node <packages>}. */
     static InstallRecipe install(String description, String... packages) {
         return new InstallRecipe() {
@@ -75,15 +122,16 @@ final class NpmTools {
 
             @Override
             public void run(Ide ide, ProgressReporter progress) throws Exception {
-                Path npm = findOnPath("npm").orElseThrow(() -> new IOException(
-                        "npm was not found on PATH. Install Node.js from https://nodejs.org and try again."));
+                Path npm = npm(ide).orElseThrow(() -> new IOException(
+                        "npm was not found. Download Node.js from a .js file's editor, or install it from"
+                                + " https://nodejs.org, and try again."));
                 Path prefix = prefix(ide);
                 Files.createDirectories(prefix);
                 List<String> command = new ArrayList<>(List.of(npm.toString(), "install", "--no-audit", "--no-fund",
                         "--prefix", prefix.toString()));
                 command.addAll(List.of(packages));
                 progress.progress("npm install " + String.join(" ", packages), -1);
-                ide.downloads().runTool(command, prefix, progress);
+                ide.downloads().runTool(command, prefix, environment(ide), progress);
                 progress.progress("Installed " + String.join(", ", packages), 1);
             }
         };

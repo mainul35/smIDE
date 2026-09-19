@@ -74,6 +74,12 @@ record NodeServer(String serverId, String displayName, String executable, List<S
     }
 
     @Override
+    public java.util.Map<String, String> environment(Ide ide, Workspace workspace) {
+        // Its launcher runs "node" by name: the Node.js the IDE downloaded or was pointed at goes first.
+        return NpmTools.environment(ide);
+    }
+    
+    @Override
     public List<String> command(Ide ide, Workspace workspace) {
         Path exe = NpmTools.locate(ide, executable)
                 .orElseThrow(() -> new IllegalStateException(displayName + " is not installed"));

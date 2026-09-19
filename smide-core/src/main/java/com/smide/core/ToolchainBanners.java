@@ -76,7 +76,14 @@ public final class ToolchainBanners {
     private Optional<Toolchain> missing(Path file) {
         for (Toolchain t : registry.toolchains()) {
             try {
-                if (runs(t, file) && !dismissed.contains(t.id()) && t.locate(ide).isEmpty()) {
+                if (!runs(t, file) || dismissed.contains(t.id())) {
+                    continue;
+                }
+                // One downloaded before counts as found, even when its setting went missing.
+                if (installer != null) {
+                    installer.adopt(t);
+                }
+                if (t.locate(ide).isEmpty()) {
                     return Optional.of(t);
                 }
             } catch (RuntimeException e) {
