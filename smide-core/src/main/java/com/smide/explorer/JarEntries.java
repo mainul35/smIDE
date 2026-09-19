@@ -46,9 +46,27 @@ final class JarEntries {
         });
     }
 
-    /** Where in a jar an opened file came from; the file itself when it did not. */
-    static Path origin(Path file) {
-        return EXTRACTED.getOrDefault(file.toAbsolutePath().normalize(), file);
+    /**
+     * Where in a jar an opened file came from - one taken out of a jar in the trees, or a
+     * class followed into a library - as a path inside that jar; the file itself when it is
+     * from no jar. When the entry is not in the jar any more, the jar.
+     */
+    Path origin(Path file) {
+        Path known = EXTRACTED.get(file.toAbsolutePath().normalize());
+        if (known != null) {
+            return known;
+        }
+        java.util.Optional<com.smide.editor.LibraryOrigins.Origin> origin =
+                com.smide.editor.LibraryOrigins.of(ide.homeDir(), file);
+        if (origin.isEmpty()) {
+            return file;
+        }
+        Path root = PathTreeItem.archiveRoot(origin.get().archive());
+        if (root == null) {
+            return origin.get().archive();
+        }
+        Path entry = root.resolve(origin.get().entry());
+        return Files.exists(entry) ? entry : origin.get().archive();
     }
 
     /** The entry written out; a class as its source, from the sources jar beside, when there is one. */
@@ -88,6 +106,7 @@ final class JarEntries {
             out.toFile().setReadOnly();
         }
         EXTRACTED.put(out, from);
+        com.smide.editor.LibraryOrigins.remember(ide.homeDir(), out, jar, from.toString());
         return out;
     }
 }

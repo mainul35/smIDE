@@ -255,7 +255,7 @@ public final class LibrariesToolWindow implements ToolWindowFactory {
      * a moment later, once the libraries have been read.
      */
     public boolean reveal(Path file, boolean focus) {
-        Path target = JarEntries.origin(file);
+        Path target = compiled(jars.origin(file));
         Path jar = PathTreeItem.archiveOf(target);
         Path onDisk = (jar != null ? jar : target).toAbsolutePath().normalize();
         if (!loaded || listed != ide.workspaces().active().orElse(null)) {
@@ -268,8 +268,69 @@ public final class LibrariesToolWindow implements ToolWindowFactory {
         return select(target, jar, onDisk, focus);
     }
 
+    /**
+     * A source in a sources jar, as the class it compiles to in the library's own jar beside
+     * it - {@code Application.class} in {@code javafx-graphics-21-win.jar}, not the copy in
+     * {@code javafx-graphics-21-sources.jar} - since that is the jar the project uses, as
+     * IntelliJ shows it. The source itself when no jar beside has the class.
+     */
+    private static Path compiled(Path target) {
+        Path sources = PathTreeItem.archiveOf(target);
+        String entry = target.toString();
+        if (sources == null || !entry.endsWith(".java") || !sources.getFileName().toString().endsWith("-sources.jar")) {
+            return target;
+        }
+        String inside = entry.startsWith("/") ? entry.substring(1) : entry;
+        String type = inside.substring(0, inside.length() - ".java".length()) + ".class";
+        Path best = null;
+        int bestScore = -1;
+        try (java.util.stream.Stream<Path> siblings = java.nio.file.Files.list(sources.getParent())) {
+            for (Path jar : siblings.sorted().toList()) {
+                String name = jar.getFileName().toString();
+                if (!name.endsWith(".jar") || name.endsWith("-sources.jar") || name.endsWith("-javadoc.jar")) {
+                    continue;
+                }
+                Path root = PathTreeItem.archiveRoot(jar);
+                int score = platformScore(name);
+                if (score > bestScore && root != null && java.nio.file.Files.exists(root.resolve(type))) {
+                    best = root.resolve(type);
+                    bestScore = score;
+                }
+            }
+        } catch (java.io.IOException | RuntimeException e) {
+            // The source will do.
+        }
+        return best != null ? best : target;
+    }
+
+    /**
+     * How well a jar's classifier fits this machine. JavaFX ships one jar per platform -
+     * {@code -win}, {@code -linux}, {@code -linux-aarch64}, {@code -mac} - and the build uses
+     * this machine's; a jar with no platform in its name comes next, another platform's last.
+     */
+    static int platformScore(String jarName) {
+        String name = jarName.toLowerCase(java.util.Locale.ROOT);
+        String os = com.smide.api.util.Machine.os();
+        boolean arm = com.smide.api.util.Machine.arch().equals("arm64");
+        boolean win = name.contains("-win");
+        boolean linux = name.contains("-linux");
+        boolean mac = name.contains("-mac") || name.contains("-osx");
+        if (!win && !linux && !mac) {
+            return 1;
+        }
+        boolean mine = win && os.equals("windows") || linux && os.equals("linux") || mac && os.equals("darwin");
+        if (!mine) {
+            return 0;
+        }
+        boolean armJar = name.contains("aarch64") || name.contains("arm64");
+        return armJar == arm ? 3 : 2;
+    }
+
     /** Whether a file could be a library's at all, before the libraries are read. */
     private boolean belongs(Path onDisk) {
+        if (PathTreeItem.isArchive(onDisk)) {
+            return true;
+        }
         for (LibraryProvider provider : registry.libraryProviders()) {
             if (provider.libraryOf(onDisk).isPresent()) {
                 return true;
@@ -299,6 +360,14 @@ public final class LibrariesToolWindow implements ToolWindowFactory {
                 }
             }
         }
+        if (library == null && PathTreeItem.isArchive(onDisk)) {
+            // An archive no plugin lists - the JDK's sources - shown as a library of its own.
+            library = new PathTreeItem(onDisk, null, "< " + archiveName(onDisk) + " >");
+            List<TreeItem<Path>> items = new ArrayList<>(root.getChildren());
+            items.add(library);
+            items.sort(BY_LABEL);
+            root.getChildren().setAll(items);
+        }
         if (library == null) {
             return false;
         }
@@ -319,6 +388,16 @@ public final class LibrariesToolWindow implements ToolWindowFactory {
             tree.requestFocus();
         }
         return true;
+    }
+
+    /** A JDK's src.zip by the JDK it belongs to; any other archive by its name. */
+    private static String archiveName(Path archive) {
+        Path lib = archive.getParent();
+        if (archive.getFileName().toString().equals("src.zip") && lib != null && lib.getParent() != null
+                && lib.getFileName().toString().equals("lib")) {
+            return lib.getParent().getFileName().toString();
+        }
+        return archive.getFileName().toString();
     }
 
     /** From a library's folder down to a file on disk under it. */

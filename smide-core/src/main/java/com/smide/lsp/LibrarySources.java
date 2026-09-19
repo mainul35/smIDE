@@ -101,6 +101,46 @@ final class LibrarySources {
                 : Optional.of(new Artifact(group, artifact, version));
     }
 
+    /** A jar, zip or jmod path in a JDT handle, as {@code =project/\/C:\/Users\/...\/x.jar=} writes one once unescaped. */
+    private static final Pattern ARCHIVE = Pattern.compile("/[^=`<]*?\\.(?:jar|zip|jmod)(?=[=`<]|$)");
+
+    /**
+     * Which class in which archive a {@code jdt://contents/...} URI names: the library jar and
+     * {@code javafx/application/Application.class} in it. For a JDK class, whose handle names
+     * {@code lib/jrt-fs.jar}, the JDK's {@code src.zip} beside it and the source in its module,
+     * when that zip is there. Empty when the URI does not say.
+     */
+    static Optional<com.smide.editor.LibraryOrigins.Origin> originOf(String uri) {
+        Matcher contents = CONTENTS.matcher(uri == null ? "" : uri);
+        int query = uri == null ? -1 : uri.indexOf('?');
+        if (!contents.find() || query < 0) {
+            return Optional.empty();
+        }
+        String handle = URLDecoder.decode(uri.substring(query + 1), StandardCharsets.UTF_8).replace("\\", "");
+        Matcher archive = ARCHIVE.matcher(handle);
+        if (!archive.find()) {
+            return Optional.empty();
+        }
+        String text = archive.group();
+        // "=project//C:/Users/..." on Windows, "=project//home/..." elsewhere.
+        text = text.matches("^/+[A-Za-z]:/.*") ? text.replaceFirst("^/+", "") : text.replaceFirst("^/+", "/");
+        Path path;
+        try {
+            path = Path.of(text);
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+        String packagePath = contents.group(2).replace('.', '/');
+        String name = contents.group(3);
+        if (path.getFileName() != null && path.getFileName().toString().equals("jrt-fs.jar")) {
+            Path zip = path.resolveSibling("src.zip");
+            String module = contents.group(1);
+            String source = name.endsWith(".class") ? name.substring(0, name.length() - ".class".length()) + ".java" : name;
+            return Optional.of(new com.smide.editor.LibraryOrigins.Origin(zip, module + "/" + packagePath + "/" + source));
+        }
+        return Optional.of(new com.smide.editor.LibraryOrigins.Origin(path, packagePath + "/" + name));
+    }
+
     private static Optional<Type> typeOf(String uri) {
         Matcher matcher = CONTENTS.matcher(uri == null ? "" : uri);
         if (!matcher.find()) {
@@ -199,7 +239,7 @@ final class LibrarySources {
                 return false;
             }
             try (InputStream in = zip.getInputStream(entry)) {
-                write(ide, type, new String(in.readAllBytes(), StandardCharsets.UTF_8), open);
+                write(ide, type, new String(in.readAllBytes(), StandardCharsets.UTF_8), open, jar, entry.getName());
             }
             return true;
         } catch (IOException e) {
@@ -277,7 +317,7 @@ final class LibrarySources {
                 return false;
             }
             try (InputStream in = sources.getInputStream(entry)) {
-                write(ide, type, new String(in.readAllBytes(), StandardCharsets.UTF_8), open);
+                write(ide, type, new String(in.readAllBytes(), StandardCharsets.UTF_8), open, zip, entry.getName());
             }
             return true;
         } catch (IOException ignored) {
@@ -385,12 +425,19 @@ final class LibrarySources {
     }
 
     /** Writes the source somewhere real, because every editor feature wants a file. */
-    private static void write(Ide ide, Type type, String source, Consumer<Path> open) {
+    private static void write(Ide ide, Type type, String source, Consumer<Path> open, Path archive, String entry) {
         try {
-            Path dir = ide.homeDir().resolve("libraries");
-            Files.createDirectories(dir);
-            Path file = dir.resolve(type.simpleName() + ".java");
+            /* Under the archive's name and the entry's own path: two libraries' Application.java
+               no longer take turns in one file, and where it came from is remembered, so Select
+               Opened File can find it in its library - also after a restart brings the tab back. */
+            Path file = ide.homeDir().resolve("libraries").resolve("sources")
+                    .resolve(archive.getFileName().toString()).resolve(entry).normalize();
+            Files.createDirectories(file.getParent());
+            if (Files.exists(file)) {
+                file.toFile().setWritable(true);
+            }
             Files.writeString(file, source);
+            com.smide.editor.LibraryOrigins.remember(ide.homeDir(), file, archive, entry);
             open.accept(file);
             ide.statusBar().message("Read-only copy from a library: " + file.getFileName());
         } catch (IOException e) {

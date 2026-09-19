@@ -376,10 +376,19 @@ public final class LspActions {
                         return;
                     }
                     try {
+                        /* Kept under the jar's name and the class's own path, with where it came
+                           from remembered: Select Opened File then finds the class in its library. */
+                        java.util.Optional<com.smide.editor.LibraryOrigins.Origin> origin = LibrarySources.originOf(t.uri());
                         Path dir = ide.homeDir().resolve("libraries");
-                        java.nio.file.Files.createDirectories(dir);
-                        Path file = dir.resolve(nameFor(t.uri()));
+                        Path file = origin.map(o -> dir.resolve("sources").resolve(o.archive().getFileName().toString())
+                                        .resolve(o.entry().replaceAll("\\.class$", ".java")).normalize())
+                                .orElse(dir.resolve(nameFor(t.uri())));
+                        java.nio.file.Files.createDirectories(file.getParent());
+                        if (java.nio.file.Files.exists(file)) {
+                            file.toFile().setWritable(true);
+                        }
                         java.nio.file.Files.writeString(file, source);
+                        origin.ifPresent(o -> com.smide.editor.LibraryOrigins.remember(ide.homeDir(), file, o.archive(), o.entry()));
                         ide.editors().open(file, t.line(), t.column());
                         ide.statusBar().message("Read-only copy from a library: " + file.getFileName());
                     } catch (java.io.IOException e) {
