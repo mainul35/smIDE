@@ -18,4 +18,7 @@ public interface Languages {
 
     /** True unless a file type says the file is binary, or the content looks binary. */
     boolean isText(Path file);
+
+    /** What plugins add to the language server with this id, for its launcher to apply. */
+    List<LanguageServerContributor> serverContributors(String serverId);
 }

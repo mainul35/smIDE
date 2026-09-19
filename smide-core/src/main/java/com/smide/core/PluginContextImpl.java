@@ -105,4 +105,9 @@ final class PluginContextImpl implements PluginContext {
     public void registerLibraryProvider(com.smide.api.project.LibraryProvider provider) {
         registry.addLibraryProvider(provider);
     }
+
+    @Override
+    public void registerLanguageServerContributor(com.smide.api.lang.LanguageServerContributor contributor) {
+        registry.addServerContributor(contributor);
+    }
 }

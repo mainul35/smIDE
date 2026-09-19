@@ -1,4 +1,4 @@
-package com.smide.plugins.java;
+package com.smide.plugins.lombok;
 
 import com.smide.api.Ide;
 
@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Lombok, for the Java language server.
+ * Lombok, for the Java language server: whether a project uses it, and the jar to run.
  *
  * <p>The server compiles with Eclipse's compiler, which knows nothing of what Lombok writes
  * into a class - the getters {@code @Data} adds, the constructor {@code @RequiredArgsConstructor}
@@ -34,8 +34,6 @@ final class Lombok {
 
     /** The oldest Lombok that works as an agent in the server on current Java. */
     static final int[] OLDEST = {1, 18, 30};
-    /** Off only to see what the server makes of the project without Lombok. */
-    static final String SETTING = "java.lombok.agent";
     private static final String CENTRAL = "https://repo1.maven.org/maven2/org/projectlombok/lombok/";
     private static final Pattern RELEASE = Pattern.compile("<release>([^<]+)</release>");
     private static final Pattern VERSION = Pattern.compile("lombok-(\\d+(?:\\.\\d+)*)\\.jar");
@@ -47,7 +45,7 @@ final class Lombok {
 
     /** The jar to run as an agent for this project, if it uses Lombok. May fetch one; call off the UI thread. */
     static Optional<Path> agentFor(Ide ide, Path projectRoot) {
-        if (!ide.settings().getBoolean(SETTING, true) || !usedBy(projectRoot)) {
+        if (!usedBy(projectRoot)) {
             return Optional.empty();
         }
         Path tools = ide.downloads().toolsDir().resolve("lombok");

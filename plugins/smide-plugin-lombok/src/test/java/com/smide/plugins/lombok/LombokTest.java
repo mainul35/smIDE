@@ -1,4 +1,4 @@
-package com.smide.plugins.java;
+package com.smide.plugins.lombok;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

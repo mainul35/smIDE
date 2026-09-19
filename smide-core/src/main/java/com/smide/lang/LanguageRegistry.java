@@ -85,6 +85,11 @@ public final class LanguageRegistry implements Languages {
     }
 
     @Override
+    public List<com.smide.api.lang.LanguageServerContributor> serverContributors(String serverId) {
+        return registry.serverContributors().stream().filter(c -> serverId.equals(c.serverId())).toList();
+    }
+
+    @Override
     public boolean isText(Path file) {
         Optional<FileType> type = fileTypeFor(file);
         if (type.isPresent()) {

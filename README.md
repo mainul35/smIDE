@@ -93,6 +93,7 @@ On Windows, `run.ps1` does both steps.
 | Plugin | What it adds |
 |---|---|
 | `smide-plugin-java` | Java, Maven/Gradle, JDT LS, run configurations, debugger, Deploy |
+| `smide-plugin-lombok` | Lombok inside the Java language server, so its generated code is known |
 | `smide-plugin-markdown` | MDViewer: Markdown editing and preview |
 | `smide-plugin-git` | Git changes, log, diffs, branches |
 | `smide-plugin-terminal` | Terminal tool window |

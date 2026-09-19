@@ -16,6 +16,7 @@
 
     <modules>
         <module>smide-plugin-java</module>
+        <module>smide-plugin-lombok</module>
         <module>smide-plugin-markdown</module>
         <module>smide-plugin-git</module>
         <module>smide-plugin-terminal</module>

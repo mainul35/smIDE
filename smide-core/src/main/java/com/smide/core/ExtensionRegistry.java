@@ -111,6 +111,17 @@ public final class ExtensionRegistry {
         return declarationProviders;
     }
 
+    private final List<com.smide.api.lang.LanguageServerContributor> serverContributors =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public void addServerContributor(com.smide.api.lang.LanguageServerContributor c) {
+        serverContributors.add(c);
+    }
+
+    public List<com.smide.api.lang.LanguageServerContributor> serverContributors() {
+        return serverContributors;
+    }
+
     public void addLibraryProvider(com.smide.api.project.LibraryProvider p) {
         libraryProviders.add(p);
     }

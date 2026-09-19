@@ -59,4 +59,7 @@ public interface PluginContext {
 
     /** Adds the libraries of the projects this plugin understands to the Project tree's External Libraries. */
     void registerLibraryProvider(com.smide.api.project.LibraryProvider provider);
+
+    /** Adds to how another plugin's language server starts - Lombok in the Java server. */
+    void registerLanguageServerContributor(com.smide.api.lang.LanguageServerContributor contributor);
 }

@@ -105,6 +105,11 @@
         </dependency>
         <dependency>
             <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lombok</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.smide</groupId>
             <artifactId>smide-plugin-lang-go</artifactId>
             <version>${project.version}</version>
         </dependency>

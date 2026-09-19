@@ -161,8 +161,14 @@ public final class JdtLauncher implements LanguageServerLauncher {
         cmd.add("java.base/java.util=ALL-UNNAMED");
         cmd.add("--add-opens");
         cmd.add("java.base/java.lang=ALL-UNNAMED");
-        // Lombok inside the compiler, or @Data's getters and @RequiredArgsConstructor's constructor are errors.
-        Lombok.agentFor(ide, workspace.root()).ifPresent(jar -> cmd.add("-javaagent:" + jar));
+        // What other plugins add - the Lombok plugin runs Lombok in the compiler as an agent.
+        for (com.smide.api.lang.LanguageServerContributor contributor : ide.languages().serverContributors(serverId())) {
+            try {
+                cmd.addAll(contributor.jvmArguments(ide, workspace));
+            } catch (RuntimeException e) {
+                System.err.println("smIDE: a contribution to " + serverId() + " failed: " + e);
+            }
+        }
         cmd.add("-jar");
         cmd.add(launcher.toString());
         cmd.add("-configuration");
