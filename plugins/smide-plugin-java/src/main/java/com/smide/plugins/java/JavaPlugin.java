@@ -136,7 +136,7 @@ public final class JavaPlugin implements Plugin {
         JavaProjectInfo info = registry.get(w).orElse(null);
         boolean gradle = info != null && info.isGradle();
         // Where the build file is, which is not always the folder that was opened.
-        java.nio.file.Path buildRoot = com.smide.plugins.java.run.MavenLayout.buildRootFor(w.root());
+        java.nio.file.Path buildRoot = gradle ? info.buildRoot() : com.smide.plugins.java.run.MavenLayout.buildRootFor(w.root());
         List<String> cmd = gradle ? JavaTools.gradle(ide, buildRoot) : JavaTools.maven(ide, buildRoot);
         if (!gradle) {
             cmd.add("-B");

@@ -94,7 +94,12 @@ public final class MavenImporter implements ProjectImporter {
 
     @Override
     public ProjectModel importProject(Ide ide, Workspace workspace) throws IOException {
-        Path root = workspace.root();
+        return importProject(ide, workspace, workspace.root());
+    }
+
+    /** The build at {@code root}, which may be a folder inside the workspace; kept under the workspace. */
+    @Override
+    public ProjectModel importProject(Ide ide, Workspace workspace, Path root) throws IOException {
         List<ProjectModule> modules = new ArrayList<>();
         List<JavaProjectInfo.WebModule> webModules = new ArrayList<>();
         List<BuildTask> tasks = new ArrayList<>();
@@ -130,7 +135,7 @@ public final class MavenImporter implements ProjectImporter {
         SourceScanner.Result scanned = SourceScanner.scan(model);
         String version = rootModel.getVersion() != null ? rootModel.getVersion()
                 : rootModel.getParent() != null ? rootModel.getParent().getVersion() : "";
-        registry.put(root, new JavaProjectInfo("maven", model, flags[0], flags[1], scanned.mains(), scanned.tests(),
+        registry.put(workspace.root(), new JavaProjectInfo("maven", model, flags[0], flags[1], scanned.mains(), scanned.tests(),
                 rootModel.getPackaging() == null ? "jar" : rootModel.getPackaging(), name, version,
                 webModules, new ArrayList<>(profiles), javaVersion[0]));
         return model;

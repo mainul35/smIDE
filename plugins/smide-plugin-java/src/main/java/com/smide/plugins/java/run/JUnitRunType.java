@@ -102,7 +102,7 @@ public final class JUnitRunType implements RunConfigurationType {
             List<String> cmd;
             MavenLayout maven = null;
             if (info != null && info.isGradle()) {
-                cmd = JavaTools.gradle(ide, workspace.root());
+                cmd = JavaTools.gradle(ide, info.buildRoot());
                 cmd.add("test");
                 if (!testClass.isBlank()) {
                     cmd.add("--tests");
@@ -119,7 +119,8 @@ public final class JUnitRunType implements RunConfigurationType {
                 }
             }
             cmd.addAll(Forms.splitArgs(get("extra", "")));
-            return new ProcessSpec(name(), cmd, maven == null ? workspace.root() : maven.directory(),
+            return new ProcessSpec(name(), cmd, maven != null ? maven.directory()
+                    : info != null ? info.buildRoot() : workspace.root(),
                     JavaTools.environment(JavaTools.launchJdk(ide, workspace, registry).home()));
         }
     }

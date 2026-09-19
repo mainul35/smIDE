@@ -123,14 +123,14 @@ public final class SpringBootRunType implements RunConfigurationType {
             List<String> cmd;
             java.nio.file.Path cwd;
             if (info != null && info.isGradle()) {
-                cmd = JavaTools.gradle(ide, workspace.root());
+                cmd = JavaTools.gradle(ide, info.buildRoot());
                 String module = get("module", "");
                 cmd.add(module.isBlank() ? "bootRun" : module.replace('/', ':').replace('\\', ':') + ":bootRun");
                 if (!args.isBlank() || !profiles.isBlank()) {
                     String all = (profiles.isBlank() ? "" : "--spring.profiles.active=" + profiles + " ") + args;
                     cmd.add("--args=" + all.strip());
                 }
-                cwd = workspace.root();
+                cwd = info.buildRoot();
             } else {
                 // The module, or wherever the pom really is: the workspace root is not
                 // always a Maven project, and spring-boot:run has to start in one.

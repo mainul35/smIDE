@@ -63,7 +63,12 @@ public final class GradleImporter implements ProjectImporter {
 
     @Override
     public ProjectModel importProject(Ide ide, Workspace workspace) throws IOException {
-        Path root = workspace.root();
+        return importProject(ide, workspace, workspace.root());
+    }
+
+    /** The build at {@code root}, which may be a folder inside the workspace; kept under the workspace. */
+    @Override
+    public ProjectModel importProject(Ide ide, Workspace workspace, Path root) throws IOException {
         List<ProjectModule> modules = new ArrayList<>();
         List<BuildTask> tasks = new ArrayList<>();
         List<Path> moduleDirs = new ArrayList<>();
@@ -102,7 +107,7 @@ public final class GradleImporter implements ProjectImporter {
         }
         ProjectModel model = new ProjectModel("gradle", root.getFileName().toString(), root, modules, tasks);
         SourceScanner.Result scanned = SourceScanner.scan(model);
-        registry.put(root, new JavaProjectInfo("gradle", model, springBoot, springLens, scanned.mains(), scanned.tests(),
+        registry.put(workspace.root(), new JavaProjectInfo("gradle", model, springBoot, springLens, scanned.mains(), scanned.tests(),
                 "jar", root.getFileName().toString(), "", webModules, List.of(), release));
         return model;
     }

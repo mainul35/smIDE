@@ -284,7 +284,7 @@ public final class DeployToolWindow implements ToolWindowFactory {
     // -------------------------------------------------------------- actions
 
     private void runBuild(Workspace ws, JavaProjectInfo p, String goals, boolean skipTests) {
-        List<String> cmd = p.isGradle() ? JavaTools.gradle(ide, ws.root()) : JavaTools.maven(ide, ws.root());
+        List<String> cmd = p.isGradle() ? JavaTools.gradle(ide, p.buildRoot()) : JavaTools.maven(ide, p.buildRoot());
         if (!p.isGradle()) {
             cmd.add("-B");
         }
@@ -297,7 +297,7 @@ public final class DeployToolWindow implements ToolWindowFactory {
                 cmd.add("-DskipTests");
             }
         }
-        ConsoleHandle h = ide.execution().run(new ProcessSpec(goals, cmd, ws.root(),
+        ConsoleHandle h = ide.execution().run(new ProcessSpec(goals, cmd, p.buildRoot(),
                 JavaTools.environment(JavaTools.launchJdk(ide, ws, registry).home())));
         if (h != null) {
             h.exitCode().thenAccept(code -> ide.window().runLater(this::rebuild));
@@ -305,7 +305,7 @@ public final class DeployToolWindow implements ToolWindowFactory {
     }
 
     private Optional<Path> artifactDir(Workspace ws, JavaProjectInfo p) {
-        Path dir = ws.root().resolve(p.isGradle() ? "build/libs" : "target");
+        Path dir = p.buildRoot().resolve(p.isGradle() ? "build/libs" : "target");
         return Files.isDirectory(dir) ? Optional.of(dir) : Optional.empty();
     }
 
@@ -374,7 +374,7 @@ public final class DeployToolWindow implements ToolWindowFactory {
         }
         Path jar = jars.get(0);
         Path input = jar.getParent();
-        Path dest = ws.root().resolve(p.isGradle() ? "build/installer" : "target/installer");
+        Path dest = p.buildRoot().resolve(p.isGradle() ? "build/installer" : "target/installer");
         List<String> cmd = new ArrayList<>(List.of(
                 JavaTools.jdkTool(JavaTools.launchJdk(ide, ws, registry).home(), "jpackage").orElse("jpackage"),
                 "--input", input.toString(), "--main-jar", jar.getFileName().toString(), "--main-class", mainClass,

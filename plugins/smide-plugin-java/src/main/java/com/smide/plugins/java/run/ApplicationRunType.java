@@ -187,10 +187,10 @@ public final class ApplicationRunType implements RunConfigurationType {
                 classpath = MavenBuild.compileAndClasspath(ide, jdk, root, module, !flag("build", true));
             } else if (info != null && info.isGradle()) {
                 if (flag("build", true)) {
-                    List<String> gradle = JavaTools.gradle(ide, root);
+                    List<String> gradle = JavaTools.gradle(ide, info.buildRoot());
                     gradle.add("-q");
                     gradle.add("classes");
-                    MavenBuild.run(ide, jdk, gradle, root, "Building with Gradle");
+                    MavenBuild.run(ide, jdk, gradle, info.buildRoot(), "Building with Gradle");
                 }
                 classpath = gradleClasspath(module);
             } else {

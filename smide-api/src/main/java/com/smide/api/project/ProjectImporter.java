@@ -19,6 +19,16 @@ public interface ProjectImporter {
 
     ProjectModel importProject(Ide ide, Workspace workspace) throws IOException;
 
+    /**
+     * Reads the build at {@code buildRoot}, a folder inside the workspace rather than its root:
+     * a repository whose Gradle build is in {@code backend/}, say, which IntelliJ finds and
+     * loads. The model's root is that folder. An importer that only knows its root is asked
+     * only about the root.
+     */
+    default ProjectModel importProject(Ide ide, Workspace workspace, Path buildRoot) throws IOException {
+        return buildRoot.equals(workspace.root()) ? importProject(ide, workspace) : null;
+    }
+
     /** Higher wins when several importers recognise the same folder. */
     default int priority() {
         return 0;

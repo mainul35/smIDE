@@ -53,4 +53,12 @@ public record JavaProjectInfo(String buildTool,
     public boolean isGradle() {
         return "gradle".equals(buildTool);
     }
+
+    /**
+     * Where the build is, to run it from: the workspace root, or the folder inside it the
+     * build was found in - {@code POISYA-administration/poisya} - when the root has none.
+     */
+    public Path buildRoot() {
+        return model.root();
+    }
 }
