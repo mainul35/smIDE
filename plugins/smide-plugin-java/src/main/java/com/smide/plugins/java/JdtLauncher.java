@@ -161,6 +161,8 @@ public final class JdtLauncher implements LanguageServerLauncher {
         cmd.add("java.base/java.util=ALL-UNNAMED");
         cmd.add("--add-opens");
         cmd.add("java.base/java.lang=ALL-UNNAMED");
+        // Lombok inside the compiler, or @Data's getters and @RequiredArgsConstructor's constructor are errors.
+        Lombok.agentFor(ide, workspace.root()).ifPresent(jar -> cmd.add("-javaagent:" + jar));
         cmd.add("-jar");
         cmd.add(launcher.toString());
         cmd.add("-configuration");
