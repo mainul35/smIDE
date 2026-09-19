@@ -94,7 +94,20 @@ public final class MainWindow {
         root.setTop(top);
         root.setCenter(toolWindows.node());
         root.setBottom(statusBar);
+        /* The window's layout never asks for more height than the window has. The middle -
+           tool windows, editors - gives way and clips what does not fit, so the menu, the
+           toolbar and the status bar are always whole; and the layout sits at the top, so if
+           something still asks for more, the bottom is what is lost, never the menu. On a
+           small screen at 125% scaling and the IDE's 120% there are under 600 pixels to share. */
+        if (toolWindows.node() instanceof Region middle) {
+            middle.setMinHeight(0);
+            javafx.scene.shape.Rectangle clip = new javafx.scene.shape.Rectangle();
+            clip.widthProperty().bind(middle.widthProperty());
+            clip.heightProperty().bind(middle.heightProperty());
+            middle.setClip(clip);
+        }
         overlay.getChildren().addAll(root, notifications.node());
+        StackPane.setAlignment(root, Pos.TOP_LEFT);
         StackPane.setAlignment(notifications.node(), Pos.TOP_RIGHT);
         notifications.node().setPickOnBounds(false);
         notifications.node().setMouseTransparent(false);
@@ -168,6 +181,14 @@ public final class MainWindow {
         }
         if (Boolean.getBoolean("smide.debugLayout")) {
             javafx.application.Platform.runLater(this::dumpLayout);
+            // Heights once everything has settled: what asks for more than the window has.
+            javafx.animation.PauseTransition later = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(6));
+            later.setOnFinished(e -> {
+                System.err.println("heights: scene " + scene.getHeight() + " overlay " + overlay.getHeight()
+                        + " root " + root.getHeight() + " layoutY " + root.getLayoutY() + " min " + root.minHeight(-1));
+                dumpMinHeight(root, "  ");
+            });
+            later.play();
         }
     }
 
@@ -186,6 +207,20 @@ public final class MainWindow {
         dumpMin((Region) root.getCenter(), "  ");
         dumpMin((Region) root.getTop(), "  ");
         dumpMin((Region) root.getBottom(), "  ");
+    }
+
+    private void dumpMinHeight(Region region, String indent) {
+        if (region.minHeight(-1) < 120 || indent.length() > 40) {
+            return;
+        }
+        System.err.println(indent + region.getClass().getSimpleName() + " " + region.getStyleClass()
+                + " h=" + region.getHeight() + " y=" + region.getLayoutY() + " min=" + region.minHeight(-1)
+                + " pref=" + region.prefHeight(-1));
+        for (Node child : region.getChildrenUnmodifiable()) {
+            if (child instanceof Region r) {
+                dumpMinHeight(r, indent + "  ");
+            }
+        }
     }
 
     private void dumpMin(Region region, String indent) {

@@ -1592,3 +1592,12 @@
 .md-rule {
     -fx-padding: 8 0 8 0;
 }
+
+/* The welcome card scrolls when the window is too short for it, and looks as if it did not. */
+.welcome-scroll,
+.welcome-scroll > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-border-width: 0;
+}

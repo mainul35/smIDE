@@ -53,9 +53,21 @@ public final class WelcomeView extends VBox {
         card.setMaxWidth(480);
         card.setMaxHeight(Region.USE_PREF_SIZE);
 
-        setAlignment(Pos.CENTER);
-        setPadding(new Insets(40));
-        getChildren().add(card);
+        /* In a scroll pane, centred while it fits: with a few recent workspaces on a small
+           screen the card is taller than the space, and a view that will not shrink below its
+           card pushed the whole window's layout out of the window - the menu cut off at the
+           top, the status bar at the bottom. */
+        VBox holder = new VBox(card);
+        holder.setAlignment(Pos.CENTER);
+        holder.setPadding(new Insets(40));
+        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(holder);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(javafx.scene.control.ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.getStyleClass().add("welcome-scroll");
+        scroll.viewportBoundsProperty().addListener((o, was, now) -> holder.setMinHeight(now.getHeight()));
+        VBox.setVgrow(scroll, javafx.scene.layout.Priority.ALWAYS);
+        setMinHeight(0);
+        getChildren().add(scroll);
     }
 
     private static HBox action(ActionRow row) {
