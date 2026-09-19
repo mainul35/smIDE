@@ -327,6 +327,23 @@ public final class MavenPomSupport implements DeclarationProvider {
         return false;
     }
 
+    /** The open projects' libraries, for the Project tree's External Libraries. */
+    public MavenLibraries libraries() {
+        return new MavenLibraries(resolver, this::modules, this::pomsUnder);
+    }
+
+    /** Every pom of the project at this root, found by the same walk that finds its modules. */
+    private List<Path> pomsUnder(Path root) {
+        modules();
+        List<Path> under = new ArrayList<>();
+        for (Path pom : poms) {
+            if (pom.startsWith(root)) {
+                under.add(pom);
+            }
+        }
+        return under;
+    }
+
     /** For tests: the resolver, to check against a repository of their own. */
     PomReferences references() {
         return references;

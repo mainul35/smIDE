@@ -36,6 +36,8 @@ public final class ExtensionRegistry {
     private final List<com.smide.api.lang.Toolchain> toolchains = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final List<com.smide.api.editor.DeclarationProvider> declarationProviders =
             new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<com.smide.api.project.LibraryProvider> libraryProviders =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private final List<Consumer<ToolWindowFactory>> toolWindowListeners = new ArrayList<>();
     private final List<Consumer<Action>> actionListeners = new ArrayList<>();
@@ -107,6 +109,14 @@ public final class ExtensionRegistry {
 
     public List<com.smide.api.editor.DeclarationProvider> declarationProviders() {
         return declarationProviders;
+    }
+
+    public void addLibraryProvider(com.smide.api.project.LibraryProvider p) {
+        libraryProviders.add(p);
+    }
+
+    public List<com.smide.api.project.LibraryProvider> libraryProviders() {
+        return libraryProviders;
     }
 
     public List<com.smide.api.lang.Toolchain> toolchains() {

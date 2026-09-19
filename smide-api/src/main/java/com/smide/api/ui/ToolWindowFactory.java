@@ -21,6 +21,15 @@ public interface ToolWindowFactory {
         return null;
     }
 
+    /**
+     * Whether its button goes in the lower group of the left stripe, with the bottom tool
+     * windows', though the window itself docks where {@link #anchor} says. Bottom tool windows
+     * are there anyway; a left one can ask to be, to sit with the tools it is used alongside.
+     */
+    default boolean lowerStripe() {
+        return anchor() == ToolWindowAnchor.BOTTOM;
+    }
+
     /** Position on the stripe; lower is nearer the top or the left. */
     default int order() {
         return 100;

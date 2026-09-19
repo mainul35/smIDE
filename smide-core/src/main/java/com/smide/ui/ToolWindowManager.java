@@ -127,7 +127,7 @@ public final class ToolWindowManager implements ToolWindows {
         entries.put(factory.id(), entry);
 
         VBox stripe = switch (factory.anchor()) {
-            case LEFT -> leftStripeTop;
+            case LEFT -> factory.lowerStripe() ? leftStripeBottom : leftStripeTop;
             case BOTTOM -> leftStripeBottom;
             case RIGHT -> rightStripe;
         };

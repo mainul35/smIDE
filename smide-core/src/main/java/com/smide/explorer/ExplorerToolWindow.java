@@ -50,6 +50,9 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
     private final ContextMenu contextMenu = new ContextMenu();
     private final TreeItem<Path> hiddenRoot = new TreeItem<>();
     private final Consumer<Set<Path>> onDirectoriesChanged;
+    private final JarEntries jars;
+    /** Asked to show a file that is in no open project - a dependency's - somewhere else: the Libraries window. */
+    private java.util.function.BiPredicate<Path, Boolean> outside = (file, focus) -> false;
     private FileWatchService watcher;
     private BorderPane root;
 
@@ -59,6 +62,7 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
         this.registry = registry;
         this.languages = languages;
         this.onDirectoriesChanged = onDirectoriesChanged;
+        this.jars = new JarEntries(ide);
         tree.setRoot(hiddenRoot);
         tree.setShowRoot(false);
         tree.getStyleClass().add("file-tree");
@@ -79,7 +83,7 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
             }
             TreeItem<Path> item = tree.getSelectionModel().getSelectedItem();
             if (item instanceof PathTreeItem p && !p.isDirectory()) {
-                ide.editors().open(p.getValue());
+                open(p.getValue());
             }
         });
         tree.setOnKeyPressed(e -> {
@@ -197,7 +201,9 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
     public List<Path> selectedPaths() {
         List<Path> out = new ArrayList<>();
         for (TreeItem<Path> item : tree.getSelectionModel().getSelectedItems()) {
-            if (item != null && item.getValue() != null) {
+            // Not what is inside a jar: it is read, never renamed or deleted.
+            if (item != null && item.getValue() != null
+                    && item.getValue().getFileSystem() == java.nio.file.FileSystems.getDefault()) {
                 out.add(item.getValue());
             }
         }
@@ -210,7 +216,7 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
             if (p.isDirectory()) {
                 p.setExpanded(!p.isExpanded());
             } else {
-                ide.editors().open(p.getValue());
+                open(p.getValue());
             }
         }
     }
@@ -222,7 +228,8 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
             }
         }
         PathTreeItem item = new PathTreeItem(workspace.root(), dir -> {
-            if (watcher != null) {
+            // Only folders on disk: a jar opened in the tree cannot be watched.
+            if (watcher != null && dir.getFileSystem() == java.nio.file.FileSystems.getDefault()) {
                 watcher.watch(dir);
             }
         });
@@ -234,6 +241,28 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
         hiddenRoot.getChildren().removeIf(item -> workspace.root().equals(item.getValue()));
         if (watcher != null) {
             watcher.unwatchUnder(workspace.root());
+        }
+    }
+
+    /** Where a file in no open project is shown instead; answers whether it was. */
+    public void setOutside(java.util.function.BiPredicate<Path, Boolean> outside) {
+        this.outside = outside;
+    }
+
+    /** Opens a file of the tree - one inside a jar by taking it out first. */
+    private void open(Path path) {
+        jars.open(path);
+    }
+
+    private void select(TreeItem<Path> item, boolean focus) {
+        tree.getSelectionModel().clearSelection();
+        tree.getSelectionModel().select(item);
+        int row = tree.getRow(item);
+        if (row >= 0) {
+            tree.scrollTo(Math.max(0, row - 5));
+        }
+        if (focus) {
+            tree.requestFocus();
         }
     }
 
@@ -302,26 +331,21 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
         return current;
     }
 
-    /** Expands to the file and selects it. */
+    /**
+     * Expands to the file and selects it: in its project, or - for a dependency's pom, a file
+     * from a jar - wherever {@link #setOutside} shows such files.
+     */
     public boolean reveal(Path file, boolean focus) {
         for (TreeItem<Path> rootItem : hiddenRoot.getChildren()) {
             if (rootItem instanceof PathTreeItem p && file.startsWith(p.getValue())) {
                 PathTreeItem item = descend(p, file, true);
                 if (item != null) {
-                    tree.getSelectionModel().clearSelection();
-                    tree.getSelectionModel().select(item);
-                    int row = tree.getRow(item);
-                    if (row >= 0) {
-                        tree.scrollTo(Math.max(0, row - 5));
-                    }
-                    if (focus) {
-                        tree.requestFocus();
-                    }
+                    select(item, focus);
                     return true;
                 }
             }
         }
-        return false;
+        return outside.test(file, focus);
     }
 
     /** Opens the menu where the gesture happened, on the row it happened on. */
@@ -431,9 +455,20 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
                 setGraphic(null);
                 return;
             }
-            String name = path.getFileName() == null ? path.toString() : path.getFileName().toString();
+            String name = PathTreeItem.name(path);
             boolean isRoot = getTreeItem() != null && getTreeItem().getParent() == hiddenRoot;
-            setText(isRoot ? name : name);
+            String label = getTreeItem() instanceof PathTreeItem labelled ? labelled.label() : null;
+            setText(label != null ? label : name);
+            if (label != null) {
+                // A library: its name, and where it is kept when pointed at.
+                setTooltip(new javafx.scene.control.Tooltip(path.toString()));
+                FontIcon library = Icons.of("fth-package");
+                if (library != null) {
+                    library.getStyleClass().add("file-icon-folder");
+                }
+                setGraphic(library);
+                return;
+            }
             if (isRoot) {
                 getStyleClass().add("workspace-root");
             } else if (DIMMED.contains(name)) {
@@ -447,7 +482,9 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
                         + (dir ? " in files under " + name : " in " + name)));
             }
             FontIcon icon;
-            if (dir) {
+            if (PathTreeItem.isArchive(path)) {
+                icon = Icons.of("fth-archive");
+            } else if (dir) {
                 icon = Icons.of(getTreeItem() != null && getTreeItem().isExpanded() ? "fth-folder-minus" : "fth-folder");
                 if (icon != null) {
                     icon.getStyleClass().add("file-icon-folder");

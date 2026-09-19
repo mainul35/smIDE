@@ -19,14 +19,26 @@ import java.util.stream.Stream;
  */
 public final class PathTreeItem extends TreeItem<Path> {
 
+    /** Jars and zips opened for browsing, kept open: the paths of what is in them live in these. */
+    private static final java.util.Map<Path, java.nio.file.FileSystem> ARCHIVES = new java.util.concurrent.ConcurrentHashMap<>();
+
     private final boolean directory;
     private boolean loaded;
     private final Consumer<Path> onLoaded;
+    private final String label;
 
     public PathTreeItem(Path path, Consumer<Path> onLoaded) {
+        this(path, onLoaded, null);
+    }
+
+    /**
+     * @param label what the tree shows instead of the file name - a library's name - or null
+     */
+    public PathTreeItem(Path path, Consumer<Path> onLoaded, String label) {
         super(path);
-        this.directory = Files.isDirectory(path);
+        this.directory = Files.isDirectory(path) || isArchive(path);
         this.onLoaded = onLoaded;
+        this.label = label;
         if (directory) {
             // A placeholder so the disclosure arrow shows before the listing exists.
             super.getChildren().add(new TreeItem<>());
@@ -40,6 +52,51 @@ public final class PathTreeItem extends TreeItem<Path> {
 
     public boolean isDirectory() {
         return directory;
+    }
+
+    /** What the row says, when it is not the file name; null otherwise. */
+    public String label() {
+        return label;
+    }
+
+    /** A jar or zip on disk, which the tree opens like a folder, as IntelliJ does with a library's jar. */
+    public static boolean isArchive(Path path) {
+        if (path.getFileSystem() != java.nio.file.FileSystems.getDefault() || path.getFileName() == null) {
+            return false;
+        }
+        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        return (name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".war")) && Files.isRegularFile(path);
+    }
+
+    /** The inside of a jar, as a folder whose paths can be listed and read; null when it cannot be opened. */
+    public static Path archiveRoot(Path archive) {
+        Path key = archive.toAbsolutePath().normalize();
+        try {
+            java.nio.file.FileSystem fs = ARCHIVES.computeIfAbsent(key, k -> {
+                try {
+                    // Read only: browsing a library must never be able to change the jar in the repository.
+                    return java.nio.file.FileSystems.newFileSystem(k, java.util.Map.of("accessMode", "readOnly"));
+                } catch (IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            });
+            return fs.getRootDirectories().iterator().next();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** The jar a path inside one comes from, or null for a path on disk. */
+    public static Path archiveOf(Path path) {
+        if (path.getFileSystem() == java.nio.file.FileSystems.getDefault()) {
+            return null;
+        }
+        for (java.util.Map.Entry<Path, java.nio.file.FileSystem> e : ARCHIVES.entrySet()) {
+            if (e.getValue() == path.getFileSystem()) {
+                return e.getKey();
+            }
+        }
+        return null;
     }
 
     public boolean isLoaded() {
@@ -64,7 +121,11 @@ public final class PathTreeItem extends TreeItem<Path> {
         if (!directory) {
             return;
         }
-        List<Path> entries = list(getValue());
+        Path listed = getValue();
+        if (isArchive(listed)) {
+            listed = archiveRoot(listed);
+        }
+        List<Path> entries = listed == null ? List.of() : list(listed);
         List<TreeItem<Path>> existing = new ArrayList<>(super.getChildren());
         List<TreeItem<Path>> merged = new ArrayList<>(entries.size());
         for (Path entry : entries) {
@@ -85,6 +146,12 @@ public final class PathTreeItem extends TreeItem<Path> {
         }
     }
 
+    /** A path's last part, without the slash a folder inside a jar ends in. */
+    static String name(Path p) {
+        String name = p.getFileName() == null ? p.toString() : p.getFileName().toString();
+        return name.endsWith("/") && name.length() > 1 ? name.substring(0, name.length() - 1) : name;
+    }
+
     /** Refreshes this directory and every loaded directory beneath it. */
     public void refreshDeep() {
         if (!directory || !loaded) {
@@ -102,7 +169,7 @@ public final class PathTreeItem extends TreeItem<Path> {
         try (Stream<Path> stream = Files.list(dir)) {
             return stream.sorted(Comparator
                             .comparing((Path p) -> !Files.isDirectory(p))
-                            .thenComparing(p -> p.getFileName().toString().toLowerCase(Locale.ROOT)))
+                            .thenComparing(p -> name(p).toLowerCase(Locale.ROOT)))
                     .toList();
         } catch (IOException | RuntimeException e) {
             return List.of();

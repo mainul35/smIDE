@@ -198,6 +198,21 @@ public final class IdeImpl implements Ide {
             }
         });
         registry.addToolWindow(explorer);
+        // The active project's libraries, in a window of their own; a dependency's file is found there.
+        com.smide.explorer.LibrariesToolWindow libraries = new com.smide.explorer.LibrariesToolWindow(this, registry, languages);
+        registry.addToolWindow(libraries);
+        explorer.setOutside((file, focus) -> {
+            String id = com.smide.explorer.LibrariesToolWindow.ID;
+            if (!focus) {
+                return toolWindows.isVisible(id) && libraries.reveal(file, false);
+            }
+            if (!libraries.reveal(file, false)) {
+                return false;
+            }
+            toolWindows.show(id);
+            libraries.tree().requestFocus();
+            return true;
+        });
         registry.addToolWindow(new RunToolWindow(execution));
         registry.addToolWindow(new ProblemsToolWindow(this, problems));
         findInPath = new FindInPathToolWindow(this, languages, fileIndex);

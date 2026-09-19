@@ -312,7 +312,16 @@ public final class EditorManager implements Editors {
      * there is a project to stay in.
      */
     static boolean staysInCurrentProject(Path target, int line, boolean hasActiveProject) {
-        return hasActiveProject && (target.startsWith(LIBRARY_SOURCES) || line >= 0);
+        /* A file in a package cache is never a project of its own, however it is opened: the
+           folder above ~/.m2/repository that has a project marker is usually the home folder,
+           and opening a dependency's pom from the tree or a search imported all of it. It is
+           shown under the project's External Libraries instead. */
+        return hasActiveProject && (target.startsWith(LIBRARY_SOURCES) || line >= 0 || inPackageCache(target));
+    }
+
+    static boolean inPackageCache(Path file) {
+        String text = file.toAbsolutePath().normalize().toString().replace('\\', '/').toLowerCase(java.util.Locale.ROOT);
+        return DEPENDENCY_FOLDERS.stream().anyMatch(text::contains);
     }
 
     /** Folders that hold other people's code, downloaded for a build: never the reader's to edit. */

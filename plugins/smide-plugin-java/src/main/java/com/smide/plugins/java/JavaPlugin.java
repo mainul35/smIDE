@@ -53,6 +53,8 @@ public final class JavaPlugin implements Plugin {
         com.smide.plugins.java.maven.MavenPomSupport poms = new com.smide.plugins.java.maven.MavenPomSupport(ide);
         poms.install();
         context.registerDeclarationProvider(poms);
+        // Its dependencies, jar and pom, under External Libraries in the Project tree.
+        context.registerLibraryProvider(poms.libraries());
 
         /* Spring Boot first, and Tomcat before the plain application: detection order is
            the order the run chooser offers them in, and for a web application the server

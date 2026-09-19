@@ -56,4 +56,7 @@ public interface PluginContext {
      * server - a Maven artifact named in a pom, say, which the XML server cannot follow.
      */
     void registerDeclarationProvider(com.smide.api.editor.DeclarationProvider provider);
+
+    /** Adds the libraries of the projects this plugin understands to the Project tree's External Libraries. */
+    void registerLibraryProvider(com.smide.api.project.LibraryProvider provider);
 }
