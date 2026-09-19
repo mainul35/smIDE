@@ -20,6 +20,8 @@ public final class GoToolchain implements Toolchain {
 
     public static final String HOME_SETTING = "go.home";
     public static final String DOWNLOAD = "https://go.dev/dl/";
+    /** Go's releases, newest first, each file with its size and checksum. */
+    static final String RELEASES = "https://go.dev/dl/?mode=json";
 
     private static final boolean WINDOWS =
             System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
@@ -123,6 +125,45 @@ public final class GoToolchain implements Toolchain {
     @Override
     public boolean accepts(Path home) {
         return binaryIn(home) != null;
+    }
+
+    @Override
+    public boolean runsFile(Path file) {
+        return file.getFileName() != null && file.getFileName().toString().endsWith(".go");
+    }
+
+    @Override
+    public Optional<Download> latestDownload(Ide ide) throws IOException {
+        return pick(ide.downloads().fetchText(RELEASES), com.smide.api.util.Machine.os(),
+                com.smide.api.util.Machine.arch());
+    }
+
+    /**
+     * The newest stable release's archive for this machine, from go.dev's own list - which
+     * carries a checksum for every file, so what is downloaded can be checked against it.
+     * An archive, not an installer: unpacked, it is a complete Go that touches nothing else.
+     */
+    static Optional<Download> pick(String json, String os, String arch) {
+        com.google.gson.JsonArray releases = com.google.gson.JsonParser.parseString(json).getAsJsonArray();
+        for (com.google.gson.JsonElement r : releases) {
+            com.google.gson.JsonObject release = r.getAsJsonObject();
+            if (!release.has("stable") || !release.get("stable").getAsBoolean()) {
+                continue;
+            }
+            for (com.google.gson.JsonElement f : release.getAsJsonArray("files")) {
+                com.google.gson.JsonObject file = f.getAsJsonObject();
+                if (os.equals(text(file, "os")) && arch.equals(text(file, "arch")) && "archive".equals(text(file, "kind"))) {
+                    return Optional.of(new Download(text(release, "version").replaceFirst("^go", ""),
+                            DOWNLOAD + text(file, "filename"), text(file, "sha256"),
+                            file.has("size") ? file.get("size").getAsLong() : -1, "go.dev"));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static String text(com.google.gson.JsonObject o, String key) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : "";
     }
 
     /** The go command under a folder, whether that folder is the Go root or its bin. */

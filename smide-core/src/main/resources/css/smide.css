@@ -882,6 +882,44 @@
     -fx-padding: 3 8 3 8;
 }
 
+/* ---------------------------------------------- editor banner: what is missing */
+
+.editor-banner {
+    -fx-background-color: -smide-accent-soft;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 5 8 5 12;
+    -fx-spacing: 8;
+    -fx-alignment: center-left;
+}
+
+.editor-banner .label {
+    -fx-text-fill: -smide-text;
+    -fx-font-size: 12px;
+}
+
+.editor-banner .hyperlink {
+    -fx-text-fill: -smide-accent;
+    -fx-font-size: 12px;
+    -fx-padding: 0 2 0 2;
+    -fx-border-width: 0;
+}
+
+.editor-banner .editor-banner-close {
+    -fx-background-color: transparent;
+    -fx-text-fill: -smide-text-muted;
+    -fx-padding: 0 4 0 4;
+    -fx-cursor: hand;
+}
+
+.toolchain-download-progress {
+    -fx-background-color: -smide-surface;
+}
+
+.toolchain-download-title {
+    -fx-font-weight: bold;
+}
+
 /* -------------------------------------------------------------- scrollbars */
 
 .scroll-bar {

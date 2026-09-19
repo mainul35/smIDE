@@ -61,6 +61,9 @@ public final class DownloadsImpl implements Downloads {
             try (InputStream in = response.body(); OutputStream out = Files.newOutputStream(partial)) {
                 int n;
                 while ((n = in.read(buf)) > 0) {
+                    if (progress != null && progress.cancelled()) {
+                        throw new java.io.InterruptedIOException("Cancelled");
+                    }
                     out.write(buf, 0, n);
                     done += n;
                     if (progress != null) {
@@ -106,6 +109,9 @@ public final class DownloadsImpl implements Downloads {
             try (ZipArchiveInputStream in = new ZipArchiveInputStream(Files.newInputStream(archive))) {
                 ZipArchiveEntry entry;
                 while ((entry = in.getNextEntry()) != null) {
+                    if (progress != null && progress.cancelled()) {
+                        throw new java.io.InterruptedIOException("Cancelled");
+                    }
                     writeEntry(in, entry, targetDir, progress, false);
                 }
             }
@@ -114,12 +120,60 @@ public final class DownloadsImpl implements Downloads {
                     new GzipCompressorInputStream(Files.newInputStream(archive)))) {
                 TarArchiveEntry entry;
                 while ((entry = in.getNextEntry()) != null) {
+                    if (progress != null && progress.cancelled()) {
+                        throw new java.io.InterruptedIOException("Cancelled");
+                    }
+                    if (entry.isSymbolicLink() || entry.isLink()) {
+                        link(entry, targetDir);
+                        continue;
+                    }
                     boolean executable = (entry.getMode() & 0111) != 0;
                     writeEntry(in, entry, targetDir, progress, executable);
                 }
             }
         } else {
             throw new IOException("Unknown archive type: " + archive.getFileName());
+        }
+    }
+
+    /**
+     * A link in a tar archive, made as a link.
+     *
+     * <p>Written out as a file it would be an empty one where a program should be - a
+     * portable Python's {@code bin/python3} is a link to {@code python3.13} - so it is
+     * created as what it is. Symbolic links as symbolic links, hard links as a copy of the file
+     * already unpacked. Neither may point outside the folder being unpacked into: a link out
+     * of it is how an archive writes where it was never asked to.
+     */
+    private static void link(TarArchiveEntry entry, Path targetDir) throws IOException {
+        Path out = targetDir.resolve(entry.getName()).normalize();
+        if (!out.startsWith(targetDir)) {
+            throw new IOException("Archive entry escapes target directory: " + entry.getName());
+        }
+        Files.createDirectories(out.getParent());
+        if (entry.isSymbolicLink()) {
+            Path target = Path.of(entry.getLinkName());
+            if (target.isAbsolute() || !out.getParent().resolve(target).normalize().startsWith(targetDir)) {
+                throw new IOException("Archive link points outside the target directory: " + entry.getName());
+            }
+            Files.deleteIfExists(out);
+            try {
+                Files.createSymbolicLink(out, target);
+            } catch (UnsupportedOperationException | IOException e) {
+                // Windows without the right to make links: a copy does the same job, when the target is there already.
+                Path resolved = out.getParent().resolve(target).normalize();
+                if (Files.isRegularFile(resolved)) {
+                    Files.copy(resolved, out, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        } else {
+            Path source = targetDir.resolve(entry.getLinkName()).normalize();
+            if (!source.startsWith(targetDir)) {
+                throw new IOException("Archive link points outside the target directory: " + entry.getName());
+            }
+            if (Files.isRegularFile(source)) {
+                Files.copy(source, out, StandardCopyOption.REPLACE_EXISTING);
+            }
         }
     }
 

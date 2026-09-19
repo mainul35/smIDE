@@ -5,7 +5,6 @@ import com.smide.api.lang.Toolchain;
 import com.smide.api.ui.Notifications;
 import com.smide.api.workspace.Workspace;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -23,11 +22,13 @@ public final class ToolchainCheck {
 
     private final Ide ide;
     private final ExtensionRegistry registry;
+    private final ToolchainInstaller installer;
     private final Set<String> asked = ConcurrentHashMap.newKeySet();
 
-    public ToolchainCheck(Ide ide, ExtensionRegistry registry) {
+    public ToolchainCheck(Ide ide, ExtensionRegistry registry, ToolchainInstaller installer) {
         this.ide = ide;
         this.registry = registry;
+        this.installer = installer;
     }
 
     /** Looks at a project that has just opened. */
@@ -55,12 +56,13 @@ public final class ToolchainCheck {
 
     private void ask(Toolchain toolchain, Workspace workspace) {
         List<Notifications.NotificationAction> actions = new ArrayList<>();
-        if (toolchain.downloadUrl() != null) {
-            actions.add(new Notifications.NotificationAction("Download",
-                    () -> ide.window().browse(toolchain.downloadUrl())));
+        // Downloaded and set up by the IDE where it can be, the page in a browser where it cannot.
+        if (ToolchainInstaller.canInstall(toolchain) || toolchain.downloadUrl() != null) {
+            actions.add(new Notifications.NotificationAction("Download " + ToolchainInstaller.shortName(toolchain) + "...",
+                    () -> installer.offer(toolchain)));
         }
         if (toolchain.homeSetting() != null) {
-            actions.add(new Notifications.NotificationAction("Set location...", () -> chooseHome(toolchain)));
+            actions.add(new Notifications.NotificationAction("Set location...", () -> installer.chooseHome(toolchain)));
         }
         actions.add(new Notifications.NotificationAction("Not now", () -> {
         }));
@@ -68,19 +70,5 @@ public final class ToolchainCheck {
                 workspace.name() + " needs the " + toolchain.displayName() + ", which was not found on this machine. "
                         + toolchain.purpose(),
                 actions.toArray(new Notifications.NotificationAction[0]));
-    }
-
-    /** Lets someone point at an installation the search missed, and remembers it. */
-    private void chooseHome(Toolchain toolchain) {
-        ide.window().chooseDirectory(toolchain.displayName() + " location", Path.of(System.getProperty("user.home", ".")))
-                .ifPresent(home -> {
-                    if (!toolchain.accepts(home)) {
-                        ide.notifications().warn(toolchain.displayName(),
-                                home + " does not look like a " + toolchain.displayName() + " installation.");
-                        return;
-                    }
-                    ide.settings().set(toolchain.homeSetting(), home.toString());
-                    ide.notifications().info(toolchain.displayName(), "Using " + home + ".");
-                });
     }
 }

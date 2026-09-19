@@ -60,6 +60,8 @@ public final class CodeEditor implements TextEditor {
     private final VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(area);
     private final BorderPane root = new BorderPane();
     private final FindBar findBar;
+    /** A strip across the top that says what is missing - "No Python found" - with what to do about it. */
+    private final javafx.scene.layout.StackPane banner = new javafx.scene.layout.StackPane();
     private final Workspace workspace;
     private final LanguageSupport language;
     /** Kept, so a change to the font applies to this editor and not only to the next one. */
@@ -106,7 +108,9 @@ public final class CodeEditor implements TextEditor {
         root.getStyleClass().add("code-editor");
         root.setCenter(scroll);
         findBar = new FindBar(this);
-        root.setTop(findBar);
+        root.setTop(new javafx.scene.layout.VBox(banner, findBar));
+        banner.setVisible(false);
+        banner.setManaged(false);
         findBar.setVisible(false);
         findBar.setManaged(false);
 
@@ -654,6 +658,24 @@ public final class CodeEditor implements TextEditor {
 
     public void showFind(boolean withReplace) {
         findBar.show(withReplace, area.getSelectedText());
+    }
+
+    /** Shows a strip across the top of the editor, above the find bar, replacing any shown before. */
+    public void setBanner(Node content) {
+        banner.getChildren().setAll(content);
+        banner.setVisible(true);
+        banner.setManaged(true);
+    }
+
+    public void clearBanner() {
+        banner.getChildren().clear();
+        banner.setVisible(false);
+        banner.setManaged(false);
+    }
+
+    /** What the top strip shows, or null. */
+    public Node banner() {
+        return banner.getChildren().isEmpty() ? null : banner.getChildren().get(0);
     }
 
     public FindBar findBar() {

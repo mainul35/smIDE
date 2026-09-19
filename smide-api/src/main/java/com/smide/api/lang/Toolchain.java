@@ -48,4 +48,35 @@ public interface Toolchain {
     default boolean accepts(Path home) {
         return true;
     }
+
+    /**
+     * Whether this is what runs a file of this kind - a .go file, a .py file - so that an
+     * editor opened on one can say, across its top, that it is missing.
+     */
+    default boolean runsFile(Path file) {
+        return false;
+    }
+
+    /**
+     * The newest version the IDE can download and unpack by itself for this machine, the way
+     * IntelliJ offers "Download Python...", or empty when this one has to be installed by
+     * hand. Only a portable archive qualifies - one that works where it is unpacked, needs no
+     * installer and touches nothing else on the machine. Called off the UI thread: finding the
+     * newest version means asking whoever publishes it.
+     */
+    default Optional<Download> latestDownload(Ide ide) throws java.io.IOException {
+        return Optional.empty();
+    }
+
+    /**
+     * An archive of one version, for this operating system and processor.
+     *
+     * @param version as a person reads it: {@code 1.25.1}
+     * @param url     the archive, a {@code .zip} or {@code .tar.gz}
+     * @param sha256  its checksum as its publisher gives it, or null where none is published
+     * @param size    in bytes, or -1 when not known before downloading
+     * @param source  who it comes from, as the question should name them: {@code go.dev}
+     */
+    record Download(String version, String url, String sha256, long size, String source) {
+    }
 }

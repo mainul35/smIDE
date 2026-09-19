@@ -63,5 +63,10 @@ public interface LanguageServerLauncher {
 
     interface ProgressReporter {
         void progress(String message, double fraction);
+
+        /** Whether whoever is waiting has given up; a long download checks between chunks. */
+        default boolean cancelled() {
+            return false;
+        }
     }
 }

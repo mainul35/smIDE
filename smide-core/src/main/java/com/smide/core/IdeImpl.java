@@ -174,7 +174,13 @@ public final class IdeImpl implements Ide {
         this.sessionStore = new SessionStore(homeDir.resolve("session.json"));
         workspaces.setStatusReporter(statusBar::message);
         // A project opened without the compiler or runtime its language needs is told so, once.
-        workspaces.addOpenedListener(new ToolchainCheck(this, registry)::check);
+        /* An editor on a file its language has nothing to run says so across its top, and
+           either way offers to download it - asking first - as IntelliJ does. */
+        ToolchainBanners banners = new ToolchainBanners(this, registry);
+        ToolchainInstaller installer = new ToolchainInstaller(this, t -> banners.refresh());
+        banners.setInstaller(installer);
+        this.editors.addOpenedListener(banners::opened);
+        workspaces.addOpenedListener(new ToolchainCheck(this, registry, installer)::check);
     }
 
     // ------------------------------------------------------------------ start
