@@ -38,4 +38,23 @@ public interface VersionControl {
      * staged, a file written outside the IDE.
      */
     void addChangeListener(Runnable listener);
+
+    /** Whether one change in a file can be committed on its own, leaving the rest uncommitted. */
+    default boolean canCommit(Path file) {
+        return false;
+    }
+
+    /**
+     * Commits this file as {@code content}, and nothing else.
+     *
+     * <p>What "commit this change" means: {@code content} is the last commit's version of the
+     * file with one change applied, so the commit contains that change and no other - not the
+     * file's other changes, not other files. The working tree is left exactly as it is, which is
+     * the point: the rest of the work carries on uncommitted.
+     *
+     * @throws RuntimeException when the commit cannot be made, with a message worth showing
+     */
+    default void commitContent(Path file, String content, String message) {
+        throw new UnsupportedOperationException("This version control cannot commit one change");
+    }
 }

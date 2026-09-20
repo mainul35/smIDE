@@ -105,6 +105,28 @@ public final class LineChanges {
         return List.copyOf(hunks);
     }
 
+    /**
+     * The committed text with one change applied, and nothing else.
+     *
+     * <p>What committing a single change commits: everything as the last commit has it, except
+     * the lines this change replaced, which become the lines that replaced them.
+     */
+    public static String apply(String committed, String current, Hunk hunk) {
+        List<String> was = new ArrayList<>(lines(committed));
+        List<String> now = lines(current);
+        int from = Math.min(hunk.baseStart(), was.size());
+        int to = Math.min(hunk.baseEnd(), was.size());
+        List<String> replacement = hunk.start() >= hunk.end() ? List.of()
+                : now.subList(Math.min(hunk.start(), now.size()), Math.min(hunk.end(), now.size()));
+        List<String> out = new ArrayList<>(was.subList(0, from));
+        out.addAll(replacement);
+        out.addAll(was.subList(to, was.size()));
+        // A file that ended in a newline goes on ending in one.
+        String joined = String.join("\n", out);
+        return committed.endsWith("\n") || !committed.isEmpty() && out.size() > was.size()
+                ? joined + "\n" : joined;
+    }
+
     /** Splits into lines, keeping every one - including the empty last line of a file that ends in a newline. */
     private static List<String> lines(String text) {
         List<String> out = new ArrayList<>();

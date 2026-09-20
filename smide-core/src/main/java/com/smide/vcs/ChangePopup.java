@@ -2,10 +2,13 @@ package com.smide.vcs;
 
 import com.smide.ui.Icons;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Separator;
+import javafx.scene.control.TextField;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
@@ -20,18 +23,25 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * What a changed line looked like when it was last committed, shown where it changed.
+ * What a changed line was when it was last committed, shown where it changed.
  *
- * <p>Clicking the strip beside the code opens this, as it does in IntelliJ: the lines the commit
- * has, in the editor's own font, with what can be done about them - put them back, copy them, or
- * step to the change before or after this one. A line that was only added has nothing to show, so
- * it says so rather than opening an empty box.
+ * <p>Clicking the strip beside the code opens this, as it does in IntelliJ: a row of things to do
+ * with the change, a field for committing that one change on its own, and underneath, the lines
+ * the last commit has, drawn as removed. A stretch that is only new has nothing to show below the
+ * toolbar, so it says so rather than opening an empty box.
  */
 public final class ChangePopup {
 
+    /** What the popup can do, given by whoever opens it. */
+    public record Actions(Runnable rollback,
+                          Consumer<Integer> step,
+                          Runnable showDiff,
+                          Consumer<String> commit,
+                          boolean canCommit) {
+    }
+
     private Popup popup;
 
-    /** Closes whatever is open, if anything. */
     public void hide() {
         if (popup != null) {
             popup.hide();
@@ -52,23 +62,26 @@ public final class ChangePopup {
      * @param hunk       the change under the pointer
      * @param committed  the whole file as it was committed
      * @param at         where on the screen to put it
-     * @param rollback   puts the committed lines back
-     * @param step       moves to the previous (-1) or next (1) change
      */
     public void show(Window owner, String stylesheet, boolean dark,
-                     LineChanges.Hunk hunk, String committed, double[] at,
-                     Runnable rollback, Consumer<Integer> step) {
+                     LineChanges.Hunk hunk, String committed, double[] at, Actions actions) {
         hide();
         List<String> lines = hunk.committedLines(committed);
-        VBox panel = new VBox(6);
+        VBox panel = new VBox(4);
         panel.getStyleClass().add("change-popup");
         if (dark) {
             panel.getStyleClass().add("dark-theme");
         }
-        panel.setPadding(new Insets(8));
-        panel.getChildren().add(toolbar(hunk, lines, rollback, step));
-        panel.getChildren().add(body(hunk, lines));
-        panel.setMaxWidth(760);
+        panel.setPadding(new Insets(6));
+        panel.getChildren().add(toolbar(hunk, lines, actions));
+        if (lines.isEmpty()) {
+            Label none = new Label("These lines are new - the last commit has nothing here.");
+            none.getStyleClass().add("change-popup-empty");
+            panel.getChildren().add(none);
+        } else {
+            panel.getChildren().add(body(lines));
+        }
+        panel.setMaxWidth(820);
 
         Popup showing = new Popup();
         showing.setAutoHide(true);
@@ -84,12 +97,22 @@ public final class ChangePopup {
         popup = showing;
     }
 
-    private HBox toolbar(LineChanges.Hunk hunk, List<String> lines, Runnable rollback, Consumer<Integer> step) {
-        Button previous = button("fth-chevron-up", "Previous change", () -> step.accept(-1));
-        Button next = button("fth-chevron-down", "Next change", () -> step.accept(1));
+    /**
+     * The row along the top: what can be done with this change, then the field that commits it.
+     *
+     * <p>The same order IntelliJ uses, because it is the order they are reached for: step through
+     * the changes, put this one back, see it beside the commit, copy what was there.
+     */
+    private HBox toolbar(LineChanges.Hunk hunk, List<String> lines, Actions actions) {
+        Button previous = button("fth-chevron-up", "Previous change", () -> actions.step().accept(-1));
+        Button next = button("fth-chevron-down", "Next change", () -> actions.step().accept(1));
         Button revert = button("fth-rotate-ccw", "Put the committed lines back", () -> {
-            rollback.run();
+            actions.rollback().run();
             hide();
+        });
+        Button diff = button("fth-columns", "Compare this file with the commit", () -> {
+            hide();
+            actions.showDiff().run();
         });
         Button copy = button("fth-copy", "Copy the committed lines", () -> {
             ClipboardContent content = new ClipboardContent();
@@ -98,13 +121,34 @@ public final class ChangePopup {
             hide();
         });
         copy.setDisable(lines.isEmpty());
+
+        TextField message = new TextField();
+        message.getStyleClass().add("change-popup-message");
+        message.setPromptText(actions.canCommit() ? "Commit this change" : "Not in a repository");
+        message.setPrefColumnCount(24);
+        message.setDisable(!actions.canCommit());
+        HBox.setHgrow(message, Priority.ALWAYS);
+        Button commit = button("fth-check", "Commit this change on its own", () -> commit(message, actions));
+        commit.setDisable(!actions.canCommit());
+        message.setOnAction(e -> commit(message, actions));
+
         Label what = new Label(describe(hunk));
         what.getStyleClass().add("change-popup-title");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox bar = new HBox(2, previous, next, revert, copy, spacer, what);
+        HBox bar = new HBox(2, previous, next, revert, diff, copy,
+                new Separator(Orientation.VERTICAL), message, commit, what);
         bar.setAlignment(Pos.CENTER_LEFT);
+        bar.getStyleClass().add("change-popup-toolbar");
         return bar;
+    }
+
+    private void commit(TextField message, ChangePopup.Actions actions) {
+        String text = message.getText() == null ? "" : message.getText().strip();
+        if (text.isEmpty()) {
+            message.requestFocus();
+            return;
+        }
+        hide();
+        actions.commit().accept(text);
     }
 
     private static String describe(LineChanges.Hunk hunk) {
@@ -119,22 +163,21 @@ public final class ChangePopup {
         };
     }
 
-    /** The committed lines themselves, or a word about why there are none. */
-    private static Region body(LineChanges.Hunk hunk, List<String> lines) {
-        if (lines.isEmpty()) {
-            Label none = new Label(hunk.kind() == LineChanges.Kind.ADDED
-                    ? "These lines are new - the last commit has nothing here."
-                    : "The last commit has nothing here.");
-            none.getStyleClass().add("change-popup-empty");
-            return new VBox(none);
+    /** The committed lines, each drawn as what it is: something this file no longer has. */
+    private static Region body(List<String> lines) {
+        VBox box = new VBox();
+        box.getStyleClass().add("change-popup-lines");
+        for (String line : lines) {
+            Label text = new Label(line.isEmpty() ? " " : line);
+            text.getStyleClass().add("change-popup-line");
+            text.setMaxWidth(Double.MAX_VALUE);
+            box.getChildren().add(text);
         }
-        Label text = new Label(String.join("\n", lines));
-        text.getStyleClass().add("change-popup-text");
-        ScrollPane scroll = new ScrollPane(text);
+        ScrollPane scroll = new ScrollPane(box);
         scroll.getStyleClass().add("change-popup-scroll");
         scroll.setFitToWidth(true);
-        scroll.setPrefViewportHeight(Math.min(lines.size(), 12) * 18.0 + 8);
-        scroll.setMaxHeight(260);
+        scroll.setPrefViewportHeight(Math.min(lines.size(), 12) * 19.0 + 6);
+        scroll.setMaxHeight(280);
         return scroll;
     }
 
@@ -143,5 +186,4 @@ public final class ChangePopup {
         button.getStyleClass().add("change-popup-button");
         return button;
     }
-
 }

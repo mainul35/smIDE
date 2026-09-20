@@ -199,8 +199,13 @@ public final class VcsService {
             return;
         }
         String committedText = NONE.equals(base) ? "" : base;
-        popup.show(ide.window().stage(), ide.theme().stylesheet(), ide.theme().isDark(), hunk, committedText,
-                at, () -> rollback(editor, hunk, committedText), step -> step(editor, hunk, step, at));
+        popup.show(ide.window().stage(), ide.theme().stylesheet(), ide.theme().isDark(), hunk, committedText, at,
+                new ChangePopup.Actions(
+                        () -> rollback(editor, hunk, committedText),
+                        step -> step(editor, hunk, step, at),
+                        () -> showDiff(editor),
+                        message -> commit(editor, hunk, committedText, message),
+                        canCommit(editor.path())));
     }
 
     /**
@@ -221,6 +226,60 @@ public final class VcsService {
         }
         editor.replace(from, Math.max(to, from), replacement);
         editor.moveCaret(Math.min(hunk.start(), Math.max(editor.lineCount() - 1, 0)), 0);
+    }
+
+    private boolean canCommit(Path file) {
+        for (VersionControl vcs : registry.versionControls()) {
+            if (vcs.handles(file) && vcs.canCommit(file)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The file beside its committed version, in whatever window the version control plugin has. */
+    private void showDiff(CodeEditor editor) {
+        ide.editors().open(editor.path());
+        // The version control plugin's own window; it is not there when no plugin registered one.
+        ide.actions().invoke("vcs.compare");
+    }
+
+    /**
+     * Commits this one change, and nothing else.
+     *
+     * <p>The file is saved first, as IntelliJ saves it: what is committed is a version of the
+     * file, and a version nobody could open afterwards - the commit having one line the disk does
+     * not - would be a strange thing to leave behind. What is committed is the last commit's text
+     * with this change applied, so the file's other changes stay where they are.
+     */
+    private void commit(CodeEditor editor, LineChanges.Hunk hunk, String committedText, String message) {
+        Path file = editor.path();
+        try {
+            if (editor.isModified()) {
+                editor.save();
+            }
+        } catch (RuntimeException e) {
+            ide.notifications().error("Could not save " + file.getFileName(), String.valueOf(e.getMessage()));
+            return;
+        }
+        String content = LineChanges.apply(committedText, editor.text(), hunk);
+        ide.window().runInBackground(() -> {
+            try {
+                for (VersionControl vcs : registry.versionControls()) {
+                    if (vcs.handles(file) && vcs.canCommit(file)) {
+                        vcs.commitContent(file, content, message);
+                        ide.window().runLater(() -> {
+                            ide.statusBar().message("Committed one change in " + file.getFileName());
+                            refresh();
+                        });
+                        return;
+                    }
+                }
+            } catch (RuntimeException e) {
+                ide.window().runLater(() -> ide.notifications().error("Could not commit",
+                        e.getMessage() == null ? String.valueOf(e) : e.getMessage()));
+            }
+        });
     }
 
     /** The change before or after this one: the caret goes there, and it opens in turn. */

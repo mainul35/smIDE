@@ -31,6 +31,7 @@
     -smide-vcs-added: #2F855A;
     -smide-vcs-removed: #8a94a0;
     -smide-vcs-ignored: #8a94a0;
+    -smide-vcs-removed-paper: #fbe9e7;
 
     /* Editor tokens, light. */
     -tok-keyword: #0b4f8a;
@@ -88,6 +89,7 @@
     -smide-vcs-added: #6FCF97;
     -smide-vcs-removed: #7a8794;
     -smide-vcs-ignored: #7a8794;
+    -smide-vcs-removed-paper: #3a2222;
 
     -tok-keyword: #6fb3e0;
     -tok-type: #7fd4e8;
@@ -624,17 +626,21 @@
     -fx-background-color: transparent;
 }
 
+/* Three pixels of colour against the code; the rest of the strip is room for the pointer. */
 .change-bar.change-added {
     -fx-background-color: -smide-vcs-added;
+    -fx-background-insets: 0 0 0 5;
 }
 
 .change-bar.change-changed {
     -fx-background-color: -smide-vcs-modified;
+    -fx-background-insets: 0 0 0 5;
 }
 
 /* Removed lines have no line of their own; a short mark sits where they were. */
 .change-bar.change-removed {
     -fx-background-color: linear-gradient(to bottom, -smide-vcs-removed 0%, -smide-vcs-removed 40%, transparent 40%);
+    -fx-background-insets: 0 0 0 5;
 }
 
 /* What a changed line was when it was last committed, opened from the strip. */
@@ -657,10 +663,28 @@
     -fx-font-size: 11.5px;
 }
 
-.change-popup-text {
+/* The committed lines, drawn as what they are: what this file no longer has. */
+.change-popup-line {
     -fx-font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", monospace;
     -fx-font-size: 12.5px;
     -fx-text-fill: -smide-text;
+    -fx-background-color: -smide-vcs-removed-paper;
+    -fx-padding: 1 6 1 6;
+}
+
+.change-popup-lines {
+    -fx-background-color: -smide-paper;
+}
+
+.change-popup-toolbar {
+    -fx-padding: 0 0 2 0;
+}
+
+.change-popup-message {
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-font-size: 12px;
+    -fx-padding: 3 6 3 6;
 }
 
 .change-popup-scroll,

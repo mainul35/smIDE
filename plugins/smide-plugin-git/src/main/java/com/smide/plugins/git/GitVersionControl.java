@@ -2,11 +2,23 @@ package com.smide.plugins.git;
 
 import com.smide.api.vcs.FileStatus;
 import com.smide.api.vcs.VersionControl;
+import org.eclipse.jgit.dircache.DirCache;
+import org.eclipse.jgit.dircache.DirCacheBuilder;
+import org.eclipse.jgit.dircache.DirCacheEditor;
+import org.eclipse.jgit.dircache.DirCacheEntry;
+import org.eclipse.jgit.lib.CommitBuilder;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
+import org.eclipse.jgit.lib.ObjectReader;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -99,6 +111,106 @@ public final class GitVersionControl implements VersionControl {
     @Override
     public void addChangeListener(Runnable listener) {
         listeners.add(listener);
+    }
+
+    @Override
+    public boolean canCommit(Path file) {
+        return repositoryOf(file).isPresent();
+    }
+
+    /**
+     * Commits one file's content, and nothing else.
+     *
+     * <p>Built rather than staged: the tree of the new commit is the last commit's tree with this
+     * one path replaced, so whatever else is in the index - other files somebody staged, other
+     * changes in this one - is not swept into it. The index is then pointed at the same content
+     * for this path, which is what leaves the rest of the file's changes showing as unstaged
+     * work in progress, exactly as they were.
+     */
+    @Override
+    public void commitContent(Path file, String content, String message) {
+        Path root = repositoryOf(file).orElseThrow(() -> new GitException("Not in a repository: " + file));
+        String relative = git.relativize(root, file)
+                .orElseThrow(() -> new GitException("Not in this repository: " + file));
+        if (message == null || message.isBlank()) {
+            throw new GitException("A commit needs a message");
+        }
+        Repository repository = git.repository(root);
+        try (ObjectInserter inserter = repository.newObjectInserter();
+             ObjectReader reader = repository.newObjectReader()) {
+            ObjectId blob = inserter.insert(Constants.OBJ_BLOB, content.getBytes(StandardCharsets.UTF_8));
+            ObjectId head = repository.resolve(Constants.HEAD);
+            ObjectId tree = treeWith(repository, reader, inserter, head, relative, blob);
+
+            CommitBuilder commit = new CommitBuilder();
+            commit.setTreeId(tree);
+            if (head != null) {
+                commit.setParentId(head);
+            }
+            PersonIdent who = new PersonIdent(repository);
+            commit.setAuthor(who);
+            commit.setCommitter(who);
+            commit.setMessage(message.endsWith("\n") ? message : message + "\n");
+            ObjectId committed = inserter.insert(commit);
+            inserter.flush();
+
+            RefUpdate update = repository.updateRef(Constants.HEAD);
+            update.setNewObjectId(committed);
+            update.setExpectedOldObjectId(head == null ? ObjectId.zeroId() : head);
+            update.setRefLogMessage("commit: " + message.strip(), false);
+            RefUpdate.Result result = update.update();
+            if (result != RefUpdate.Result.NEW && result != RefUpdate.Result.FAST_FORWARD
+                    && result != RefUpdate.Result.FORCED) {
+                throw new GitException("Could not commit: " + result);
+            }
+            stage(repository, relative, blob);
+        } catch (IOException | RuntimeException e) {
+            throw e instanceof GitException g ? g : new GitException("Could not commit: " + e.getMessage());
+        }
+        changed();
+    }
+
+    /** The last commit's tree, with one path's content replaced. */
+    private static ObjectId treeWith(Repository repository, ObjectReader reader, ObjectInserter inserter,
+                                     ObjectId head, String path, ObjectId blob) throws IOException {
+        DirCache inCore = DirCache.newInCore();
+        DirCacheBuilder builder = inCore.builder();
+        if (head != null) {
+            try (RevWalk walk = new RevWalk(repository)) {
+                builder.addTree(new byte[0], DirCacheEntry.STAGE_0, reader, walk.parseTree(head));
+            }
+        }
+        builder.finish();
+        DirCacheEditor editor = inCore.editor();
+        editor.add(new DirCacheEditor.PathEdit(path) {
+            @Override
+            public void apply(DirCacheEntry entry) {
+                entry.setFileMode(FileMode.REGULAR_FILE);
+                entry.setObjectId(blob);
+            }
+        });
+        editor.finish();
+        return inCore.writeTree(inserter);
+    }
+
+    /** Points the index at what was just committed for this path, leaving every other entry alone. */
+    private static void stage(Repository repository, String path, ObjectId blob) throws IOException {
+        DirCache index = repository.lockDirCache();
+        try {
+            DirCacheEditor editor = index.editor();
+            editor.add(new DirCacheEditor.PathEdit(path) {
+                @Override
+                public void apply(DirCacheEntry entry) {
+                    entry.setFileMode(FileMode.REGULAR_FILE);
+                    entry.setObjectId(blob);
+                }
+            });
+            // commit() writes and releases the lock; unlock() is for the path where it never got that far.
+            editor.commit();
+        } catch (RuntimeException e) {
+            index.unlock();
+            throw e;
+        }
     }
 
     /** Called by the plugin when it has done something that changes what Git would say. */

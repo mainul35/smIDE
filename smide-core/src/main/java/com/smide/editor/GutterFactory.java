@@ -68,8 +68,14 @@ public final class GutterFactory implements IntFunction<Node> {
     private java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes = java.util.Map.of();
     /** The same, as stretches: what a click on the strip opens. */
     private java.util.List<com.smide.vcs.LineChanges.Hunk> hunks = java.util.List.of();
-    /** Width of the strip that shows what has changed since the last commit. */
-    static final double CHANGE_WIDTH = 3;
+    /**
+     * Width of the strip that shows what has changed since the last commit.
+     *
+     * <p>Wider than it looks: the colour is three pixels, drawn against the code by the
+     * stylesheet's insets, and the rest is room for the pointer. A three-pixel target is one the
+     * pointer slips off while the tooltip is still arriving.
+     */
+    static final double CHANGE_WIDTH = 8;
 
     public GutterFactory(CodeArea area, Breakpoints breakpoints, Path file) {
         this.area = area;
