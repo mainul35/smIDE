@@ -1601,3 +1601,12 @@
     -fx-padding: 0;
     -fx-border-width: 0;
 }
+
+/* A dialog's text, in a scroll pane that looks like plain text. */
+.dialog-text,
+.dialog-text > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-border-width: 0;
+}

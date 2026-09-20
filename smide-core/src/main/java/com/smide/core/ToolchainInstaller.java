@@ -267,18 +267,28 @@ public final class ToolchainInstaller {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, "", yes, no);
         alert.setTitle("Download " + name);
         alert.setHeaderText("Download " + name + " " + plainVersion(download.version()) + "?");
-        // A label of its own, wrapped: the folder is a long path, and every line of this matters.
+        /* In a scroll pane of a size the dialog can measure exactly. A wrapped label is not:
+           a dialog asks it how tall it is before it has been laid out and wrapped, the answer
+           comes back short, and the buttons end up below the bottom edge of the window - where
+           they cannot be pressed. Text longer than the view scrolls instead. */
         Label text = new Label("From " + download.source()
                 + (download.size() > 0 ? ", " + size(download.size()) : "") + ".\n\n"
-                + "It is unpacked into\n" + target(toolchain, download) + "\nand used from there. "
+                + "It is unpacked into\n" + shortPath(target(toolchain, download)) + "\nand used from there. "
                 + "Nothing else on this machine changes; deleting that folder removes it.\n\n"
                 + (download.sha256() != null
                         ? "The download is checked against the checksum its publisher gives."
                         : "Its publisher gives no checksum to check the download against."));
         text.setWrapText(true);
         text.setMinHeight(Region.USE_PREF_SIZE);
-        text.setMaxWidth(560);
-        alert.getDialogPane().setContent(text);
+        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(text);
+        scroll.setFitToWidth(true);
+        scroll.setPrefViewportWidth(520);
+        scroll.setPrefViewportHeight(210);
+        scroll.getStyleClass().add("dialog-text");
+        alert.setGraphic(null);
+        alert.getDialogPane().setContent(scroll);
+        // And, whatever the text does to the layout, with its buttons inside the window.
+        com.smide.ui.Dialogs.fitButtonsIn(alert, text);
         alert.getDialogPane().setMinWidth(560);
         alert.getDialogPane().getStyleClass().add("toolchain-download");
         owner().ifPresent(alert::initOwner);
@@ -386,6 +396,13 @@ public final class ToolchainInstaller {
     static String shortName(Toolchain toolchain) {
         String name = toolchain.displayName();
         return name.endsWith(" toolchain") ? name.substring(0, name.length() - " toolchain".length()) : name;
+    }
+
+    /** A path as a person reads it, with the home folder as ~. */
+    static String shortPath(Path path) {
+        String home = System.getProperty("user.home", "");
+        String text = path.toString();
+        return !home.isBlank() && text.startsWith(home) ? "~" + text.substring(home.length()) : text;
     }
 
     private static String plainVersion(String version) {

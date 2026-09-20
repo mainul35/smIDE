@@ -140,6 +140,15 @@ public final class Zoom {
             scalePopup(scene.getRoot());
             return;
         }
+        /* A dialog is left at the size the desktop gives it. It sizes its own window from what
+           it holds, before the text in it has been laid out and wrapped; scaling that window
+           afterwards leaves the layout needing more room than the window has, and the buttons
+           end up below its bottom edge, where they cannot be pressed. The zoom is for reading
+           code, and a dialog is a few lines and two buttons. */
+        if (scene.getRoot() instanceof javafx.scene.control.DialogPane
+                || scene.getRoot().lookup(".dialog-pane") != null) {
+            return;
+        }
         if (scene.getRoot() instanceof ScaledRoot scaled) {
             scaled.setFactor(factor.get());
             resize(window);
@@ -218,24 +227,32 @@ public final class Zoom {
             autosize();
         }
 
+        /* Asked in the window's pixels, answered from the content's: the content is laid out at
+           the window divided by the factor, so a height asked for a scaled width has to be
+           measured at the width the content will really have. Measured at the window's width, a
+           wrapping label reports the height of fewer lines than it will take. */
         @Override
         protected double computePrefWidth(double height) {
-            return content.prefWidth(height) * transform.getX();
+            return content.prefWidth(unscaled(height)) * transform.getX();
         }
 
         @Override
         protected double computePrefHeight(double width) {
-            return content.prefHeight(width) * transform.getY();
+            return content.prefHeight(unscaled(width)) * transform.getY();
         }
 
         @Override
         protected double computeMinWidth(double height) {
-            return content.minWidth(height) * transform.getX();
+            return content.minWidth(unscaled(height)) * transform.getX();
         }
 
         @Override
         protected double computeMinHeight(double width) {
-            return content.minHeight(width) * transform.getY();
+            return content.minHeight(unscaled(width)) * transform.getY();
+        }
+
+        private double unscaled(double size) {
+            return size < 0 ? size : size / transform.getX();
         }
 
         @Override
