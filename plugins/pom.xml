@@ -22,6 +22,7 @@
         <module>smide-plugin-git</module>
         <module>smide-plugin-terminal</module>
         <module>smide-plugin-lang-kotlin</module>
+        <module>smide-plugin-lang-groovy</module>
         <module>smide-plugin-lang-python</module>
         <module>smide-plugin-lang-web</module>
         <module>smide-plugin-lang-config</module>

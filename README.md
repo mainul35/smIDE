@@ -104,6 +104,7 @@ On Windows, `run.ps1` does both steps.
 | `smide-plugin-lang-config` | YAML, XML, TOML, properties, INI, dotenv, ignore files |
 | `smide-plugin-lang-shell` | Shell, PowerShell, batch, and running scripts of each |
 | `smide-plugin-lang-sql` | SQL |
+| `smide-plugin-lang-groovy` | Groovy and Gradle build scripts (build.gradle, settings.gradle, Jenkinsfile) |
 | `smide-plugin-lang-go` | Go, gopls, run/test/build configurations |
 | `smide-plugin-lang-rust` | Rust, rust-analyzer, cargo run/test/build |
 | `smide-plugin-lang-cpp` | C, C++, CMake, clangd, CMake/make builds and compile-and-run |
