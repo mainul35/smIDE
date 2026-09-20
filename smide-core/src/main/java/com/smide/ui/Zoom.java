@@ -137,7 +137,7 @@ public final class Zoom {
             return;
         }
         if (window instanceof javafx.stage.PopupWindow) {
-            scalePopup(scene.getRoot());
+            scalePopup(window, scene.getRoot());
             return;
         }
         /* A dialog is left at the size the desktop gives it. It sizes its own window from what
@@ -171,7 +171,7 @@ public final class Zoom {
      * Settings dialog opened and showed nothing. The transform goes on each piece of content
      * instead, and the popup sizes itself around the scaled content as it always has.
      */
-    private void scalePopup(Parent root) {
+    private void scalePopup(Window window, Parent root) {
         for (Node node : root.getChildrenUnmodifiable()) {
             Object existing = node.getProperties().get(POPUP_SCALE);
             if (existing instanceof Scale transform) {
@@ -182,8 +182,33 @@ public final class Zoom {
                 node.getTransforms().add(transform);
                 node.getProperties().put(POPUP_SCALE, transform);
             }
+            if (node instanceof Region region) {
+                region.setMaxHeight(roomFor(window));
+            }
         }
     }
+
+    /**
+     * How tall a popup's content may be before it must scroll: the screen, in the content's own
+     * unscaled pixels.
+     *
+     * <p>A menu measures itself and the screen in the same pixels, and decides from the two
+     * whether it must scroll. Both halves of that are honest at 100%; scaled up by a fifth the
+     * drawing is a fifth taller than what was measured, so a menu that decided it fitted runs
+     * off the bottom of the screen - and the run configurations menu, once a project has thirty
+     * of them, ran off with Edit Configurations on the far side of the screen's edge, out of
+     * reach. Dividing the screen by the factor gives the menu the room it will actually occupy,
+     * and one too long for it scrolls, which is what it does unscaled.
+     */
+    private double roomFor(Window window) {
+        javafx.geometry.Rectangle2D screen = javafx.stage.Screen
+                .getScreensForRectangle(window.getX(), window.getY(), 1, 1).stream().findFirst()
+                .orElse(javafx.stage.Screen.getPrimary()).getVisualBounds();
+        return Math.max(120, Math.floor(screen.getHeight() / factor.get()) - MARGIN);
+    }
+
+    /** Room left around a popup that fills the screen, so it does not sit edge to edge. */
+    private static final double MARGIN = 24;
 
     /**
      * Grows the window to fit what is now inside it.

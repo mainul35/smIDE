@@ -3,6 +3,7 @@ package com.smide.ui;
 import com.smide.api.action.Action;
 import com.smide.api.action.ActionContext;
 import com.smide.api.execution.RunConfiguration;
+import com.smide.api.execution.RunConfigurationType;
 import com.smide.core.ExtensionRegistry;
 import com.smide.core.IdeImpl;
 import com.smide.execution.ExecutionService;
@@ -13,6 +14,7 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.Menu;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.Separator;
@@ -419,20 +421,7 @@ public final class MainWindow {
         FontIcon icon = Icons.of(selected.map(c -> c.type().iconLiteral()).orElse("fth-play-circle"), 13);
         runChooser.setGraphic(icon == null ? label : new HBox(6, icon, label));
         runChooser.setText("");
-        workspaces.active().ifPresent(w -> {
-            for (RunConfiguration c : execution.configurations(w)) {
-                MenuItem item = new MenuItem(c.name());
-                FontIcon i = Icons.of(c.type().iconLiteral(), 13);
-                if (i != null) {
-                    item.setGraphic(i);
-                }
-                item.setOnAction(e -> {
-                    execution.selectConfiguration(c);
-                    refreshToolbarEnabled();
-                });
-                runChooser.getItems().add(item);
-            }
-        });
+        workspaces.active().ifPresent(w -> fill(execution.configurations(w)));
         if (!runChooser.getItems().isEmpty()) {
             runChooser.getItems().add(new SeparatorMenuItem());
         }
@@ -440,5 +429,57 @@ public final class MainWindow {
         edit.setOnAction(e -> ide.actions().invoke("run.editConfigurations"));
         runChooser.getItems().add(edit);
         refreshToolbarEnabled();
+    }
+
+    /** Beyond this many, the ones the project suggested are gathered by kind rather than listed. */
+    private static final int FLAT = 12;
+
+    /**
+     * The configurations in the chooser: the kept ones, then what the project suggests.
+     *
+     * <p>Listed one after another while there are few of them. A project with a test class per
+     * file suggests one configuration per test, and thirty items made a menu taller than the
+     * screen: the ones at the end, Edit Configurations among them, were past its bottom edge
+     * with no way to scroll to them. Past a dozen the suggested ones go into a submenu for each
+     * kind - Application, JUnit, Shell - which is a menu of five lines whatever the project
+     * holds, and is how the kept ones stay in front.
+     */
+    private void fill(List<RunConfiguration> configurations) {
+        List<RunConfiguration> kept = configurations.stream().filter(c -> !c.isTemporary()).toList();
+        List<RunConfiguration> found = configurations.stream().filter(RunConfiguration::isTemporary).toList();
+        kept.forEach(c -> runChooser.getItems().add(choice(c)));
+        if (!kept.isEmpty() && !found.isEmpty()) {
+            runChooser.getItems().add(new SeparatorMenuItem());
+        }
+        if (configurations.size() <= FLAT) {
+            found.forEach(c -> runChooser.getItems().add(choice(c)));
+            return;
+        }
+        java.util.Map<RunConfigurationType, List<RunConfiguration>> byKind = new java.util.LinkedHashMap<>();
+        for (RunConfiguration c : found) {
+            byKind.computeIfAbsent(c.type(), t -> new java.util.ArrayList<>()).add(c);
+        }
+        byKind.forEach((type, list) -> {
+            Menu group = new Menu(type.displayName() + "  (" + list.size() + ")");
+            FontIcon icon = Icons.of(type.iconLiteral(), 13);
+            if (icon != null) {
+                group.setGraphic(icon);
+            }
+            list.forEach(c -> group.getItems().add(choice(c)));
+            runChooser.getItems().add(group);
+        });
+    }
+
+    private MenuItem choice(RunConfiguration c) {
+        MenuItem item = new MenuItem(c.name());
+        FontIcon icon = Icons.of(c.type().iconLiteral(), 13);
+        if (icon != null) {
+            item.setGraphic(icon);
+        }
+        item.setOnAction(e -> {
+            execution.selectConfiguration(c);
+            refreshToolbarEnabled();
+        });
+        return item;
     }
 }
