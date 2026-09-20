@@ -72,6 +72,9 @@ public final class JavaPlugin implements Plugin {
 
         context.registerDebugger(new com.smide.plugins.java.debug.JavaDebugger());
 
+        // A Gradle project whose wrapper jar is missing needs a Gradle of its own; this offers one.
+        context.registerToolchain(new GradleToolchain());
+
         mavenWindow = new MavenToolWindow(ide, registry);
         context.registerToolWindow(mavenWindow);
         context.registerToolWindow(new DeployToolWindow(ide, registry));

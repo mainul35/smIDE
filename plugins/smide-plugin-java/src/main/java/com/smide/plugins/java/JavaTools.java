@@ -24,7 +24,7 @@ public final class JavaTools {
     public static final String PREFER_WRAPPER = "java.preferWrapper";
     public static final String MAVEN_HOME = "java.mavenHome";
 
-    private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
 
     private JavaTools() {
     }
@@ -357,11 +357,44 @@ public final class JavaTools {
     }
 
     public static List<String> gradle(Ide ide, Path projectRoot) {
-        Path wrapper = wrapperIn(projectRoot, WINDOWS ? "gradlew.bat" : "gradlew");
+        List<String> found = gradleOrNull(ide, projectRoot);
+        if (found != null) {
+            return found;
+        }
+        /* Neither a wrapper that can run nor a Gradle on the machine. Rather than letting the
+           build fail with "Unable to access jarfile", the offer to install one is put in front
+           of the reader, and the run says what is missing. */
+        ide.toolchains().offerToInstall("gradle", "This project's Gradle wrapper cannot run: "
+                + "gradle/wrapper/gradle-wrapper.jar is missing, and no Gradle was found on this machine.");
+        throw new IllegalStateException("Gradle was not found, and this project's gradlew cannot run without"
+                + " gradle/wrapper/gradle-wrapper.jar. Download Gradle from the notice, set its folder in"
+                + " Settings, or restore the wrapper with \"gradle wrapper\" in the project.");
+    }
+
+    /** The Gradle to run - the project's wrapper, or one installed - or null when there is none. */
+    public static List<String> gradleOrNull(Ide ide, Path projectRoot) {
+        Path wrapper = usableGradleWrapper(projectRoot);
         if (wrapper != null) {
             return new ArrayList<>(List.of(wrapper.toString()));
         }
-        return new ArrayList<>(List.of(WINDOWS ? "gradle.bat" : "gradle"));
+        return new GradleToolchain().locate(ide)
+                .map(gradle -> new ArrayList<>(List.of(gradle.toString()))).orElse(null);
+    }
+
+    /**
+     * The project's {@code gradlew}, when it can actually run.
+     *
+     * <p>The script is a launcher for {@code gradle/wrapper/gradle-wrapper.jar}, a binary plenty
+     * of repositories leave out of version control; without it the script stops at "Unable to
+     * access jarfile", which says nothing about what to do. Then it is not a wrapper worth using.
+     */
+    public static Path usableGradleWrapper(Path projectRoot) {
+        Path script = wrapperIn(projectRoot, WINDOWS ? "gradlew.bat" : "gradlew");
+        if (script == null || script.getParent() == null) {
+            return null;
+        }
+        Path jar = script.getParent().resolve("gradle").resolve("wrapper").resolve("gradle-wrapper.jar");
+        return Files.isRegularFile(jar) ? script : null;
     }
 
     /** Walks up from {@code dir} to find a wrapper script, since modules share the root's. */

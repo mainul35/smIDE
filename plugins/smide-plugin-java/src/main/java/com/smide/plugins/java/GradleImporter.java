@@ -91,6 +91,9 @@ public final class GradleImporter implements ProjectImporter {
             }
         }
         java.util.Set<String> artifacts = new java.util.LinkedHashSet<>();
+        // The wrapper when it can run, else a Gradle on the machine; the plain name when neither.
+        List<String> gradle = JavaTools.gradleOrNull(ide, root);
+        String command = gradle == null ? "gradle" : gradle.get(0);
         int release = 0;
         List<JavaProjectInfo.WebModule> webModules = new ArrayList<>();
         for (Path dir : moduleDirs) {
@@ -118,7 +121,7 @@ public final class GradleImporter implements ProjectImporter {
             });
             for (String task : moduleTasks) {
                 String qualified = dir.equals(root) ? task : name + ":" + task;
-                tasks.add(new BuildTask(task, "gradle " + qualified, "Tasks/" + name, List.of("gradle", qualified), root));
+                tasks.add(new BuildTask(task, "gradle " + qualified, "Tasks/" + name, List.of(command, qualified), root));
             }
         }
         ProjectModel model = new ProjectModel("gradle", root.getFileName().toString(), root, modules, tasks);

@@ -31,6 +31,11 @@ public final class ToolchainCheck {
         this.installer = installer;
     }
 
+    /** Whether this toolchain's absence has already been raised for this reason. */
+    public boolean firstTime(String key) {
+        return asked.add(key);
+    }
+
     /** Looks at a project that has just opened. */
     public void check(Workspace workspace) {
         List<Toolchain> toolchains = registry.toolchains();
@@ -59,6 +64,15 @@ public final class ToolchainCheck {
     }
 
     private void ask(Toolchain toolchain, Workspace workspace) {
+        // "the Go toolchain", but "Gradle": a name that is already a name takes no article.
+        String name = toolchain.displayName().toLowerCase(java.util.Locale.ROOT).contains("toolchain")
+                ? "the " + toolchain.displayName() : toolchain.displayName();
+        ask(toolchain, workspace.name() + " needs " + name + ", which was not found on this machine. "
+                + toolchain.purpose());
+    }
+
+    /** The offer to install a missing toolchain, for whatever reason it turned out to be missing. */
+    public void ask(Toolchain toolchain, String reason) {
         List<Notifications.NotificationAction> actions = new ArrayList<>();
         // Downloaded and set up by the IDE where it can be, the page in a browser where it cannot.
         if (ToolchainInstaller.canInstall(toolchain) || toolchain.downloadUrl() != null) {
@@ -70,9 +84,7 @@ public final class ToolchainCheck {
         }
         actions.add(new Notifications.NotificationAction("Not now", () -> {
         }));
-        ide.notifications().warn(toolchain.displayName() + " not found",
-                workspace.name() + " needs the " + toolchain.displayName() + ", which was not found on this machine. "
-                        + toolchain.purpose(),
+        ide.notifications().warn(toolchain.displayName() + " not found", reason,
                 actions.toArray(new Notifications.NotificationAction[0]));
     }
 }

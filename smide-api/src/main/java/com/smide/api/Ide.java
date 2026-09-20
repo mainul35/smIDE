@@ -76,5 +76,8 @@ public interface Ide {
 
     Downloads downloads();
 
+    /** The toolchains plugins provide, and the offer to install a missing one. */
+    com.smide.api.lang.Toolchains toolchains();
+
     WindowService window();
 }

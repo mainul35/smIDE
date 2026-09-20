@@ -101,6 +101,7 @@ public final class IdeImpl implements Ide {
     private final PluginManager plugins;
     private final SessionStore sessionStore;
     private final ToolchainInstaller toolchainInstaller;
+    private com.smide.api.lang.Toolchains toolchains;
     private final FileIndex fileIndex = new FileIndex();
     private final com.smide.debug.dap.DebugAdaptersImpl debugAdapters = new com.smide.debug.dap.DebugAdaptersImpl(this);
     private ToolWindowManager toolWindows;
@@ -182,7 +183,9 @@ public final class IdeImpl implements Ide {
         ToolchainInstaller installer = toolchainInstaller;
         banners.setInstaller(installer);
         this.editors.addOpenedListener(banners::opened);
-        workspaces.addOpenedListener(new ToolchainCheck(this, registry, installer)::check);
+        ToolchainCheck toolchainCheck = new ToolchainCheck(this, registry, installer);
+        this.toolchains = new ToolchainsImpl(this, registry, toolchainCheck);
+        workspaces.addOpenedListener(toolchainCheck::check);
     }
 
     // ------------------------------------------------------------------ start
@@ -727,6 +730,11 @@ public final class IdeImpl implements Ide {
     @Override
     public String version() {
         return SmIdeApp.VERSION;
+    }
+
+    @Override
+    public com.smide.api.lang.Toolchains toolchains() {
+        return toolchains;
     }
 
     @Override
