@@ -111,6 +111,7 @@ public final class IdeImpl implements Ide {
     private SearchPopups popups;
     private LspManager lsp;
     private MainWindow mainWindow;
+    private com.smide.vcs.VcsService vcs;
     private final Label caretLabel = new Label();
     private final Label separatorLabel = new Label();
     private final Label languageLabel = new Label();
@@ -205,6 +206,11 @@ public final class IdeImpl implements Ide {
             }
         });
         registry.addToolWindow(explorer);
+        /* What has changed since the last commit: marks beside the lines in the editor, colours
+           on the names in the tree. Nothing happens until a plugin registers a version control. */
+        vcs = new com.smide.vcs.VcsService(this, registry);
+        vcs.install();
+        explorer.setVersionControl(vcs);
         // The active project's libraries, in a window of their own; a dependency's file is found there.
         com.smide.explorer.LibrariesToolWindow libraries = new com.smide.explorer.LibrariesToolWindow(this, registry, languages);
         registry.addToolWindow(libraries);

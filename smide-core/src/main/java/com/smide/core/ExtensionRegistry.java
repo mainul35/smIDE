@@ -65,6 +65,24 @@ public final class ExtensionRegistry {
 
     private final List<Consumer<LanguageSupport>> languageListeners = new ArrayList<>();
 
+    /** Version control, from whichever plugin knows one: what has changed since the last commit. */
+    public void addVersionControl(com.smide.api.vcs.VersionControl vcs) {
+        versionControls.add(vcs);
+        versionControlListeners.forEach(listener -> listener.accept(vcs));
+    }
+
+    public List<com.smide.api.vcs.VersionControl> versionControls() {
+        return List.copyOf(versionControls);
+    }
+
+    public void onVersionControlAdded(Consumer<com.smide.api.vcs.VersionControl> listener) {
+        versionControlListeners.add(listener);
+    }
+
+    private final List<com.smide.api.vcs.VersionControl> versionControls =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<Consumer<com.smide.api.vcs.VersionControl>> versionControlListeners = new ArrayList<>();
+
     public void addEditorProvider(EditorProvider p) {
         editorProviders.add(p);
         editorProviders.sort(Comparator.comparingInt(EditorProvider::priority).reversed());

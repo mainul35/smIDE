@@ -60,6 +60,12 @@ public interface PluginContext {
     /** Adds the libraries of the projects this plugin understands to the Project tree's External Libraries. */
     void registerLibraryProvider(com.smide.api.project.LibraryProvider provider);
 
+    /**
+     * Version control: what has changed since the last commit, for the marks beside the lines
+     * and the colours on the names in the tree.
+     */
+    void registerVersionControl(com.smide.api.vcs.VersionControl vcs);
+
     /** Words to offer while typing in a language with no server of its own - Gradle's in a build script. */
     void registerCompletionSource(com.smide.api.lang.CompletionSource source);
 

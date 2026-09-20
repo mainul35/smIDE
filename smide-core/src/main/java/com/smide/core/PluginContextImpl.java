@@ -107,6 +107,11 @@ final class PluginContextImpl implements PluginContext {
     }
 
     @Override
+    public void registerVersionControl(com.smide.api.vcs.VersionControl vcs) {
+        registry.addVersionControl(vcs);
+    }
+
+    @Override
     public void registerCompletionSource(com.smide.api.lang.CompletionSource source) {
         registry.addCompletionSource(source);
     }

@@ -64,6 +64,10 @@ public final class GutterFactory implements IntFunction<Node> {
     private java.util.Map<Integer, List<ColorSwatches.Literal>> colors = java.util.Map.of();
     /** What a click on a run icon opens, made from the markers on its line. */
     private java.util.function.Function<List<com.smide.api.execution.RunMarker>, ContextMenu> runMenu;
+    /** What version control makes of each line: added, changed, or lines removed above it. */
+    private java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes = java.util.Map.of();
+    /** Width of the strip that shows what has changed since the last commit. */
+    static final double CHANGE_WIDTH = 3;
 
     public GutterFactory(CodeArea area, Breakpoints breakpoints, Path file) {
         this.area = area;
@@ -138,6 +142,8 @@ public final class GutterFactory implements IntFunction<Node> {
             // Beside the code, right of the numbers, where IntelliJ puts it.
             row.getChildren().add(runCell(paragraph));
         }
+        // Last of all, so the strip of changes is the thing touching the code.
+        row.getChildren().add(changeBar(paragraph));
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("gutter");
         /* The whole gutter toggles a breakpoint, line number included, which is what
@@ -148,6 +154,42 @@ public final class GutterFactory implements IntFunction<Node> {
             row.getStyleClass().add("gutter-executing");
         }
         return row;
+    }
+
+    /**
+     * The strip between the line numbers and the code, where IntelliJ shows what has changed
+     * since the last commit: a bar beside a line that is new or changed, and a wedge where lines
+     * were removed.
+     */
+    private Node changeBar(int paragraph) {
+        javafx.scene.layout.Region bar = new javafx.scene.layout.Region();
+        bar.setMinWidth(CHANGE_WIDTH);
+        bar.setPrefWidth(CHANGE_WIDTH);
+        bar.setMaxWidth(CHANGE_WIDTH);
+        bar.getStyleClass().add("change-bar");
+        com.smide.vcs.LineChanges.Kind kind = changes.get(paragraph);
+        if (kind != null) {
+            bar.getStyleClass().add(switch (kind) {
+                case ADDED -> "change-added";
+                case CHANGED -> "change-changed";
+                case REMOVED -> "change-removed";
+            });
+            Tooltip.install(bar, new Tooltip(switch (kind) {
+                case ADDED -> "Added since the last commit";
+                case CHANGED -> "Changed since the last commit";
+                case REMOVED -> "Lines were removed here";
+            }));
+        }
+        return bar;
+    }
+
+    /** What has changed since the last commit, by line. */
+    public void setChanges(java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes) {
+        this.changes = changes == null ? java.util.Map.of() : java.util.Map.copyOf(changes);
+    }
+
+    public java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes() {
+        return changes;
     }
 
     private static String tooltip(Breakpoint breakpoint) {

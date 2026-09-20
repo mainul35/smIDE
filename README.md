@@ -27,6 +27,12 @@ and editable. A Maven tool window lists lifecycle phases, plugin goals and profi
 Each project builds and runs with its own JDK: the oldest installed one that suits the
 release its build asks for, or one pinned under Settings > Languages > Java.
 
+**Changes since the last commit.** A strip beside the code says what you have touched: green
+for a line that is new, blue for one that has changed, a grey mark where lines were removed -
+against what Git has committed, and against what is in the editor rather than what is on disk,
+so a line is marked as it is typed and unmarked the moment it is typed back. The file tree says
+the same about whole files: blue for changed, green for new, grey for ignored.
+
 **Build files.** A dependency the machine has not got is drawn in red where it is written,
 as it is typed - a misspelt coordinate is caught in the file rather than by a build five
 minutes later. In a `pom.xml`, and in a Gradle script against Gradle's cache and the local

@@ -44,6 +44,8 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
             ".mvn", "__pycache__", ".venv", "venv", ".settings", "bin", "obj", ".vs", ".vscode", ".cache");
 
     private final Ide ide;
+    /** What version control makes of each file, for the colours on the names; null until it is set. */
+    private com.smide.vcs.VcsService vcs;
     private final ExtensionRegistry registry;
     private final LanguageRegistry languages;
     private final TreeView<Path> tree = new TreeView<>();
@@ -446,11 +448,49 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
         return total;
     }
 
+    /** Given the service that knows what has changed, and told when its answers change. */
+    public void setVersionControl(com.smide.vcs.VcsService vcs) {
+        this.vcs = vcs;
+        vcs.addListener(tree::refresh);
+    }
+
+    /**
+     * Colours a name by what version control makes of it, as IntelliJ does: blue for a file
+     * changed since the last commit, green for one that is new, and grey for one that is
+     * deliberately ignored.
+     *
+     * <p>Only files. A folder in IntelliJ is coloured by what is under it, which means asking
+     * about every file under it each time a row is drawn, and the tree is drawn on the thread
+     * that draws everything else.
+     */
+    private void markVersionControl(javafx.scene.control.TreeCell<Path> cell, Path path, boolean directory) {
+        if (directory || vcs == null) {
+            return;
+        }
+        String style = switch (vcs.statusOf(path)) {
+            case MODIFIED -> "vcs-modified";
+            case ADDED -> "vcs-added";
+            case CONFLICT -> "vcs-conflict";
+            case IGNORED -> "vcs-ignored";
+            default -> null;
+        };
+        if (style != null) {
+            cell.getStyleClass().add(style);
+            cell.setTooltip(new javafx.scene.control.Tooltip(switch (style) {
+                case "vcs-modified" -> "Changed since the last commit";
+                case "vcs-added" -> "New since the last commit";
+                case "vcs-conflict" -> "Has merge conflicts";
+                default -> "Ignored by version control";
+            }));
+        }
+    }
+
     private final class PathCell extends TreeCell<Path> {
         @Override
         protected void updateItem(Path path, boolean empty) {
             super.updateItem(path, empty);
-            getStyleClass().removeAll("workspace-root", "dimmed", "has-errors");
+            getStyleClass().removeAll("workspace-root", "dimmed", "has-errors",
+                    "vcs-modified", "vcs-added", "vcs-conflict", "vcs-ignored");
             setTooltip(null);
             if (empty || path == null) {
                 setText(null);
@@ -477,6 +517,7 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
                 getStyleClass().add("dimmed");
             }
             boolean dir = getTreeItem() instanceof PathTreeItem p ? p.isDirectory() : Files.isDirectory(path);
+            markVersionControl(this, path, dir);
             int errors = errorsIn(path, dir);
             if (errors > 0) {
                 getStyleClass().add("has-errors");

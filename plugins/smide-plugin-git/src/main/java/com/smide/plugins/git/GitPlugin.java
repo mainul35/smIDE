@@ -20,6 +20,7 @@ public final class GitPlugin implements Plugin {
     private final GitService git = new GitService();
     private GitUi ui;
     private GitToolWindow toolWindow;
+    private GitVersionControl versionControl;
 
     @Override
     public void start(PluginContext context) {
@@ -28,6 +29,12 @@ public final class GitPlugin implements Plugin {
         toolWindow = new GitToolWindow(ui);
         context.registerToolWindow(toolWindow);
         context.registerStatusBarWidget(new GitStatusWidget(ui));
+        /* What has changed since the last commit, for the marks beside the lines and the colours
+           on the names in the tree. The IDE does the comparing; this only tells it what Git has. */
+        versionControl = new GitVersionControl(git);
+        context.registerVersionControl(versionControl);
+        // Anything the plugin refreshes for - a commit, a checkout, a pull - moves these too.
+        git.addListener(() -> versionControl.changed());
 
         // A repository handle caches refs; drop it when the workspace goes away.
         ide.workspaces().addClosedListener(w -> git.invalidate(w.root()));

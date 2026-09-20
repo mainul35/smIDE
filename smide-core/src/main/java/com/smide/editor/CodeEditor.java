@@ -788,6 +788,21 @@ public final class CodeEditor implements TextEditor {
         return area;
     }
 
+    /**
+     * What has changed in this file since the last commit, drawn beside the lines.
+     *
+     * <p>Redrawn only when the marks are not the ones already there: this is asked again after
+     * every pause in typing, and rebuilding every line's gutter for the same answer costs a
+     * frame each time.
+     */
+    public void setChanges(java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes) {
+        if (gutter == null || gutter.changes().equals(changes)) {
+            return;
+        }
+        gutter.setChanges(changes);
+        gutter.refresh();
+    }
+
     /** Redraws the breakpoint column, after a breakpoint was added or removed. */
     public void refreshGutter() {
         if (gutter != null) {

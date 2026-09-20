@@ -156,6 +156,11 @@ public final class GitService {
         }
     }
 
+    /** The repository a folder belongs to, for reading objects out of it directly. */
+    public Repository repository(Path root) {
+        return require(root).getRepository();
+    }
+
     private Git require(Path root) {
         return find(root).orElseThrow(() -> new GitException("Not a Git repository: " + root));
     }

@@ -26,6 +26,11 @@
     -smide-warning: #B7791F;
     -smide-success: #2F855A;
     -smide-search-hit: #FFC24B;
+    /* Version control, as IntelliJ colours it: blue changed, green new, grey ignored. */
+    -smide-vcs-modified: #2B6CB0;
+    -smide-vcs-added: #2F855A;
+    -smide-vcs-removed: #8a94a0;
+    -smide-vcs-ignored: #8a94a0;
 
     /* Editor tokens, light. */
     -tok-keyword: #0b4f8a;
@@ -79,6 +84,10 @@
     -smide-warning: #D6A24A;
     -smide-success: #5FBF8A;
     -smide-search-hit: #C98A28;
+    -smide-vcs-modified: #6DA9E4;
+    -smide-vcs-added: #6FCF97;
+    -smide-vcs-removed: #7a8794;
+    -smide-vcs-ignored: #7a8794;
 
     -tok-keyword: #6fb3e0;
     -tok-type: #7fd4e8;
@@ -610,6 +619,24 @@
     -fx-background-color: -smide-paper;
 }
 
+/* The strip beside the code: what has changed since the last commit. */
+.change-bar {
+    -fx-background-color: transparent;
+}
+
+.change-bar.change-added {
+    -fx-background-color: -smide-vcs-added;
+}
+
+.change-bar.change-changed {
+    -fx-background-color: -smide-vcs-modified;
+}
+
+/* Removed lines have no line of their own; a short mark sits where they were. */
+.change-bar.change-removed {
+    -fx-background-color: linear-gradient(to bottom, -smide-vcs-removed 0%, -smide-vcs-removed 40%, transparent 40%);
+}
+
 /* Over a file that is still being worked out: the paper, nearly opaque, and a spinner. */
 .editor-loading {
     -fx-background-color: -smide-paper;
@@ -838,6 +865,11 @@
 .code-area .ctrl-link { -fx-fill: -smide-accent; -fx-underline: true; }
 
 /* A file with errors, and every folder above it, is red in the tree; its tab is red too. */
+.file-tree .tree-cell.vcs-modified { -fx-text-fill: -smide-vcs-modified; }
+.file-tree .tree-cell.vcs-added { -fx-text-fill: -smide-vcs-added; }
+.file-tree .tree-cell.vcs-conflict { -fx-text-fill: -smide-danger; }
+.file-tree .tree-cell.vcs-ignored { -fx-text-fill: -smide-vcs-ignored; }
+/* Errors win over version control: a file that does not compile is the more urgent fact. */
 .file-tree .tree-cell.has-errors { -fx-text-fill: -smide-danger; }
 .file-tree .tree-cell.has-errors:selected { -fx-text-fill: -smide-row-selected-text; -fx-underline: true; }
 .tab.tab-errors .tab-label { -fx-text-fill: -smide-danger; }
