@@ -341,6 +341,37 @@ public final class ExecutionService implements Execution {
         startDetection(workspace);
     }
 
+    /**
+     * Looks at the project again now, and hands what it finds to the caller as well.
+     *
+     * <p>What the Detect button in the configurations dialog presses. {@link #redetect} tells
+     * everybody at once through the listeners, which suits a project that changed underneath
+     * them; this also answers the caller, so a dialog can add what is new to the list it is
+     * already showing and say how much that was.
+     */
+    public void detectNow(Workspace workspace, Consumer<List<RunConfiguration>> done) {
+        if (workspace == null) {
+            done.accept(List.of());
+            return;
+        }
+        List<RunConfigurationType> types = List.copyOf(registry.runTypes());
+        ide.window().runInBackground(() -> {
+            List<RunConfiguration> found = new ArrayList<>();
+            for (RunConfigurationType type : types) {
+                try {
+                    found.addAll(type.detect(workspace));
+                } catch (RuntimeException e) {
+                    System.err.println("smIDE: run configuration detection failed for " + type.id() + ": " + e);
+                }
+            }
+            ide.window().runLater(() -> {
+                detected.put(workspace, found);
+                fireConfigurations();
+                done.accept(found);
+            });
+        });
+    }
+
     private void forget(Workspace workspace) {
         detected.remove(workspace);
         generations.remove(workspace);

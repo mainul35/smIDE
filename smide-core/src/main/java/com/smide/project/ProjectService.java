@@ -43,12 +43,19 @@ public final class ProjectService implements Projects {
         if (!(workspace instanceof WorkspaceImpl impl)) {
             return;
         }
+        // Whether the project is being read again, rather than for the first time.
+        boolean again = impl.project().isPresent();
         ide.window().runInBackground(() -> {
             ProjectModel model = importModel(impl);
             Platform.runLater(() -> {
                 impl.setProject(model);
                 listeners.forEach(l -> l.accept(impl, model));
                 ide.events().publish(new Events.ProjectImported(impl));
+                if (again && ide instanceof com.smide.core.IdeImpl full) {
+                    // The language servers keep a model of the build too, and theirs is now the
+                    // old one: errors from a class path resolved before the sources changed.
+                    com.smide.lsp.ProjectReload.afterReimport(full.lspManager(), impl, model);
+                }
             });
         });
     }

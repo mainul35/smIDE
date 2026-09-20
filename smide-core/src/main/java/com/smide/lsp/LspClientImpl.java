@@ -87,6 +87,7 @@ final class LspClientImpl implements LanguageClient {
                             : String.valueOf(d.getCode().getRight())));
         }
         ide.problems().set("lsp:" + session.serverId(), file, out);
+        ProjectReload.noticeStale(ide, session, file, out);
     }
 
     private static Diagnostic.Severity severity(DiagnosticSeverity s) {

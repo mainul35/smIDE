@@ -12,8 +12,38 @@ public final class JavaProjectRegistry {
 
     private final Map<Path, JavaProjectInfo> byRoot = new ConcurrentHashMap<>();
 
+    /**
+     * Keeps what the project's own build said, not what a build inside it said.
+     *
+     * <p>Every build in a project is imported now, and a repository often holds a small one
+     * beside the real thing: a sample, a fixture, a demo with a pom of its own. Each import
+     * lands here under the same workspace root, so the last one won - and in smIDE's own
+     * repository that was {@code samples/review-playground}, after which the IDE believed the
+     * project was a two-class sample: no main classes to detect, no run configuration offered,
+     * and a run that assembled its class path from the wrong module. The outermost build is the
+     * project's; one further in is a part of it and does not replace it.
+     */
     public void put(Path root, JavaProjectInfo info) {
-        byRoot.put(root.toAbsolutePath().normalize(), info);
+        Path key = root.toAbsolutePath().normalize();
+        JavaProjectInfo existing = byRoot.get(key);
+        if (existing != null && depth(key, info) > depth(key, existing)) {
+            return;
+        }
+        byRoot.put(key, info);
+    }
+
+    /** How far inside the workspace a build is: the root's own build is nearest. */
+    private static int depth(Path workspaceRoot, JavaProjectInfo info) {
+        Path buildRoot = info.buildRoot();
+        if (buildRoot == null) {
+            return Integer.MAX_VALUE;
+        }
+        try {
+            Path relative = workspaceRoot.relativize(buildRoot.toAbsolutePath().normalize());
+            return relative.toString().isEmpty() ? 0 : relative.getNameCount();
+        } catch (RuntimeException e) {
+            return Integer.MAX_VALUE;
+        }
     }
 
     public Optional<JavaProjectInfo> get(Workspace workspace) {

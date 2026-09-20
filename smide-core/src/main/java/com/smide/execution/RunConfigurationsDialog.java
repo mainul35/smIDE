@@ -37,6 +37,10 @@ public final class RunConfigurationsDialog {
     private final BorderPane form = new BorderPane();
     private final List<RunConfiguration> removed = new ArrayList<>();
     private final List<RunConfiguration> touched = new ArrayList<>();
+    /** What each configuration looked like on the way in; see {@link #show()}. */
+    private final Map<RunConfiguration, String> asOpened = new IdentityHashMap<>();
+    /** What Detect did, said where the buttons are. */
+    private final Label status = new Label();
 
     public RunConfigurationsDialog(IdeImpl ide, Workspace workspace) {
         this.ide = ide;
@@ -55,7 +59,6 @@ public final class RunConfigurationsDialog {
            to change nothing that outlived the dialog: the profile you set was gone by the
            next run. Anything that differs from its snapshot is saved, which turns a
            detected configuration into a real one the moment it is worth keeping. */
-        Map<RunConfiguration, String> asOpened = new IdentityHashMap<>();
         for (RunConfiguration c : list.getItems()) {
             asOpened.put(c, snapshot(c));
         }
@@ -96,7 +99,8 @@ public final class RunConfigurationsDialog {
                 touched.remove(c);
             }
         });
-        HBox tools = new HBox(4, add, remove);
+        Button detect = Icons.button("fth-zap", "Detect from the project structure", () -> detect());
+        HBox tools = new HBox(4, add, remove, detect);
         tools.setPadding(new Insets(4));
         BorderPane left = new BorderPane(list);
         left.setTop(tools);
@@ -125,7 +129,10 @@ public final class RunConfigurationsDialog {
         });
         cancel.setOnAction(e -> stage.close());
         ButtonBar buttons = new ButtonBar();
-        buttons.getButtons().addAll(ok, cancel);
+        status.getStyleClass().add("muted-small");
+        status.setWrapText(true);
+        ButtonBar.setButtonData(status, ButtonBar.ButtonData.LEFT);
+        buttons.getButtons().addAll(status, ok, cancel);
         buttons.setPadding(new Insets(10));
 
         SplitPane split = new SplitPane(left, form);
@@ -140,6 +147,46 @@ public final class RunConfigurationsDialog {
             form.setCenter(hint());
         }
         stage.show();
+    }
+
+    /**
+     * Detect: fills the open configuration from the project, and adds what the project suggests.
+     *
+     * <p>Two halves of one question - what can be worked out by looking at the project rather
+     * than asked of the reader. The form in front of them is filled in first, because a
+     * configuration with a main class and no module is the one that fails at run time with
+     * nothing to go on; then the project is looked at again, and anything it suggests that is
+     * not already listed is added, which brings back configurations for a project imported
+     * before the plugin that knows it had finished.
+     */
+    private void detect() {
+        List<String> filled = List.of();
+        RunConfiguration open = list.getSelectionModel().getSelectedItem();
+        if (open != null) {
+            filled = open.type().complete(workspace, open);
+            if (!filled.isEmpty()) {
+                showForm(open);
+                list.refresh();
+            }
+        }
+        String first = filled.isEmpty() ? "" : "Filled in " + String.join(", ", filled) + " from the project. ";
+        status.setText(first + "Looking at the project...");
+        ide.executionService().detectNow(workspace, found -> {
+            int added = 0;
+            for (RunConfiguration candidate : found) {
+                boolean listed = list.getItems().stream()
+                        .anyMatch(c -> c.name().equals(candidate.name()) && c.type() == candidate.type());
+                if (!listed) {
+                    list.getItems().add(candidate);
+                    // As it arrived: saved on OK only if it is edited, like the rest of the list.
+                    asOpened.put(candidate, snapshot(candidate));
+                    added++;
+                }
+            }
+            status.setText(first + (added == 0
+                    ? "Nothing further found: every configuration the project suggests is already listed."
+                    : added + (added == 1 ? " configuration" : " configurations") + " found in the project."));
+        });
     }
 
     /** Name and fields together, length-prefixed, so a rename counts as a change too. */

@@ -91,6 +91,57 @@ public final class ApplicationRunType implements RunConfigurationType {
         return c;
     }
 
+    /**
+     * What the project can answer about a configuration somebody is filling in by hand.
+     *
+     * <p>A configuration made with Add starts empty, and the fields that matter are not a
+     * matter of taste: the main class is one of the project's, and the module whose class path
+     * it runs with follows from where that class lives and which module assembles it. Only
+     * blanks are filled; what is already there was somebody's decision.
+     */
+    @Override
+    public List<String> complete(Workspace workspace, RunConfiguration configuration) {
+        if (!(configuration instanceof Config c)) {
+            return List.of();
+        }
+        JavaProjectInfo info = registry.get(workspace).orElse(null);
+        if (info == null) {
+            return List.of();
+        }
+        List<String> filled = new ArrayList<>();
+        String mainClass = c.get("mainClass", "");
+        if (mainClass.isBlank() && !info.mainClasses().isEmpty()) {
+            mainClass = info.mainClasses().get(0).fqn();
+            c.set("mainClass", mainClass);
+            filled.add("Main class");
+        }
+        if (c.get("module", "").isBlank()) {
+            Path module = classpathModule(info, mainClass);
+            if (module != null) {
+                c.set("module", Forms.relative(workspace.root(), module));
+                filled.add("Classpath of module");
+            }
+        }
+        if (c.get("workingDir", "").isBlank() && !c.get("module", "").isBlank()) {
+            c.set("workingDir", workspace.root().resolve(c.get("module", "")).toString());
+            filled.add("Working directory");
+        }
+        return filled;
+    }
+
+    /**
+     * The module whose class path a main class runs with: the one that assembles the
+     * application when there is one, otherwise the module the class lives in.
+     */
+    private static Path classpathModule(JavaProjectInfo info, String mainClass) {
+        for (JavaProjectInfo.RunnableClass rc : info.mainClasses()) {
+            if (rc.fqn().equals(mainClass)) {
+                return AssemblyModule.of(info.model(), rc.moduleRoot()).orElse(rc.moduleRoot());
+            }
+        }
+        return null;
+    }
+
     private static final java.util.regex.Pattern MAIN_METHOD = java.util.regex.Pattern.compile(
             "^[ \\t]*(?:public\\s+)?(?:static\\s+)?(?:final\\s+)?void\\s+main\\s*\\(", java.util.regex.Pattern.MULTILINE);
     private static final java.util.regex.Pattern PACKAGE =
@@ -153,7 +204,7 @@ public final class ApplicationRunType implements RunConfigurationType {
         Forms.combo(grid, 0, "Main class", c, "mainClass", mains);
         Forms.text(grid, 1, "Program arguments", c, "args", "");
         Forms.text(grid, 2, "VM options", c, "vmArgs", "-Xmx512m");
-        Forms.text(grid, 3, "Classpath of module", c, "module", "root module");
+        Forms.text(grid, 3, "Classpath of module", c, "module", "worked out from the main class");
         Forms.directory(grid, 4, "Working directory", c, "workingDir", ide);
         Forms.text(grid, 5, "Environment (K=V;K=V)", c, "env", "");
         Forms.text(grid, 6, "Debug port", c, "debugPort", "5005");
@@ -178,8 +229,8 @@ public final class ApplicationRunType implements RunConfigurationType {
                 throw new IllegalStateException("No main class set. Edit the configuration.");
             }
             Path root = workspace.root();
-            Path module = moduleDir();
             JavaProjectInfo info = registry.get(workspace).orElse(null);
+            Path module = moduleFor(info, mainClass);
             // Built, run and debugged with the project's JDK, not whichever the IDE found first.
             Path jdk = JavaTools.launchJdk(ide, workspace, registry).home();
             String classpath;
@@ -215,6 +266,23 @@ public final class ApplicationRunType implements RunConfigurationType {
             java.util.Map<String, String> env = new java.util.HashMap<>(JavaTools.environment(jdk));
             env.putAll(Forms.environment(get("env", "")));
             return new ProcessSpec(name(), cmd, cwd, env);
+        }
+
+        /**
+         * The module to run with: the one named in the configuration, or - when that field was
+         * left blank - the one the main class belongs to.
+         *
+         * <p>Blank used to mean the workspace root, which in a multi-module build is a pom with
+         * no code of its own: the class path came out as {@code <root>/target/classes}, a folder
+         * that does not exist, and the run failed with "Could not find or load main class". A
+         * field nobody filled in is a question the project can answer.
+         */
+        private Path moduleFor(JavaProjectInfo info, String mainClass) {
+            if (!get("module", "").isBlank() || info == null) {
+                return moduleDir();
+            }
+            Path found = classpathModule(info, mainClass);
+            return found == null ? moduleDir() : found;
         }
 
         private String gradleClasspath(Path module) {
