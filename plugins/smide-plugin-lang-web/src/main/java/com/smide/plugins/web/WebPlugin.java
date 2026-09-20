@@ -19,6 +19,8 @@ public final class WebPlugin implements Plugin {
         NodeToolchain node = new NodeToolchain();
         context.registerToolchain(node);
         context.registerRunConfigurationType(new NodeRunType(context.ide(), node::locate));
+        // A package.json project, with its scripts and the packages of a workspace.
+        context.registerProjectImporter(new NpmImporter());
         context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Node.js", node));
 
         NodeServer typescript = new NodeServer("typescript-language-server", "TypeScript Language Server",

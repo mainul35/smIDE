@@ -176,6 +176,9 @@ public final class MainWindow {
             ide.requestExit();
         });
         stage.show();
+        // Full screen is the reader's choice; a dialog opening is not a reason to leave it.
+        FullScreen.remember(stage);
+        FullScreen.keep(stage);
         if (maximized) {
             stage.setMaximized(true);
         }

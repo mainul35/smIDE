@@ -99,14 +99,14 @@ On Windows, `run.ps1` does both steps.
 | `smide-plugin-git` | Git changes, log, diffs, branches |
 | `smide-plugin-terminal` | Terminal tool window |
 | `smide-plugin-lang-kotlin` | Kotlin, kotlin-language-server, kotlinc scripts and files outside Gradle/Maven |
-| `smide-plugin-lang-python` | Python, pyright, scripts/modules/pytest (project .venv first) |
-| `smide-plugin-lang-web` | JavaScript, TypeScript, HTML, CSS, JSON, npm scripts and Node files |
+| `smide-plugin-lang-python` | Python, pyright, projects (pyproject/requirements/Pipfile), scripts/modules/pytest |
+| `smide-plugin-lang-web` | JavaScript, TypeScript, HTML, CSS, JSON, package.json projects and npm scripts |
 | `smide-plugin-lang-config` | YAML, XML, TOML, properties, INI, dotenv, ignore files |
 | `smide-plugin-lang-shell` | Shell, PowerShell, batch, and running scripts of each |
 | `smide-plugin-lang-sql` | SQL |
 | `smide-plugin-lang-groovy` | Groovy and Gradle build scripts (build.gradle, settings.gradle, Jenkinsfile) |
-| `smide-plugin-lang-go` | Go, gopls, run/test/build configurations |
-| `smide-plugin-lang-rust` | Rust, rust-analyzer, cargo run/test/build |
+| `smide-plugin-lang-go` | Go, gopls, modules and go.work, run/test/build configurations |
+| `smide-plugin-lang-rust` | Rust, rust-analyzer, Cargo projects and run/test/build |
 | `smide-plugin-lang-cpp` | C, C++, CMake, clangd, CMake/make builds and compile-and-run |
 | `smide-plugin-lang-csharp` | C#, csharp-ls, dotnet run/test/build |
 | `smide-plugin-lang-docker` | Dockerfiles, compose up, image build and run |

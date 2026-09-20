@@ -31,6 +31,8 @@ public final class RustPlugin implements Plugin {
         RustToolchain rust = new RustToolchain();
         context.registerToolchain(rust);
         context.registerRunConfigurationType(new RustRunType(context.ide(), rust::locate));
+        // A Cargo crate, or a workspace of them, loaded as a project of its own.
+        context.registerProjectImporter(new CargoImporter());
         context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Rust", rust));
 
         context.registerFileType(new FileType("rust", "Rust source", Set.of("rs"), Set.of(),

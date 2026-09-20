@@ -41,6 +41,8 @@ public final class GoPlugin implements Plugin {
         context.registerLanguage(new GoModLanguage());
         context.registerToolchain(toolchain);
         context.registerRunConfigurationType(new GoRunType(context.ide(), toolchain::locate));
+        // A Go module, or the modules of a go.work, loaded as a project.
+        context.registerProjectImporter(new GoImporter());
         context.registerDebugger(new GoDebugger());
         context.registerSettingsPage(new GoSettingsPage(context.ide(), toolchain));
     }

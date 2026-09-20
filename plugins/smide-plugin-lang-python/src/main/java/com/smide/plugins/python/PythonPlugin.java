@@ -15,6 +15,8 @@ public final class PythonPlugin implements Plugin {
         PythonToolchain python = new PythonToolchain();
         context.registerToolchain(python);
         context.registerRunConfigurationType(new PythonRunType(context.ide(), python::locate));
+        // A Python project - pyproject.toml, requirements.txt, setup.py, Pipfile - loaded as one.
+        context.registerProjectImporter(new PythonImporter());
         context.registerDebugger(new PythonDebugger());
         context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Python", python));
 
