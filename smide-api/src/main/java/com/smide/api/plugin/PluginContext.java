@@ -60,6 +60,9 @@ public interface PluginContext {
     /** Adds the libraries of the projects this plugin understands to the Project tree's External Libraries. */
     void registerLibraryProvider(com.smide.api.project.LibraryProvider provider);
 
+    /** Words to offer while typing in a language with no server of its own - Gradle's in a build script. */
+    void registerCompletionSource(com.smide.api.lang.CompletionSource source);
+
     /** Adds to how another plugin's language server starts - Lombok in the Java server. */
     void registerLanguageServerContributor(com.smide.api.lang.LanguageServerContributor contributor);
 }

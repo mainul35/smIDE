@@ -59,6 +59,33 @@ public final class SpringBootRunType implements RunConfigurationType {
         return true;
     }
 
+    /**
+     * The task to ask Gradle for, as Gradle names it from the folder it runs in.
+     *
+     * <p>A module is remembered relative to the project - {@code POISYA-administration/poisya} -
+     * while Gradle runs in the folder its build is in, which is that same folder when the build
+     * was found inside the project. Asking there for
+     * {@code POISYA-administration:poisya:bootRun} is asking for a module of a module: Gradle
+     * answers that no such task exists, with its notes on name abbreviation, and the build
+     * fails. Relative to where it runs, the task is just {@code bootRun}.
+     */
+    static String gradleTask(Workspace workspace, JavaProjectInfo info, String module, String task) {
+        if (module == null || module.isBlank() || info == null) {
+            return task;
+        }
+        try {
+            java.nio.file.Path moduleDir = workspace.root().resolve(module).normalize();
+            java.nio.file.Path buildRoot = info.buildRoot().normalize();
+            if (moduleDir.equals(buildRoot) || !moduleDir.startsWith(buildRoot)) {
+                return task;
+            }
+            String within = buildRoot.relativize(moduleDir).toString().replace('\\', ':').replace('/', ':');
+            return within.isBlank() ? task : within + ":" + task;
+        } catch (RuntimeException e) {
+            return task;
+        }
+    }
+
     @Override
     public RunConfiguration create(Workspace workspace) {
         return new Config(workspace);
@@ -131,8 +158,7 @@ public final class SpringBootRunType implements RunConfigurationType {
             java.nio.file.Path cwd;
             if (info != null && info.isGradle()) {
                 cmd = JavaTools.gradle(ide, info.buildRoot());
-                String module = get("module", "");
-                cmd.add(module.isBlank() ? "bootRun" : module.replace('/', ':').replace('\\', ':') + ":bootRun");
+                cmd.add(gradleTask(workspace, info, get("module", ""), "bootRun"));
                 if (!args.isBlank() || !profiles.isBlank()) {
                     String all = (profiles.isBlank() ? "" : "--spring.profiles.active=" + profiles + " ") + args;
                     cmd.add("--args=" + all.strip());

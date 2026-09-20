@@ -157,6 +157,10 @@ public final class IdeImpl implements Ide {
                    Consumed only when a plugin answered, so a Ctrl+click elsewhere is untouched. */
                 // Under Ctrl, what Ctrl+click would follow is drawn as a link.
                 com.smide.lsp.CtrlHoverLinks.install(this, () -> lsp, code);
+                /* Words while typing where no language server answers - Gradle's in a build
+                   script, and the file's own words - which is better than nothing at all. */
+                com.smide.completion.WordCompletion.install(this, registry, code,
+                        () -> lsp != null && lsp.bindingOf(code).isPresent());
                 code.area().addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, e -> {
                     if (e.getButton() != javafx.scene.input.MouseButton.PRIMARY || !e.isShortcutDown()
                             || e.isShiftDown() || lsp == null || lsp.bindingOf(code).isPresent()) {

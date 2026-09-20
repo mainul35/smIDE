@@ -116,6 +116,17 @@ public final class ExtensionRegistry {
     private final List<com.smide.api.lang.LanguageServerContributor> serverContributors =
             new java.util.concurrent.CopyOnWriteArrayList<>();
 
+    private final List<com.smide.api.lang.CompletionSource> completionSources =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public void addCompletionSource(com.smide.api.lang.CompletionSource s) {
+        completionSources.add(s);
+    }
+
+    public List<com.smide.api.lang.CompletionSource> completionSources() {
+        return completionSources;
+    }
+
     public void addServerContributor(com.smide.api.lang.LanguageServerContributor c) {
         serverContributors.add(c);
     }

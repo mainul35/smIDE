@@ -107,6 +107,11 @@ final class PluginContextImpl implements PluginContext {
     }
 
     @Override
+    public void registerCompletionSource(com.smide.api.lang.CompletionSource source) {
+        registry.addCompletionSource(source);
+    }
+
+    @Override
     public void registerLanguageServerContributor(com.smide.api.lang.LanguageServerContributor contributor) {
         registry.addServerContributor(contributor);
     }

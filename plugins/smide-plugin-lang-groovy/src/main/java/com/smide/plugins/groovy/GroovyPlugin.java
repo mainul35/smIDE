@@ -18,5 +18,7 @@ public final class GroovyPlugin implements Plugin {
         context.registerFileType(new FileType("groovy", "Groovy",
                 Set.of("groovy", "gradle", "gvy", "gy"), Set.of("Jenkinsfile"), "mdi2l-language-kotlin", false));
         context.registerLanguage(new GroovyLanguage());
+        // Gradle's own vocabulary while typing, where no language server answers for Groovy.
+        context.registerCompletionSource(new GradleCompletion());
     }
 }
