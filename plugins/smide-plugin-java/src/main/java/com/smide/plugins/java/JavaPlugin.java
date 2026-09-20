@@ -60,6 +60,10 @@ public final class JavaPlugin implements Plugin {
         context.registerDeclarationProvider(poms);
         // Its dependencies, jar and pom, under External Libraries in the Project tree.
         context.registerLibraryProvider(poms.libraries());
+        // And the same for a Gradle script: a coordinate Gradle cannot resolve, red as it is typed.
+        com.smide.api.problems.ManifestChecks.watch(ide, com.smide.plugins.java.gradle.GradleDependencies.SOURCE,
+                com.smide.plugins.java.gradle.GradleDependencies::isBuildScript,
+                com.smide.plugins.java.gradle.GradleDependencies::problemsIn);
 
         /* Tomcat before the plain application: detection order is the order the run chooser
            offers them in, and for a web application the server is the configuration that

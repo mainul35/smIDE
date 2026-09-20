@@ -17,6 +17,9 @@ public final class PythonPlugin implements Plugin {
         context.registerRunConfigurationType(new PythonRunType(context.ide(), python::locate));
         // A Python project - pyproject.toml, requirements.txt, setup.py, Pipfile - loaded as one.
         context.registerProjectImporter(new PythonImporter());
+        // A requirement that is not installed in the project's environment, red where it is written.
+        com.smide.api.problems.ManifestChecks.watch(context.ide(), PythonDependencies.SOURCE,
+                PythonDependencies::isManifest, PythonDependencies::problemsIn);
         context.registerDebugger(new PythonDebugger());
         context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Python", python));
 

@@ -27,6 +27,14 @@ and editable. A Maven tool window lists lifecycle phases, plugin goals and profi
 Each project builds and runs with its own JDK: the oldest installed one that suits the
 release its build asks for, or one pinned under Settings > Languages > Java.
 
+**Build files.** A dependency the machine has not got is drawn in red where it is written,
+as it is typed - a misspelt coordinate is caught in the file rather than by a build five
+minutes later. In a `pom.xml`, and in a Gradle script against Gradle's cache and the local
+Maven repository; a `package.json` against `node_modules`, a `Cargo.toml` against Cargo's
+registry, and `requirements.txt` or `pyproject.toml` against the project's own virtual
+environment. Nothing is said before a project has downloaded anything: a fresh clone whose
+dependencies are all still to come is not a file full of mistakes.
+
 **Debugging.** Click the gutter to set a breakpoint; right-click it to disable, enable or
 remove one, or all of a file's - a disabled breakpoint stays in place and the running
 program passes it by, even when it is changed mid-session. **Condition...** makes a

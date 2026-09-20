@@ -21,6 +21,9 @@ public final class WebPlugin implements Plugin {
         context.registerRunConfigurationType(new NodeRunType(context.ide(), node::locate));
         // A package.json project, with its scripts and the packages of a workspace.
         context.registerProjectImporter(new NpmImporter());
+        // A package named in package.json but not installed, red where it is written.
+        com.smide.api.problems.ManifestChecks.watch(context.ide(), NpmDependencies.SOURCE,
+                NpmDependencies::isPackageJson, NpmDependencies::problemsIn);
         context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Node.js", node));
 
         NodeServer typescript = new NodeServer("typescript-language-server", "TypeScript Language Server",

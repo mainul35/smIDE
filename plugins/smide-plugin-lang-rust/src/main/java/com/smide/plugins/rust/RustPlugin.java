@@ -33,6 +33,9 @@ public final class RustPlugin implements Plugin {
         context.registerRunConfigurationType(new RustRunType(context.ide(), rust::locate));
         // A Cargo crate, or a workspace of them, loaded as a project of its own.
         context.registerProjectImporter(new CargoImporter());
+        // A crate Cargo has not got, red where it is written.
+        com.smide.api.problems.ManifestChecks.watch(context.ide(), CargoDependencies.SOURCE,
+                CargoDependencies::isManifest, CargoDependencies::problemsIn);
         context.registerSettingsPage(new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/Rust", rust));
 
         context.registerFileType(new FileType("rust", "Rust source", Set.of("rs"), Set.of(),
