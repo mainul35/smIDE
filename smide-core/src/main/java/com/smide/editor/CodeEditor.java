@@ -63,7 +63,15 @@ public final class CodeEditor implements TextEditor {
     /** A strip across the top that says what is missing - "No Python found" - with what to do about it. */
     private final javafx.scene.layout.StackPane banner = new javafx.scene.layout.StackPane();
     private final Workspace workspace;
-    private final LanguageSupport language;
+    /**
+     * Not final: a language can arrive after the file is open.
+     *
+     * <p>Which language a file is in is settled when the editor is made, and a plugin that
+     * registers its language a moment later - because it was slow to start, or because the file
+     * was opened from the command line before the plugins were up - left the file plain text for
+     * as long as it stayed open. {@link #setLanguage} moves it over when its language turns up.
+     */
+    private LanguageSupport language;
     /** Kept, so a change to the font applies to this editor and not only to the next one. */
     private com.smide.api.settings.Settings settings;
     private final ReadOnlyBooleanWrapper modified = new ReadOnlyBooleanWrapper(false);
@@ -79,6 +87,10 @@ public final class CodeEditor implements TextEditor {
     private List<EditorStyles.Overlay> searchHits = List.of();
     private int highlightGeneration;
     private boolean disposed;
+    /** Whether this file has been painted at least once by a real highlighter. */
+    private boolean highlighted;
+    /** The text the last painting was asked for, so the same text is not painted twice. */
+    private String paintedText;
 
     public CodeEditor(Workspace workspace, Path path, LanguageSupport language) {
         this(workspace, path, language, null);
@@ -106,7 +118,8 @@ public final class CodeEditor implements TextEditor {
         this.settings = settings;
         applyDisplaySettings();
         root.getStyleClass().add("code-editor");
-        root.setCenter(scroll);
+        buildLoading();
+        root.setCenter(new javafx.scene.layout.StackPane(scroll, loading));
         findBar = new FindBar(this);
         root.setTop(new javafx.scene.layout.VBox(banner, findBar));
         banner.setVisible(false);
@@ -207,13 +220,24 @@ public final class CodeEditor implements TextEditor {
             return;
         }
         String text = area.getText();
+        /* Not the same text twice. Opening a file puts its contents into the area, which the
+           editor's own change listener sees and asks for a second painting of the very same
+           text a tenth of a second later - two passes for every file, on the one thread that
+           paints them all, at the moment a session of ten files is being restored. */
+        if (text.equals(paintedText)) {
+            return;
+        }
+        paintedText = text;
         int generation = ++highlightGeneration;
         Highlighter highlighter = language.highlighter();
         if (text.length() > HIGHLIGHT_LIMIT || highlighter == Highlighter.NONE) {
             tokens = List.of();
             applyStyles();
+            // Nothing is coming for this file: what is on screen is all there will be.
+            hideLoading();
             return;
         }
+        showLoadingUntilPainted();
         HIGHLIGHTER.execute(() -> {
             List<Token> result;
             try {
@@ -227,9 +251,87 @@ public final class CodeEditor implements TextEditor {
                 if (generation == highlightGeneration && !disposed) {
                     tokens = finalResult;
                     applyStyles();
+                    highlighted = true;
+                    hideLoading();
                 }
             });
         });
+    }
+
+    // --------------------------------------------------------------- loading
+
+    /**
+     * What is shown over a file that is not ready to be read yet.
+     *
+     * <p>A file opens before its colours do. One thread paints every file, so restoring a session
+     * queues them behind each other, and a plugin that is still starting has not said yet what
+     * language the file is in - during which the file is on screen in one colour, looking for all
+     * the world like a plain text file that will never be anything else. A file that is still
+     * being worked out should look like one, so it is covered until it is ready.
+     */
+    private final javafx.scene.layout.StackPane loading = new javafx.scene.layout.StackPane();
+    private final javafx.scene.control.Label loadingText = new javafx.scene.control.Label("Loading...");
+    /**
+     * Shown only if the wait is long enough to notice.
+     *
+     * <p>Most files are painted within a frame or two of opening, and a spinner that appears and
+     * disappears in that time is a flicker, which reads as something being wrong.
+     */
+    private javafx.animation.PauseTransition loadingDelay;
+
+    private void buildLoading() {
+        loading.getStyleClass().add("editor-loading");
+        javafx.scene.control.ProgressIndicator spinner = new javafx.scene.control.ProgressIndicator();
+        spinner.setPrefSize(38, 38);
+        loadingText.getStyleClass().add("editor-loading-text");
+        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(10, spinner, loadingText);
+        box.setAlignment(javafx.geometry.Pos.CENTER);
+        loading.getChildren().add(box);
+        loading.setVisible(false);
+        // The file underneath can still be scrolled and clicked while this is up.
+        loading.setMouseTransparent(true);
+    }
+
+    /** Covers the file until it has been painted, if that takes long enough to see. */
+    private void showLoadingUntilPainted() {
+        if (highlighted || loading.isVisible()) {
+            return;
+        }
+        loadingText.setText("Loading " + language.displayName() + "...");
+        if (loadingDelay == null) {
+            loadingDelay = new javafx.animation.PauseTransition(javafx.util.Duration.millis(250));
+            loadingDelay.setOnFinished(e -> {
+                if (!highlighted && !disposed) {
+                    loading.setVisible(true);
+                }
+            });
+        }
+        loadingDelay.playFromStart();
+    }
+
+    private void hideLoading() {
+        if (loadingDelay != null) {
+            loadingDelay.stop();
+        }
+        loading.setVisible(false);
+    }
+
+    /**
+     * Moves the file to the language that has just been registered for it.
+     *
+     * <p>Everything a language decides is decided again: how it is painted, which brackets pair,
+     * what a comment looks like. The editor keeps its text, its caret and its undo history - this
+     * is the same file, now understood.
+     */
+    public void setLanguage(LanguageSupport language) {
+        if (language == null || language == this.language || disposed) {
+            return;
+        }
+        this.language = language;
+        highlighted = false;
+        // The text has not changed, but what it means has.
+        paintedText = null;
+        scheduleHighlight();
     }
 
     private void applyStyles() {

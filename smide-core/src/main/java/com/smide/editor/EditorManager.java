@@ -83,6 +83,23 @@ public final class EditorManager implements Editors {
         this.settings = settings;
         this.breakpoints = breakpoints;
 
+        /* A language that arrives after a file is open takes the file over: the same editor, its
+           text, caret and undo history kept, now painted and understood as what it is. Without
+           this a file opened a moment too early - from the command line, or reopened from the
+           last session while its plugin was still starting - stayed plain text until it was
+           closed and opened again, with no hint that it was a matter of timing. */
+        registry.onLanguageAdded(language -> window.runLater(() -> {
+            for (Editor editor : open()) {
+                if (editor instanceof CodeEditor code && language.matches(code.path())
+                        && code.language().highlighter() == com.smide.api.lang.Highlighter.NONE) {
+                    code.setLanguage(language);
+                    // The tab's icon was the plain-file one; it is this language's now.
+                    for (com.smide.workspace.WorkspaceImpl w : workspaces.allImpl()) {
+                        w.tabFor(code).ifPresent(tab -> tab.setIcon(languages.iconFor(code.path())));
+                    }
+                }
+            }
+        }));
         workspaces.setCloseGuard(this::closeAllIn);
         workspaces.addActiveListener(ws -> fireActive());
         workspaces.addOpenedListener(ws -> {

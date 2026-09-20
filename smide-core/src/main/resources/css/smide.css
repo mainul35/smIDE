@@ -610,6 +610,21 @@
     -fx-background-color: -smide-paper;
 }
 
+/* Over a file that is still being worked out: the paper, nearly opaque, and a spinner. */
+.editor-loading {
+    -fx-background-color: -smide-paper;
+    -fx-opacity: 0.92;
+}
+
+.editor-loading .progress-indicator {
+    -fx-progress-color: -smide-accent;
+}
+
+.editor-loading-text {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 12px;
+}
+
 .code-area {
     -fx-font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono", monospace;
     -fx-font-size: 13.5px;

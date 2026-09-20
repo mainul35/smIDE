@@ -49,7 +49,21 @@ public final class ExtensionRegistry {
 
     public void addLanguage(LanguageSupport l) {
         languages.add(l);
+        languageListeners.forEach(listener -> listener.accept(l));
     }
+
+    /**
+     * Told when a language is registered.
+     *
+     * <p>Because files can already be open by then - opened from the command line, or reopened
+     * from the last session while the plugin that knows them was still starting - and an editor
+     * that settled on plain text stays plain text unless something moves it over.
+     */
+    public void onLanguageAdded(Consumer<LanguageSupport> listener) {
+        languageListeners.add(listener);
+    }
+
+    private final List<Consumer<LanguageSupport>> languageListeners = new ArrayList<>();
 
     public void addEditorProvider(EditorProvider p) {
         editorProviders.add(p);

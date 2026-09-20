@@ -40,6 +40,12 @@ public final class EditorTab {
         editor.modifiedProperty().addListener((obs, was, now) -> updateLabel());
     }
 
+    /** The icon again, for a file whose language was worked out after it was opened. */
+    public void setIcon(String iconLiteral) {
+        Node icon = Icons.of(iconLiteral, 13);
+        tab.setGraphic(icon);
+    }
+
     public Tab tab() {
         return tab;
     }
