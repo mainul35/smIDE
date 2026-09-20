@@ -61,7 +61,7 @@ final class QueryConsole {
         Button run = new Button("Run");
         run.setGraphic(new FontIcon("fth-play"));
         run.setDefaultButton(false);
-        run.setTooltip(new Tooltip("Run the statement (Ctrl+Enter)"));
+        run.setTooltip(com.smide.api.ui.Tooltips.of("Run the statement (Ctrl+Enter)"));
         run.setOnAction(e -> run());
 
         Region gap = new Region();

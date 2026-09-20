@@ -32,7 +32,7 @@ public final class LspStatusWidget implements StatusBarWidget {
                 manager.restart(current);
             }
         });
-        Tooltip.install(box, new Tooltip("Language server for this file. Click to restart."));
+        Tooltip.install(box, com.smide.api.ui.Tooltips.of("Language server for this file. Click to restart."));
         ide.editors().addActiveListener(e -> {
             current = e.orElse(null);
             update();

@@ -68,7 +68,7 @@ public final class StatusBarView extends HBox implements StatusBar {
                 tasks.toggle(progressBox);
             }
         });
-        Tooltip.install(progressBox, new Tooltip("Show what the background tasks are doing"));
+        Tooltip.install(progressBox, com.smide.api.ui.Tooltips.of("Show what the background tasks are doing"));
 
         for (StatusBarWidget w : registry.statusWidgets()) {
             addWidget(w);

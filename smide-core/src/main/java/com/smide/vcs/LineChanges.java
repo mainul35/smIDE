@@ -29,6 +29,29 @@ public final class LineChanges {
         REMOVED
     }
 
+    /**
+     * One stretch of a file that differs from the commit, and what it replaced.
+     *
+     * @param start     first line of the stretch as the file stands now
+     * @param end       one past its last line; equal to {@code start} when lines were only removed
+     * @param baseStart first line of what was there in the commit
+     * @param baseEnd   one past its last line
+     */
+    public record Hunk(Kind kind, int start, int end, int baseStart, int baseEnd) {
+
+        public boolean covers(int line) {
+            return kind == Kind.REMOVED ? line == start : line >= start && line < end;
+        }
+
+        /** The lines this replaced, as they were committed. */
+        public List<String> committedLines(String committed) {
+            List<String> lines = lines(committed);
+            return baseStart >= baseEnd || baseStart >= lines.size()
+                    ? List.of()
+                    : List.copyOf(lines.subList(baseStart, Math.min(baseEnd, lines.size())));
+        }
+    }
+
     /** Beyond this many lines the comparison is not worth the wait; nothing is marked. */
     private static final int MAX_LINES = 200_000;
 
@@ -42,17 +65,44 @@ public final class LineChanges {
      *         absent
      */
     public static Map<Integer, Kind> between(String committed, String current) {
+        Map<Integer, Kind> marks = new HashMap<>();
+        for (Hunk hunk : hunks(committed, current)) {
+            switch (hunk.kind()) {
+                case REMOVED -> marks.putIfAbsent(hunk.start(), Kind.REMOVED);
+                case ADDED -> {
+                    for (int line = hunk.start(); line < hunk.end(); line++) {
+                        marks.put(line, Kind.ADDED);
+                    }
+                }
+                case CHANGED -> {
+                    int replaced = hunk.baseEnd() - hunk.baseStart();
+                    for (int line = hunk.start(); line < hunk.end(); line++) {
+                        marks.put(line, line - hunk.start() < replaced ? Kind.CHANGED : Kind.ADDED);
+                    }
+                    if (replaced > hunk.end() - hunk.start()) {
+                        // More lines went than came; the last of what replaced them says so.
+                        marks.putIfAbsent(Math.max(hunk.end() - 1, hunk.start()), Kind.REMOVED);
+                    }
+                }
+            }
+        }
+        return marks;
+    }
+
+    /** Every stretch that differs from the commit, in the order they appear in the file. */
+    public static List<Hunk> hunks(String committed, String current) {
         if (committed == null || current == null) {
-            return Map.of();
+            return List.of();
         }
         List<String> was = lines(committed);
         List<String> now = lines(current);
         if (was.size() > MAX_LINES || now.size() > MAX_LINES) {
-            return Map.of();
+            return List.of();
         }
-        Map<Integer, Kind> marks = new HashMap<>();
-        compare(was, 0, was.size(), now, 0, now.size(), marks);
-        return marks;
+        List<Hunk> hunks = new ArrayList<>();
+        compare(was, 0, was.size(), now, 0, now.size(), hunks);
+        hunks.sort(java.util.Comparator.comparingInt(Hunk::start));
+        return List.copyOf(hunks);
     }
 
     /** Splits into lines, keeping every one - including the empty last line of a file that ends in a newline. */
@@ -79,7 +129,7 @@ public final class LineChanges {
      */
     private static void compare(List<String> was, int wasFrom, int wasTo,
                                 List<String> now, int nowFrom, int nowTo,
-                                Map<Integer, Kind> marks) {
+                                List<Hunk> hunks) {
         // The identical ends of the two stretches are not worth comparing.
         while (wasFrom < wasTo && nowFrom < nowTo && was.get(wasFrom).equals(now.get(nowFrom))) {
             wasFrom++;
@@ -94,50 +144,28 @@ public final class LineChanges {
         }
         if (wasFrom == wasTo) {
             // Nothing was there before: every line here is new.
-            for (int line = nowFrom; line < nowTo; line++) {
-                marks.put(line, Kind.ADDED);
-            }
+            hunks.add(new Hunk(Kind.ADDED, nowFrom, nowTo, wasFrom, wasFrom));
             return;
         }
         if (nowFrom == nowTo) {
             // Everything that was there is gone; the mark goes on the line that took its place.
-            marks.merge(Math.min(nowFrom, now.size() - 1), Kind.REMOVED,
-                    (existing, added) -> existing == Kind.CHANGED ? Kind.CHANGED : existing);
+            hunks.add(new Hunk(Kind.REMOVED, Math.max(Math.min(nowFrom, now.size() - 1), 0),
+                    Math.max(Math.min(nowFrom, now.size() - 1), 0), wasFrom, wasTo));
             return;
         }
         List<int[]> anchors = anchors(was, wasFrom, wasTo, now, nowFrom, nowTo);
         if (anchors.isEmpty()) {
-            changedBlock(wasFrom, wasTo, nowFrom, nowTo, now, marks);
+            hunks.add(new Hunk(Kind.CHANGED, nowFrom, nowTo, wasFrom, wasTo));
             return;
         }
         int wasAt = wasFrom;
         int nowAt = nowFrom;
         for (int[] anchor : anchors) {
-            compare(was, wasAt, anchor[0], now, nowAt, anchor[1], marks);
+            compare(was, wasAt, anchor[0], now, nowAt, anchor[1], hunks);
             wasAt = anchor[0] + 1;
             nowAt = anchor[1] + 1;
         }
-        compare(was, wasAt, wasTo, now, nowAt, nowTo, marks);
-    }
-
-    /**
-     * A stretch with nothing to match on: as many lines as were there are changed, and the rest
-     * are added or removed.
-     */
-    private static void changedBlock(int wasFrom, int wasTo, int nowFrom, int nowTo,
-                                     List<String> now, Map<Integer, Kind> marks) {
-        int common = Math.min(wasTo - wasFrom, nowTo - nowFrom);
-        for (int i = 0; i < common; i++) {
-            marks.put(nowFrom + i, Kind.CHANGED);
-        }
-        for (int line = nowFrom + common; line < nowTo; line++) {
-            marks.put(line, Kind.ADDED);
-        }
-        if (wasTo - wasFrom > common) {
-            // More lines went than came: say so on the last line of what replaced them.
-            int at = Math.min(Math.max(nowFrom + common - 1, nowFrom), Math.max(now.size() - 1, 0));
-            marks.putIfAbsent(at, Kind.REMOVED);
-        }
+        compare(was, wasAt, wasTo, now, nowAt, nowTo, hunks);
     }
 
     /**

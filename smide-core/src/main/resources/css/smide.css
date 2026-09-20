@@ -637,6 +637,49 @@
     -fx-background-color: linear-gradient(to bottom, -smide-vcs-removed 0%, -smide-vcs-removed 40%, transparent 40%);
 }
 
+/* What a changed line was when it was last committed, opened from the strip. */
+.change-popup {
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.25), 16, 0, 0, 4);
+}
+
+.change-popup-title {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+}
+
+.change-popup-empty {
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11.5px;
+}
+
+.change-popup-text {
+    -fx-font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", monospace;
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -smide-text;
+}
+
+.change-popup-scroll,
+.change-popup-scroll > .viewport {
+    -fx-background-color: -smide-paper;
+    -fx-background-insets: 0;
+}
+
+.change-popup-button {
+    -fx-background-color: transparent;
+    -fx-padding: 3 5 3 5;
+    -fx-cursor: hand;
+    -fx-background-radius: 4;
+}
+
+.change-popup-button:hover {
+    -fx-background-color: -smide-accent-soft;
+}
+
 /* Over a file that is still being worked out: the paper, nearly opaque, and a spinner. */
 .editor-loading {
     -fx-background-color: -smide-paper;
@@ -1420,7 +1463,12 @@
     -fx-background-radius: 3;
 }
 
+/* Every tooltip in the IDE stays while the pointer is on the thing it explains, rather than
+   being taken away after five seconds - which on a narrow target reads as a flicker. */
 .tooltip {
+    -fx-show-delay: 250ms;
+    -fx-show-duration: 3600s;
+    -fx-hide-delay: 150ms;
     -fx-background-color: -smide-surface;
     -fx-text-fill: -smide-text;
     -fx-border-color: -smide-border;

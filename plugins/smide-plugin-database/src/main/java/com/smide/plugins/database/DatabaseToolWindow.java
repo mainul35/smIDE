@@ -248,7 +248,7 @@ public final class DatabaseToolWindow implements ToolWindowFactory {
         Button button = new Button();
         button.setGraphic(new FontIcon(literal));
         button.getStyleClass().add("icon-button");
-        button.setTooltip(new Tooltip(tip));
+        button.setTooltip(com.smide.api.ui.Tooltips.of(tip));
         button.setFocusTraversable(false);
         button.setOnAction(e -> action.run());
         return button;

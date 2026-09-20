@@ -95,10 +95,10 @@ public final class MavenToolWindow implements ToolWindowFactory {
         pane.getChildren().addAll(empty, tree);
 
         skipTests.setGraphic(new FontIcon("fth-fast-forward"));
-        skipTests.setTooltip(new Tooltip("Skip tests (-DskipTests)"));
+        skipTests.setTooltip(com.smide.api.ui.Tooltips.of("Skip tests (-DskipTests)"));
         skipTests.getStyleClass().add("icon-button");
         offline.setGraphic(new FontIcon("fth-wifi-off"));
-        offline.setTooltip(new Tooltip("Work offline (-o)"));
+        offline.setTooltip(com.smide.api.ui.Tooltips.of("Work offline (-o)"));
         offline.getStyleClass().add("icon-button");
 
         ide.workspaces().addActiveListener(w -> {
@@ -239,7 +239,7 @@ public final class MavenToolWindow implements ToolWindowFactory {
         this.context = context;
         Button reload = new Button();
         reload.setGraphic(new FontIcon("fth-refresh-cw"));
-        reload.setTooltip(new Tooltip("Reload project"));
+        reload.setTooltip(com.smide.api.ui.Tooltips.of("Reload project"));
         reload.getStyleClass().add("icon-button");
         reload.setOnAction(e -> {
             if (current != null) {
@@ -248,13 +248,13 @@ public final class MavenToolWindow implements ToolWindowFactory {
         });
         Button goal = new Button();
         goal.setGraphic(new FontIcon("fth-terminal"));
-        goal.setTooltip(new Tooltip("Execute goal..."));
+        goal.setTooltip(com.smide.api.ui.Tooltips.of("Execute goal..."));
         goal.getStyleClass().add("icon-button");
         goal.setOnAction(e -> ide.window().prompt("Execute Maven Goal", "Command line", "clean install -DskipTests")
                 .ifPresent(this::runGoal));
         Button deps = new Button();
         deps.setGraphic(new FontIcon("fth-git-merge"));
-        deps.setTooltip(new Tooltip("Show dependency tree"));
+        deps.setTooltip(com.smide.api.ui.Tooltips.of("Show dependency tree"));
         deps.getStyleClass().add("icon-button");
         deps.setOnAction(e -> runGoal(registry.get(current).map(JavaProjectInfo::isGradle).orElse(false)
                 ? "dependencies" : "dependency:tree"));

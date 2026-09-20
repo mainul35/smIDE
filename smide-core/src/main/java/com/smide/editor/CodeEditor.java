@@ -391,6 +391,13 @@ public final class CodeEditor implements TextEditor {
             gutter.showRunMenu(area, run, e.getScreenX(), e.getScreenY());
             return;
         }
+        Integer changed = changeBarLine(e.getPickResult());
+        if (changed != null && onChangeClicked != null) {
+            // The strip of changes opens what the line was, rather than setting a breakpoint.
+            e.consume();
+            onChangeClicked.accept(changed, new double[] {e.getScreenX(), e.getScreenY()});
+            return;
+        }
         javafx.scene.layout.Pane swatch = swatchCell(e.getPickResult());
         Integer line = gutterLine(e.getPickResult());
         if (swatch != null && line != null) {
@@ -403,6 +410,18 @@ public final class CodeEditor implements TextEditor {
             e.consume();
             gutter.toggleAt(line);
         }
+    }
+
+    /** The line whose change strip is under the pointer, or null when it is not on one. */
+    private static Integer changeBarLine(javafx.scene.input.PickResult pick) {
+        javafx.scene.Node picked = pick == null ? null : pick.getIntersectedNode();
+        while (picked != null && !picked.getStyleClass().contains("gutter")) {
+            if (picked.getStyleClass().contains("change-bar") && picked.getUserData() instanceof Integer line) {
+                return line;
+            }
+            picked = picked.getParent();
+        }
+        return null;
     }
 
     /** The colour swatch's cell under the pointer, or null where the pointer is not on one. */
@@ -795,13 +814,31 @@ public final class CodeEditor implements TextEditor {
      * every pause in typing, and rebuilding every line's gutter for the same answer costs a
      * frame each time.
      */
-    public void setChanges(java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes) {
-        if (gutter == null || gutter.changes().equals(changes)) {
+    public void setChanges(java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes,
+                           java.util.List<com.smide.vcs.LineChanges.Hunk> hunks) {
+        if (gutter == null || (gutter.changes().equals(changes) && gutter.hunks().equals(hunks))) {
             return;
         }
-        gutter.setChanges(changes);
+        gutter.setChanges(changes, hunks);
         gutter.refresh();
     }
+
+    /** The change a line belongs to, for whatever wants to show it. */
+    public java.util.Optional<com.smide.vcs.LineChanges.Hunk> changeAt(int line) {
+        return gutter == null ? java.util.Optional.empty() : gutter.hunkAt(line);
+    }
+
+    /**
+     * What to do when the strip beside the code is clicked: the line, and where on the screen.
+     *
+     * <p>Set by whatever knows what the last commit holds - the editor itself knows only that a
+     * line is marked, not what it was.
+     */
+    public void setOnChangeClicked(java.util.function.BiConsumer<Integer, double[]> handler) {
+        this.onChangeClicked = handler;
+    }
+
+    private java.util.function.BiConsumer<Integer, double[]> onChangeClicked;
 
     /** Redraws the breakpoint column, after a breakpoint was added or removed. */
     public void refreshGutter() {

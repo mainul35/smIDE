@@ -31,7 +31,7 @@ public final class GitStatusWidget implements StatusBarWidget {
         label.setGraphic(new FontIcon("fth-git-branch"));
         box.getChildren().add(label);
         box.setAlignment(Pos.CENTER_LEFT);
-        Tooltip.install(box, new Tooltip("Current branch. Click to switch."));
+        Tooltip.install(box, com.smide.api.ui.Tooltips.of("Current branch. Click to switch."));
         box.setOnMouseClicked(e -> {
             if (e.getButton() == MouseButton.PRIMARY) {
                 showBranchMenu(e.getScreenX(), e.getScreenY());

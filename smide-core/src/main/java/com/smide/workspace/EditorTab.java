@@ -70,7 +70,7 @@ public final class EditorTab {
         Path path = editor.path();
         String name = path.getFileName() == null ? path.toString() : path.getFileName().toString();
         tab.setText(editor.isModified() ? name + " •" : name);
-        tab.setTooltip(new Tooltip(errors == 0 ? path.toString()
+        tab.setTooltip(com.smide.api.ui.Tooltips.of(errors == 0 ? path.toString()
                 : path + "\n" + errors + (errors == 1 ? " error" : " errors")));
         if (errors > 0) {
             if (!tab.getStyleClass().contains("tab-errors")) {

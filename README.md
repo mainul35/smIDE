@@ -31,7 +31,9 @@ release its build asks for, or one pinned under Settings > Languages > Java.
 for a line that is new, blue for one that has changed, a grey mark where lines were removed -
 against what Git has committed, and against what is in the editor rather than what is on disk,
 so a line is marked as it is typed and unmarked the moment it is typed back. The file tree says
-the same about whole files: blue for changed, green for new, grey for ignored.
+the same about whole files: blue for changed, green for new, grey for ignored. Clicking the
+strip opens what the last commit has there, with buttons to put those lines back, copy them, or
+step to the change before or after.
 
 **Build files.** A dependency the machine has not got is drawn in red where it is written,
 as it is typed - a misspelt coordinate is caught in the file rather than by a build five

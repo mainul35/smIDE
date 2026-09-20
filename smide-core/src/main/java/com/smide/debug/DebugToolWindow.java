@@ -302,7 +302,7 @@ public final class DebugToolWindow implements ToolWindowFactory {
         Button button = new Button();
         button.setGraphic(new FontIcon(icon));
         button.getStyleClass().add("icon-button");
-        button.setTooltip(new Tooltip(tip));
+        button.setTooltip(com.smide.api.ui.Tooltips.of(tip));
         button.setFocusTraversable(false);
         button.setUserData(action);
         button.setDisable(true);

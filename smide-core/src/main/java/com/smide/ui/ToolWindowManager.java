@@ -120,7 +120,7 @@ public final class ToolWindowManager implements ToolWindows {
             button.setText(factory.title().substring(0, 1));
         }
         String tip = factory.shortcut() == null ? factory.title() : factory.title() + "  (" + factory.shortcut() + ")";
-        button.setTooltip(new Tooltip(tip));
+        button.setTooltip(com.smide.api.ui.Tooltips.of(tip));
         button.setFocusTraversable(false);
         button.setOnAction(e -> toggle(factory.id()));
         Entry entry = new Entry(factory, button);

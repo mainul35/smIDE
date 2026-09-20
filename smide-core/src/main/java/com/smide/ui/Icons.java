@@ -40,7 +40,7 @@ public final class Icons {
         }
         button.getStyleClass().add("icon-button");
         if (tooltip != null) {
-            button.setTooltip(new Tooltip(tooltip));
+            button.setTooltip(com.smide.api.ui.Tooltips.of(tooltip));
         }
         button.setFocusTraversable(false);
         button.setOnAction(e -> onAction.run());

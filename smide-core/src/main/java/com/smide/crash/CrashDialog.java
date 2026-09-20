@@ -96,10 +96,10 @@ final class CrashDialog {
         // ------------------------------------------------------ where it goes
         send.setDisable(reporter.server().isEmpty());
         if (reporter.server().isPresent()) {
-            send.setTooltip(new Tooltip("Send to " + reporter.server().get()));
+            send.setTooltip(com.smide.api.ui.Tooltips.of("Send to " + reporter.server().get()));
         }
         send.setOnAction(e -> send());
-        issue.setTooltip(new Tooltip(reporter.github().describe()));
+        issue.setTooltip(com.smide.api.ui.Tooltips.of(reporter.github().describe()));
         issue.setOnAction(e -> fileIssue());
         Button copy = new Button("Copy");
         copy.setOnAction(e -> {
@@ -135,7 +135,7 @@ final class CrashDialog {
             nextRow.getChildren().addAll(quit, nextGap);
             if (reporter.canRetryStart()) {
                 Button safe = new Button("Start in safe mode");
-                safe.setTooltip(new Tooltip("Without plugins and without reopening the last session's files"));
+                safe.setTooltip(com.smide.api.ui.Tooltips.of("Without plugins and without reopening the last session's files"));
                 safe.setOnAction(e -> choose(CrashReporter.Choice.RESTART_SAFE));
                 Button retry = new Button("Try again");
                 retry.setDefaultButton(true);
@@ -152,7 +152,7 @@ final class CrashDialog {
             nextRow.getChildren().add(nextGap);
             if (reporter.canRestart()) {
                 Button restart = new Button("Restart smIDE");
-                restart.setTooltip(new Tooltip("Asks to save changed files, then starts smIDE again with the same"
+                restart.setTooltip(com.smide.api.ui.Tooltips.of("Asks to save changed files, then starts smIDE again with the same"
                         + " files open. Worth it when the window is not behaving since the error."));
                 restart.setOnAction(e -> choose(CrashReporter.Choice.RESTART));
                 nextRow.getChildren().add(restart);

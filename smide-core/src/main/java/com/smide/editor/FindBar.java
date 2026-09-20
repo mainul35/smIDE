@@ -44,9 +44,9 @@ public final class FindBar extends VBox {
 
         findField.setPromptText("Find");
         replaceField.setPromptText("Replace");
-        matchCase.setTooltip(new Tooltip("Match case"));
-        regex.setTooltip(new Tooltip("Regular expression"));
-        wholeWord.setTooltip(new Tooltip("Whole words"));
+        matchCase.setTooltip(com.smide.api.ui.Tooltips.of("Match case"));
+        regex.setTooltip(com.smide.api.ui.Tooltips.of("Regular expression"));
+        wholeWord.setTooltip(com.smide.api.ui.Tooltips.of("Whole words"));
         for (ToggleButton t : List.of(matchCase, regex, wholeWord)) {
             t.setFocusTraversable(false);
             t.selectedProperty().addListener((o, a, b) -> search(true));

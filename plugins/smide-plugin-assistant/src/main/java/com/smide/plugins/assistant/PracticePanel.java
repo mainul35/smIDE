@@ -131,7 +131,7 @@ final class PracticePanel extends BorderPane {
         topic.setEditable(true);
         topic.setValue("SQL queries");
         topic.setPrefWidth(210);
-        topic.setTooltip(new Tooltip("Anything you want to practise. Type your own."));
+        topic.setTooltip(com.smide.api.ui.Tooltips.of("Anything you want to practise. Type your own."));
         chosenTopic = topic.getValue();
         topic.valueProperty().addListener((o, was, now) -> {
             // Not while the box is filtering itself: the value it sets there is the half
@@ -168,7 +168,7 @@ final class PracticePanel extends BorderPane {
         difficulty.setValue("medium");
         language.getItems().setAll(LANGUAGES);
         language.setValue(ide.settings().get(LANGUAGE_KEY, ANY_LANGUAGE));
-        language.setTooltip(new Tooltip("What code answers are written in. Topics that are"
+        language.setTooltip(com.smide.api.ui.Tooltips.of("What code answers are written in. Topics that are"
                 + " about one language - Java generics, CSS - keep their own."));
         // Remembered: somebody learning Go is learning Go next week as well.
         language.valueProperty().addListener((o, was, now) ->
@@ -181,10 +181,10 @@ final class PracticePanel extends BorderPane {
         next.setOnAction(e -> askQuestion());
         submit.setOnAction(e -> submit());
         hint.setOnAction(e -> askHint());
-        hint.setTooltip(new Tooltip("A nudge, not the answer. Ask again for a"
+        hint.setTooltip(com.smide.api.ui.Tooltips.of("A nudge, not the answer. Ask again for a"
                 + " bigger one. Typing /hint in the answer does the same."));
         ask.setOnAction(e -> askAbout(askField.getText()));
-        ask.setTooltip(new Tooltip("Ask about the subject - what a clause does, why a"
+        ask.setTooltip(com.smide.api.ui.Tooltips.of("Ask about the subject - what a clause does, why a"
                 + " structure behaves that way. It answers the question without answering"
                 + " the exercise."));
         askField.setPromptText("Ask about this - what a clause does, why something behaves"

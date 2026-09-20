@@ -73,7 +73,7 @@ public final class ConsoleView extends BorderPane {
         setBottom(input);
 
         scrollLock.setGraphic(Icons.of("fth-arrow-down-circle", 14));
-        scrollLock.setTooltip(new Tooltip("Scroll to the end"));
+        scrollLock.setTooltip(com.smide.api.ui.Tooltips.of("Scroll to the end"));
         scrollLock.setSelected(true);
         scrollLock.getStyleClass().add("icon-button");
         scrollLock.setFocusTraversable(false);

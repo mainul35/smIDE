@@ -52,7 +52,7 @@ public final class UiScale {
         String explicit = firstOf(System.getProperty("smide.uiScale"),
                 System.getenv("SMIDE_UI_SCALE"));
         if (explicit != null) {
-            return normalise(explicit);
+             return normalise(explicit);
         }
         String saved = fromSettings();
         if (saved != null) {

@@ -41,7 +41,7 @@ final class MarkdownFindBar extends HBox {
         setSpacing(5);
 
         field.setPromptText("Find");
-        matchCase.setTooltip(new Tooltip("Match case"));
+        matchCase.setTooltip(com.smide.api.ui.Tooltips.of("Match case"));
         matchCase.setFocusTraversable(false);
         matchCase.selectedProperty().addListener((o, a, b) -> search(true));
         count.getStyleClass().add("muted-small");
@@ -81,7 +81,7 @@ final class MarkdownFindBar extends HBox {
             button.setText(tooltip);
         }
         button.getStyleClass().add("icon-button");
-        button.setTooltip(new Tooltip(tooltip));
+        button.setTooltip(com.smide.api.ui.Tooltips.of(tooltip));
         button.setFocusTraversable(false);
         button.setOnAction(e -> onAction.run());
         return button;

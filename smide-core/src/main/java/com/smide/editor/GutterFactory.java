@@ -66,6 +66,8 @@ public final class GutterFactory implements IntFunction<Node> {
     private java.util.function.Function<List<com.smide.api.execution.RunMarker>, ContextMenu> runMenu;
     /** What version control makes of each line: added, changed, or lines removed above it. */
     private java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes = java.util.Map.of();
+    /** The same, as stretches: what a click on the strip opens. */
+    private java.util.List<com.smide.vcs.LineChanges.Hunk> hunks = java.util.List.of();
     /** Width of the strip that shows what has changed since the last commit. */
     static final double CHANGE_WIDTH = 3;
 
@@ -115,7 +117,7 @@ public final class GutterFactory implements IntFunction<Node> {
                     ? new Circle(4.5)
                     : new Polygon(0, -5.5, 5.5, 0, 0, 5.5, -5.5, 0);
             dot.getStyleClass().add(breakpoint.enabled() ? "breakpoint-dot" : "breakpoint-dot-disabled");
-            Tooltip.install(marker, new Tooltip(tooltip(breakpoint)));
+            Tooltip.install(marker, com.smide.api.ui.Tooltips.of(tooltip(breakpoint)));
             marker.getChildren().add(dot);
         } else {
             // A hollow circle that only appears on hover, so the column reads as clickable.
@@ -174,18 +176,31 @@ public final class GutterFactory implements IntFunction<Node> {
                 case CHANGED -> "change-changed";
                 case REMOVED -> "change-removed";
             });
-            Tooltip.install(bar, new Tooltip(switch (kind) {
-                case ADDED -> "Added since the last commit";
-                case CHANGED -> "Changed since the last commit";
-                case REMOVED -> "Lines were removed here";
-            }));
+            Tooltip tooltip = com.smide.api.ui.Tooltips.of(switch (kind) {
+                case ADDED -> "Added since the last commit. Click to see what the commit has.";
+                case CHANGED -> "Changed since the last commit. Click to see what it was.";
+                case REMOVED -> "Lines were removed here. Click to see them.";
+            });
+            Tooltip.install(bar, tooltip);
+            bar.setUserData(paragraph);
         }
         return bar;
     }
 
-    /** What has changed since the last commit, by line. */
-    public void setChanges(java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes) {
+    /** What has changed since the last commit, by line and as stretches. */
+    public void setChanges(java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes,
+                           java.util.List<com.smide.vcs.LineChanges.Hunk> hunks) {
         this.changes = changes == null ? java.util.Map.of() : java.util.Map.copyOf(changes);
+        this.hunks = hunks == null ? java.util.List.of() : java.util.List.copyOf(hunks);
+    }
+
+    /** The stretch of change a line belongs to, if it belongs to one. */
+    public java.util.Optional<com.smide.vcs.LineChanges.Hunk> hunkAt(int line) {
+        return hunks.stream().filter(h -> h.covers(line)).findFirst();
+    }
+
+    public java.util.List<com.smide.vcs.LineChanges.Hunk> hunks() {
+        return hunks;
     }
 
     public java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes() {
@@ -218,7 +233,7 @@ public final class GutterFactory implements IntFunction<Node> {
         label.setMaxWidth(Region.USE_PREF_SIZE);
         String tip = annotations.tooltip(paragraph);
         if (tip != null && !tip.isBlank()) {
-            Tooltip.install(label, new Tooltip(tip));
+            Tooltip.install(label, com.smide.api.ui.Tooltips.of(tip));
         }
         label.setOnMouseClicked(e -> {
             annotations.clicked(paragraph);
@@ -271,7 +286,7 @@ public final class GutterFactory implements IntFunction<Node> {
             // Found by the editor's mouse filter, as the breakpoint column is.
             cell.getStyleClass().add("run-marker");
             cell.setPickOnBounds(true);
-            Tooltip.install(cell, new Tooltip(here.size() == 1
+            Tooltip.install(cell, com.smide.api.ui.Tooltips.of(here.size() == 1
                     ? "Run '" + here.get(0).name() + "'" : "Run " + here.size() + " ways from here"));
             return cell;
         }
@@ -291,7 +306,7 @@ public final class GutterFactory implements IntFunction<Node> {
             for (ColorSwatches.Literal literal : written) {
                 names.append(names.length() == 0 ? "" : "   ").append(literal.text());
             }
-            Tooltip.install(cell, new Tooltip(names + System.lineSeparator() + "Click to pick another colour"));
+            Tooltip.install(cell, com.smide.api.ui.Tooltips.of(names + System.lineSeparator() + "Click to pick another colour"));
         }
         return cell;
     }

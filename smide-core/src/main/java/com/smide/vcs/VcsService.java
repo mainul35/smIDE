@@ -133,6 +133,7 @@ public final class VcsService {
             return;
         }
         ide.window().runInBackground(() -> load(code));
+        code.setOnChangeClicked((line, at) -> open(code, line, at));
         /* After the typing stops rather than during it: the comparison is quick, but it is not
            worth doing forty times while a line is being written. */
         javafx.animation.PauseTransition settle = new javafx.animation.PauseTransition(
@@ -179,12 +180,63 @@ public final class VcsService {
             /* Nothing to compare against. A file that is new since the last commit is new in
                every line of it, which is what IntelliJ shows; a file outside a repository has
                nothing said about it at all. */
-            editor.setChanges(statuses.get(editor.path().toAbsolutePath().normalize()) == FileStatus.ADDED
-                    ? everyLineAdded(editor.text())
-                    : Map.of());
+            boolean brandNew = statuses.get(editor.path().toAbsolutePath().normalize()) == FileStatus.ADDED;
+            editor.setChanges(brandNew ? everyLineAdded(editor.text()) : Map.of(),
+                    brandNew ? List.of(new LineChanges.Hunk(LineChanges.Kind.ADDED, 0,
+                            editor.lineCount(), 0, 0)) : List.of());
             return;
         }
-        editor.setChanges(LineChanges.between(base, editor.text()));
+        editor.setChanges(LineChanges.between(base, editor.text()), LineChanges.hunks(base, editor.text()));
+    }
+
+    /** What a line was when it was last committed, shown beside it. */
+    private final ChangePopup popup = new ChangePopup();
+
+    private void open(CodeEditor editor, int line, double[] at) {
+        String base = committed.get(editor.path().toAbsolutePath().normalize());
+        LineChanges.Hunk hunk = editor.changeAt(line).orElse(null);
+        if (hunk == null || base == null) {
+            return;
+        }
+        String committedText = NONE.equals(base) ? "" : base;
+        popup.show(ide.window().stage(), ide.theme().stylesheet(), ide.theme().isDark(), hunk, committedText,
+                at, () -> rollback(editor, hunk, committedText), step -> step(editor, hunk, step, at));
+    }
+
+    /**
+     * Puts the committed lines back where they were.
+     *
+     * <p>In the editor, not on the disk: it is one more edit, undone with Ctrl+Z like any other,
+     * and saved when the reader saves.
+     */
+    private void rollback(CodeEditor editor, LineChanges.Hunk hunk, String committedText) {
+        List<String> lines = hunk.committedLines(committedText);
+        int from = editor.offsetOf(Math.min(hunk.start(), Math.max(editor.lineCount() - 1, 0)), 0);
+        int to = hunk.end() >= editor.lineCount()
+                ? editor.text().length()
+                : editor.offsetOf(hunk.end(), 0);
+        String replacement = lines.isEmpty() ? "" : String.join("\n", lines) + "\n";
+        if (hunk.end() >= editor.lineCount() && !replacement.isEmpty() && !editor.text().endsWith("\n")) {
+            replacement = replacement.substring(0, replacement.length() - 1);
+        }
+        editor.replace(from, Math.max(to, from), replacement);
+        editor.moveCaret(Math.min(hunk.start(), Math.max(editor.lineCount() - 1, 0)), 0);
+    }
+
+    /** The change before or after this one: the caret goes there, and it opens in turn. */
+    private void step(CodeEditor editor, LineChanges.Hunk from, int direction, double[] at) {
+        List<LineChanges.Hunk> all = new java.util.ArrayList<>();
+        for (int line = 0; line < editor.lineCount(); line++) {
+            editor.changeAt(line).filter(h -> !all.contains(h)).ifPresent(all::add);
+        }
+        int index = all.indexOf(from);
+        int next = index < 0 ? 0 : index + direction;
+        if (next < 0 || next >= all.size()) {
+            return;
+        }
+        LineChanges.Hunk going = all.get(next);
+        editor.moveCaret(Math.min(going.start(), Math.max(editor.lineCount() - 1, 0)), 0);
+        open(editor, going.start(), at);
     }
 
     private static Map<Integer, LineChanges.Kind> everyLineAdded(String text) {

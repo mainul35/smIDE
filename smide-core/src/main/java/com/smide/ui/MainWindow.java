@@ -358,7 +358,7 @@ public final class MainWindow {
         toolbar.getChildren().add(gap);
 
         runChooser.getStyleClass().add("run-config-chooser");
-        runChooser.setTooltip(new Tooltip("Run configuration"));
+        runChooser.setTooltip(com.smide.api.ui.Tooltips.of("Run configuration"));
         refreshRunChooser();
         toolbar.getChildren().add(runChooser);
 
@@ -386,7 +386,7 @@ public final class MainWindow {
                 button.setText(a.text());
             }
             String shortcut = ide.actions().shortcutOf(a.id()).map(s -> "  (" + s + ")").orElse("");
-            button.setTooltip(new Tooltip(a.text() + shortcut));
+            button.setTooltip(com.smide.api.ui.Tooltips.of(a.text() + shortcut));
             button.setFocusTraversable(false);
             button.setOnAction(e -> ide.actions().invoke(a.id()));
             button.setUserData(a);
@@ -396,7 +396,7 @@ public final class MainWindow {
         toolbar.getChildren().add(end);
         Button theme = new Button();
         theme.setGraphic(Icons.of(ide.theme().isDark() ? "fth-sun" : "fth-moon", 15));
-        theme.setTooltip(new Tooltip("Toggle dark theme"));
+        theme.setTooltip(com.smide.api.ui.Tooltips.of("Toggle dark theme"));
         theme.setFocusTraversable(false);
         theme.setOnAction(e -> ide.actions().invoke("view.toggleTheme"));
         ide.theme().darkProperty().addListener((o, a, b) -> theme.setGraphic(Icons.of(b ? "fth-sun" : "fth-moon", 15)));

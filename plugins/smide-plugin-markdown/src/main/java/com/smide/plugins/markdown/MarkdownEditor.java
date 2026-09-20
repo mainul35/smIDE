@@ -186,9 +186,9 @@ public final class MarkdownEditor implements TextEditor {
         rawButton.setToggleGroup(group);
         splitButton.setToggleGroup(group);
         previewButton.setToggleGroup(group);
-        rawButton.setTooltip(new Tooltip("Source only"));
-        splitButton.setTooltip(new Tooltip("Source and preview"));
-        previewButton.setTooltip(new Tooltip("Preview only"));
+        rawButton.setTooltip(com.smide.api.ui.Tooltips.of("Source only"));
+        splitButton.setTooltip(com.smide.api.ui.Tooltips.of("Source and preview"));
+        previewButton.setTooltip(com.smide.api.ui.Tooltips.of("Preview only"));
         rawButton.setOnAction(e -> setMode(Mode.RAW));
         splitButton.setOnAction(e -> setMode(Mode.SPLIT));
         previewButton.setOnAction(e -> setMode(Mode.PREVIEW));

@@ -66,9 +66,9 @@ public final class FindInPathToolWindow implements ToolWindowFactory {
         HBox.setHgrow(query, Priority.ALWAYS);
         mask.setPromptText("File mask, e.g. *.java");
         mask.setPrefWidth(150);
-        matchCase.setTooltip(new Tooltip("Match case"));
-        regex.setTooltip(new Tooltip("Regular expression"));
-        wholeWord.setTooltip(new Tooltip("Whole words"));
+        matchCase.setTooltip(com.smide.api.ui.Tooltips.of("Match case"));
+        regex.setTooltip(com.smide.api.ui.Tooltips.of("Regular expression"));
+        wholeWord.setTooltip(com.smide.api.ui.Tooltips.of("Whole words"));
         for (ToggleButton t : List.of(matchCase, regex, wholeWord)) {
             t.setFocusTraversable(false);
         }

@@ -34,7 +34,7 @@ public final class WorkspaceImpl implements Workspace {
         tab.setContent(documentTabs);
         tab.setUserData(this);
         tab.setText(name());
-        tab.setTooltip(new Tooltip(this.root.toString()));
+        tab.setTooltip(com.smide.api.ui.Tooltips.of(this.root.toString()));
         documentTabs.getStyleClass().add("document-tabs");
         documentTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
     }

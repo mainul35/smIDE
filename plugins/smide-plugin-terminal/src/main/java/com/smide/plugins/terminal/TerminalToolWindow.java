@@ -177,7 +177,7 @@ final class TerminalToolWindow implements ToolWindowFactory {
         }
         Tab tab = new Tab(title, session.node());
         tab.setGraphic(new FontIcon("fth-terminal"));
-        tab.setTooltip(new Tooltip(dir.toString()));
+        tab.setTooltip(com.smide.api.ui.Tooltips.of(dir.toString()));
         sessions.put(tab, session);
         session.setOnExit(() -> tabs.getTabs().remove(tab));
         tabs.getTabs().add(tab);
@@ -235,7 +235,7 @@ final class TerminalToolWindow implements ToolWindowFactory {
         icon.setIconSize(14);
         button.setGraphic(icon);
         button.getStyleClass().add("icon-button");
-        button.setTooltip(new Tooltip(tooltip));
+        button.setTooltip(com.smide.api.ui.Tooltips.of(tooltip));
         button.setFocusTraversable(false);
         button.setOnAction(e -> action.run());
         return button;

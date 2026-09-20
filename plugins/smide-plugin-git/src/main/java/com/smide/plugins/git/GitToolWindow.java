@@ -173,7 +173,7 @@ public final class GitToolWindow implements ToolWindowFactory {
         Button b = new Button();
         b.setGraphic(new FontIcon(literal));
         b.getStyleClass().add("icon-button");
-        b.setTooltip(new Tooltip(tip));
+        b.setTooltip(com.smide.api.ui.Tooltips.of(tip));
         b.setFocusTraversable(false);
         b.setOnAction(e -> action.run());
         return b;

@@ -205,7 +205,7 @@ public final class LibrariesToolWindow implements ToolWindowFactory {
                 loading = false;
                 heading.setText(active == null ? "No project open"
                         : active.name() + "  ·  " + found.size() + (found.size() == 1 ? " library" : " libraries"));
-                heading.setTooltip(new Tooltip("Libraries of " + (active == null ? "no project" : active.name())
+                heading.setTooltip(com.smide.api.ui.Tooltips.of("Libraries of " + (active == null ? "no project" : active.name())
                         + ", the ones they bring with them included"));
                 List<Runnable> waiting = List.copyOf(afterLoading);
                 afterLoading.clear();
@@ -463,7 +463,7 @@ public final class LibrariesToolWindow implements ToolWindowFactory {
             if (label != null) {
                 // A library: its name, and where it is kept when pointed at.
                 setText(label);
-                setTooltip(new Tooltip(path.toString()));
+                setTooltip(com.smide.api.ui.Tooltips.of(path.toString()));
                 icon = Icons.of("fth-package");
             } else {
                 setText(PathTreeItem.name(path));
