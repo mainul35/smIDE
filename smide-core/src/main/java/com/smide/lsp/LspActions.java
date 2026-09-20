@@ -121,6 +121,38 @@ public final class LspActions {
                 });
     }
 
+    /**
+     * Whether an offset sits in a string, a character literal or a comment - text rather than
+     * code, with no name in it to follow.
+     *
+     * <p>Read from the editor's own highlighting, which has already worked out what each
+     * character is, so it holds for every language the IDE colours rather than for Java alone.
+     */
+    static boolean inTextOrComment(CodeEditor editor, int offset) {
+        if (offset < 0) {
+            return false;
+        }
+        // At the end of a word the caret sits just past it, so the character before counts too.
+        return isTextOrComment(editor, offset) && isTextOrComment(editor, offset - 1);
+    }
+
+    private static boolean isTextOrComment(CodeEditor editor, int offset) {
+        if (offset < 0 || offset >= editor.text().length()) {
+            return false;
+        }
+        try {
+            for (String style : editor.area().getStyleOfChar(offset)) {
+                if (style.equals("tok-string") || style.equals("tok-comment")
+                        || style.equals("tok-doc-comment") || style.equals("tok-regex")) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException e) {
+            // No styles yet; treat it as code, which is what it usually is.
+        }
+        return false;
+    }
+
     /** The identifier the offset is in, or null where there is none. */
     static int[] wordAt(String text, int offset) {
         if (offset < 0 || offset >= text.length() || !isWordChar(text.charAt(offset))) {
@@ -143,6 +175,14 @@ public final class LspActions {
 
     public static void gotoDefinition(Ide ide, LspManager manager, CodeEditor editor) {
         if (declaredByPlugin(ide, editor)) {
+            return;
+        }
+        /* Inside a string or a comment there is no name to follow, whatever is written there.
+           The server answers nothing for such a place - as it does when the caret is already on
+           a declaration - and the two must not be confused: Ctrl+click in "smide.uiScale" used
+           to end in the usages of the method the string is written in. */
+        if (inTextOrComment(editor, editor.caretOffset())) {
+            ide.statusBar().message("Nothing to go to here.");
             return;
         }
         Optional<EditorLspBinding> b = ready(manager, editor);
@@ -170,7 +210,15 @@ public final class LspActions {
                        wants there is the other direction: who calls this. A server that
                        answers with the declaration itself and one that answers with
                        nothing both mean the same thing, so both go the same way. */
-                    if (targets.isEmpty() || atCaret(targets, editor)) {
+                    if (targets.isEmpty()) {
+                        // As IntelliJ says it: there is a name here, and nothing it leads to.
+                        ide.statusBar().message("Cannot find the declaration of " + editor.wordAtCaret());
+                        return;
+                    }
+                    /* Standing on the declaration already, which is where the answer to "go to
+                       the declaration" is the line the caret is on. What somebody wants there is
+                       the other direction: who calls this. */
+                    if (atCaret(targets, editor)) {
                         ide.statusBar().message("Already at the declaration - finding usages...");
                         findUsages(ide, manager, editor);
                         return;
