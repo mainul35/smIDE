@@ -316,6 +316,7 @@ public final class ToolchainInstaller {
                 }
                 deleteTree(target);
                 ide.downloads().extract(archive, target, progress.reporter("Unpacking " + name));
+                makeRunnable(target);
                 Path home = home(toolchain, target)
                         .orElseThrow(() -> new IOException("The archive unpacked into " + target + ", but no "
                                 + toolchain.displayName() + " was found in it."));
@@ -357,6 +358,45 @@ public final class ToolchainInstaller {
             return step + " " + text.substring(open);
         }
         return text.startsWith(step) ? text : step + ": " + text;
+    }
+
+    /**
+     * The programs of an unpacked toolchain, runnable.
+     *
+     * <p>Whatever the archive said: a zip written on Windows, or by a tool that left the
+     * permissions out, holds no execute bit at all, and what is unpacked from it is a file
+     * nobody can run - "Permission denied" from a launcher that is right there.
+     */
+    public static void makeRunnable(Path unpacked) {
+        if (!Files.isDirectory(unpacked) || !unpacked.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(unpacked, 3)) {
+            for (Path bin : walk.filter(Files::isDirectory).filter(p -> p.getFileName().toString().equals("bin")).toList()) {
+                try (Stream<Path> programs = Files.list(bin)) {
+                    programs.filter(Files::isRegularFile).forEach(ToolchainInstaller::allowRunning);
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            System.err.println("smIDE: could not look through " + unpacked + ": " + e);
+        }
+    }
+
+    /** Adds the execute bit to a file of the IDE's own tools folder. */
+    public static void allowRunning(Path program) {
+        try {
+            if (Files.isExecutable(program)) {
+                return;
+            }
+            java.util.Set<java.nio.file.attribute.PosixFilePermission> permissions =
+                    new java.util.HashSet<>(Files.getPosixFilePermissions(program));
+            permissions.add(java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE);
+            permissions.add(java.nio.file.attribute.PosixFilePermission.GROUP_EXECUTE);
+            permissions.add(java.nio.file.attribute.PosixFilePermission.OTHERS_EXECUTE);
+            Files.setPosixFilePermissions(program, permissions);
+        } catch (IOException | RuntimeException e) {
+            // Windows has no execute bit, and a file that cannot be changed is reported when it is run.
+        }
     }
 
     /** The installation in what was unpacked: the folder itself, or the one folder an archive usually wraps it in. */

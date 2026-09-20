@@ -33,7 +33,10 @@ final class ToolchainsImpl implements Toolchains {
 
     @Override
     public Optional<Path> locate(String id) {
-        return byId(id).flatMap(t -> t.locate(ide));
+        Optional<Path> found = byId(id).flatMap(t -> t.locate(ide));
+        // One the IDE unpacked before it kept the execute bit is repaired rather than failing to run.
+        found.filter(p -> p.startsWith(ide.homeDir())).ifPresent(ToolchainInstaller::allowRunning);
+        return found;
     }
 
     @Override

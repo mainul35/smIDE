@@ -6,7 +6,6 @@ import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
-import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 
 import java.io.BufferedReader;
@@ -106,13 +105,21 @@ public final class DownloadsImpl implements Downloads {
         Files.createDirectories(targetDir);
         String name = archive.getFileName().toString().toLowerCase(Locale.ROOT);
         if (name.endsWith(".zip")) {
-            try (ZipArchiveInputStream in = new ZipArchiveInputStream(Files.newInputStream(archive))) {
-                ZipArchiveEntry entry;
-                while ((entry = in.getNextEntry()) != null) {
+            /* Read as a file rather than as a stream: the permissions of what is in a zip are
+               in its central directory, at the end, which a stream never sees. Without them
+               Gradle's bin/gradle came out as a file nobody can run - "Permission denied" from
+               a launcher sitting right there. */
+            try (org.apache.commons.compress.archivers.zip.ZipFile zip =
+                         org.apache.commons.compress.archivers.zip.ZipFile.builder().setPath(archive).get()) {
+                java.util.Enumeration<ZipArchiveEntry> entries = zip.getEntries();
+                while (entries.hasMoreElements()) {
                     if (progress != null && progress.cancelled()) {
                         throw new java.io.InterruptedIOException("Cancelled");
                     }
-                    writeEntry(in, entry, targetDir, progress, false);
+                    ZipArchiveEntry entry = entries.nextElement();
+                    try (InputStream in = zip.getInputStream(entry)) {
+                        writeEntry(in, entry, targetDir, progress, (entry.getUnixMode() & 0111) != 0);
+                    }
                 }
             }
         } else if (name.endsWith(".tar.gz") || name.endsWith(".tgz")) {

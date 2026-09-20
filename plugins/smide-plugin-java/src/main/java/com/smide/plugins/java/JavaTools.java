@@ -377,7 +377,8 @@ public final class JavaTools {
         if (wrapper != null) {
             return new ArrayList<>(List.of(wrapper.toString()));
         }
-        return new GradleToolchain().locate(ide)
+        // Through the IDE, which repairs one of its own downloads that cannot be run.
+        return ide.toolchains().locate("gradle")
                 .map(gradle -> new ArrayList<>(List.of(gradle.toString()))).orElse(null);
     }
 
