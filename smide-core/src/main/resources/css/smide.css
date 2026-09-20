@@ -1483,6 +1483,27 @@
     -fx-border-radius: 5;
 }
 
+/* What a field says before anything is typed in it.
+   The toolkit derives this from the field's own background - thirty per cent darker - which is
+   sound on white paper and unreadable on a dark one: dark grey hint on a near-black field. It is
+   named here instead, for every field the IDE has. */
+.text-field,
+.text-area,
+.combo-box-base .text-field,
+.spinner .text-field,
+.date-picker .text-field,
+.search-field {
+    -fx-prompt-text-fill: -smide-text-muted;
+    -fx-text-fill: -smide-text;
+    /* The IDE's own paper rather than the toolkit's idea of an input, which in the dark theme
+       came out pure black - a hole in the window rather than a field in it. */
+    -fx-background-color: -smide-surface;
+    -fx-border-color: -smide-border;
+    -fx-border-width: 1;
+    -fx-highlight-fill: -smide-selection;
+    -fx-highlight-text-fill: -smide-text;
+}
+
 .check-box .box {
     -fx-background-radius: 3;
 }

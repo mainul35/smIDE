@@ -42,8 +42,17 @@ public final class FullScreen {
      */
     public static void remember(Stage stage) {
         ChangeListener<Object> record = (o, was, now) -> {
+            /* Not in the moment around a window opening. The desktop takes full screen away as it
+               gives the dialog focus, and whether that arrives before or after JavaFX has added
+               the dialog to its list of windows is a race - lost, the shrunken size was written
+               down as the size the reader wanted, and there was nothing left to put back. */
+            if (justAfterAWindowOpened()) {
+                log(stage, "ignored a change near a window opening");
+                return;
+            }
             if (noDialogIsOpen(stage) && !Boolean.TRUE.equals(stage.getProperties().get(RESTORING))) {
                 stage.getProperties().put(WANTED, Size.of(stage));
+                log(stage, "remembered");
             }
         };
         stage.widthProperty().addListener(record);
@@ -61,11 +70,29 @@ public final class FullScreen {
             while (change.next()) {
                 for (Window opened : change.getAddedSubList()) {
                     if (opened != stage && opened instanceof Stage dialog) {
+                        opening = System.currentTimeMillis();
                         guard(stage, dialog);
                     }
                 }
             }
         });
+    }
+
+    /** When another window last appeared, which is when the desktop interferes. */
+    private static volatile long opening;
+
+    private static boolean justAfterAWindowOpened() {
+        return System.currentTimeMillis() - opening < SETTLING_MILLIS;
+    }
+
+    /** {@code -Dsmide.debugFullScreen} prints what the window and the desktop are doing to it. */
+    private static final boolean DEBUG = Boolean.getBoolean("smide.debugFullScreen");
+
+    private static void log(Stage stage, String what) {
+        if (DEBUG) {
+            System.err.println("smIDE fullscreen: " + what + " - " + Size.of(stage)
+                    + " wanted " + stage.getProperties().get(WANTED));
+        }
     }
 
     /**
@@ -76,14 +103,31 @@ public final class FullScreen {
      */
     private static void guard(Stage stage, Stage dialog) {
         if (!(stage.getProperties().get(WANTED) instanceof Size wanted) || !wanted.fillsItsScreen()) {
+            log(stage, "not guarding");
             return;
         }
+        log(stage, "guarding while a window is open");
         long until = System.currentTimeMillis() + SETTLING_MILLIS;
         ChangeListener<Object> watch = (o, was, now) -> {
             if (System.currentTimeMillis() <= until) {
+                log(stage, "the desktop changed the window");
                 restore(stage, wanted);
             }
         };
+        /* Asked for again a few times over the next second. A window manager that has decided to
+           take full screen away does not always accept the first answer - it may be in the middle
+           of mapping the dialog - and one attempt that lands at the wrong moment is indistinguishable
+           from none at all. */
+        for (int delay : new int[] {120, 400, 900, 1600}) {
+            javafx.animation.PauseTransition again = new javafx.animation.PauseTransition(
+                    javafx.util.Duration.millis(delay));
+            again.setOnFinished(e -> {
+                if (dialog.isShowing()) {
+                    restore(stage, wanted);
+                }
+            });
+            again.play();
+        }
         stage.widthProperty().addListener(watch);
         stage.heightProperty().addListener(watch);
         stage.maximizedProperty().addListener(watch);
@@ -99,6 +143,10 @@ public final class FullScreen {
             stage.fullScreenProperty().removeListener(watch);
             restore(stage, wanted);
             Platform.runLater(() -> restore(stage, wanted));
+            javafx.animation.PauseTransition settled = new javafx.animation.PauseTransition(
+                    javafx.util.Duration.millis(250));
+            settled.setOnFinished(e -> restore(stage, wanted));
+            settled.play();
         });
     }
 
@@ -113,6 +161,7 @@ public final class FullScreen {
             }
             // So that what this does is not taken for the reader's own resizing.
             stage.getProperties().put(RESTORING, Boolean.TRUE);
+            log(stage, "putting it back");
             try {
                 wanted.applyTo(stage);
             } finally {

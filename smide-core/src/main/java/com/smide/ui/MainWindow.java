@@ -158,6 +158,7 @@ public final class MainWindow {
         installDoubleShift(scene);
         installZoom(scene);
         // Menus, dialogs and completion lists are windows of their own; they follow.
+        zoom.styleWith(ide.theme()::style);
         zoom.followEverything(stage);
 
         // Safe mode is said where it cannot be missed: no plugins means half the IDE is not there.

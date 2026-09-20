@@ -65,6 +65,14 @@ public final class Zoom {
      */
     public static final double DEFAULT = 1.2;
 
+    /** What styles a root this makes: the theme, when there is one to ask. */
+    private java.util.function.Consumer<Parent> theme;
+
+    /** Given the theme, so a holder this puts round a window's content is styled like everything else. */
+    public void styleWith(java.util.function.Consumer<Parent> theme) {
+        this.theme = theme;
+    }
+
     private final DoubleProperty factor = new SimpleDoubleProperty(DEFAULT);
     private final Scale scale = new Scale(1, 1, 0, 0);
     private final Pane holder = new Pane();
@@ -154,7 +162,17 @@ public final class Zoom {
             resize(window);
             return;
         }
-        scene.setRoot(new ScaledRoot(scene.getRoot(), factor.get()));
+        /* The holder becomes the scene's root, and the root is what the theme puts its class on:
+           a window scaled after it was styled ended up with a themed panel inside an unthemed
+           root, so whatever the panel did not cover - the strip behind a button bar, the padding
+           around a form - stayed the light theme's grey while the text on it was the dark theme's
+           near-white. Light text on a light strip is text nobody can read, which is what the
+           Compare dialog's heading had become. */
+        ScaledRoot holder = new ScaledRoot(scene.getRoot(), factor.get());
+        scene.setRoot(holder);
+        if (theme != null) {
+            theme.accept(holder);
+        }
         resize(window);
     }
 
