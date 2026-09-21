@@ -197,22 +197,58 @@ public final class FullScreen {
             return width >= screen.getWidth() * 0.94 && height >= screen.getHeight() * 0.9;
         }
 
+        /**
+         * Whether the window is where this says it should be.
+         *
+         * <p>A maximised window is its state and not its size: how large the desktop makes a
+         * maximised window is the desktop's business, and a pixel of difference - a panel that
+         * appeared, a screen that changed - is not something to put right.
+         */
         boolean matches(Stage stage) {
-            return stage.isMaximized() == maximized && stage.isFullScreen() == fullScreen
+            if (maximized) {
+                return stage.isMaximized();
+            }
+            if (fullScreen) {
+                return stage.isFullScreen() && fillsTheScreenNow(stage);
+            }
+            return !stage.isMaximized() && !stage.isFullScreen()
                     && Math.abs(stage.getWidth() - width) < 2 && Math.abs(stage.getHeight() - height) < 2;
         }
 
+        /** Whether the window is as large as the screen it is on, whatever it says about itself. */
+        private boolean fillsTheScreenNow(Stage stage) {
+            Rectangle2D screen = Screen.getScreensForRectangle(stage.getX(), stage.getY(),
+                            Math.max(1, stage.getWidth()), Math.max(1, stage.getHeight()))
+                    .stream().findFirst().orElse(Screen.getPrimary()).getBounds();
+            return stage.getWidth() >= screen.getWidth() * 0.94
+                    && stage.getHeight() >= screen.getHeight() * 0.9;
+        }
+
+        /**
+         * Asks for the window back.
+         *
+         * <p>Never by turning the state off first. A window that is still maximised needs nothing
+         * doing to it, and switching maximised off and on again to be sure is how a window that
+         * was fine ends up at its old size: the desktop takes the first instruction and is still
+         * busy with the dialog when the second arrives. The only place that trick is needed is a
+         * window JavaFX believes is full screen while the desktop has quietly made it small, and
+         * there the size says so outright.
+         */
         void applyTo(Stage stage) {
-            if (fullScreen) {
-                // Off and on again: the desktop may have taken it away without telling JavaFX,
-                // and setting a property to what it already holds does nothing at all.
-                stage.setFullScreen(false);
-                stage.setFullScreen(true);
+            if (maximized) {
+                if (!stage.isMaximized()) {
+                    stage.setMaximized(true);
+                }
                 return;
             }
-            if (maximized) {
-                stage.setMaximized(false);
-                stage.setMaximized(true);
+            if (fullScreen) {
+                if (!stage.isFullScreen()) {
+                    stage.setFullScreen(true);
+                } else if (!fillsTheScreenNow(stage)) {
+                    // Full screen as far as JavaFX knows, and small on the screen: asked again.
+                    stage.setFullScreen(false);
+                    stage.setFullScreen(true);
+                }
                 return;
             }
             stage.setX(x);
