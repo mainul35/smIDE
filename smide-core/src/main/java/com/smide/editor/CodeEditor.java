@@ -114,7 +114,6 @@ public final class CodeEditor implements TextEditor {
         } else {
             area.setParagraphGraphicFactory(LineNumberFactory.get(area));
         }
-        area.setLineHighlighterOn(false);
         this.settings = settings;
         applyDisplaySettings();
         root.getStyleClass().add("code-editor");
@@ -840,6 +839,20 @@ public final class CodeEditor implements TextEditor {
 
     private java.util.function.BiConsumer<Integer, double[]> onChangeClicked;
 
+    /**
+     * The colour the caret's line is tinted, given by whoever knows the theme.
+     *
+     * <p>The editor itself does not: it has the settings, which say whether to tint the line, and
+     * not the palette, which says what colour the paper is this afternoon.
+     */
+    public void setCurrentLineFill(String webColour) {
+        try {
+            area.setLineHighlighterFill(javafx.scene.paint.Color.web(webColour));
+        } catch (RuntimeException e) {
+            // A colour that cannot be read is left to the toolkit's own.
+        }
+    }
+
     /** Redraws the breakpoint column, after a breakpoint was added or removed. */
     public void refreshGutter() {
         if (gutter != null) {
@@ -956,6 +969,10 @@ public final class CodeEditor implements TextEditor {
         area.setStyle("-fx-font-family: \"" + family + "\", " + com.smide.ui.Fonts.cssStack() + ";"
                 + " -fx-font-size: " + size + "px;");
         area.setWrapText(settings.getBoolean("editor.wrap", false));
+        /* The line the caret is on, tinted. There has been a checkbox for this in Settings since
+           before there was anything behind it: the editor turned the highlighter off and left it
+           off, so the setting was written down and never read. */
+        area.setLineHighlighterOn(settings.getBoolean("editor.highlightLine", true));
         if (gutter != null) {
             // The gutter is measured in the new font too, so the numbers stay lined up.
             gutter.refresh();

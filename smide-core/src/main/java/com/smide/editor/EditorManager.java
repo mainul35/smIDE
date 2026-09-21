@@ -117,6 +117,14 @@ public final class EditorManager implements Editors {
         /* The font is read when an editor is built, so changing it in Settings reached
            the next file opened and none of the ones already on screen. Every open editor
            is told instead. */
+        // The caret's line is tinted in the theme's colour, and the theme can change under it.
+        theme.darkProperty().addListener((o, was, now) -> window.runLater(() -> {
+            for (Editor open : open()) {
+                if (open instanceof CodeEditor code) {
+                    code.setCurrentLineFill(theme.color("current-line"));
+                }
+            }
+        }));
         settings.addListener(key -> {
             if (key != null && key.startsWith("editor.")) {
                 window.runLater(() -> {
@@ -415,6 +423,7 @@ public final class EditorManager implements Editors {
         }
         LanguageSupport language = languages.forFileOrPlain(target);
         CodeEditor editor = new CodeEditor(workspace, target, language, settings, breakpoints);
+        editor.setCurrentLineFill(theme.color("current-line"));
         if (target.startsWith(LIBRARY_SOURCES) || dependency) {
             editor.markExternalSource();
         }

@@ -28,7 +28,6 @@ public final class AssistantConfig {
     static final String PROVIDER_KEY = "assistant.provider";
     static final String MODEL_KEY = "assistant.model";
     static final String SCOPE_KEY = "assistant.reviewScope";
-    static final String AUTO_REVIEW_KEY = "assistant.reviewOnOpen";
 
     /**
      * Written when there is nothing to seed from.

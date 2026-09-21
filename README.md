@@ -186,7 +186,112 @@ Every shortcut is editable in Settings → Keymap.
 ## State
 
 `~/.smide` holds settings, the session, recent workspaces, downloaded tools and logs.
-`<project>/.smide` holds that project's run configurations and breakpoints.
+`<project>/.smide` holds that project's settings, run configurations and breakpoints.
+
+| `~/.smide/` | |
+|---|---|
+| `settings.json` | Everything below under "Settings" |
+| `session.json` | The last session: window geometry, open workspaces and files, carets, tool windows |
+| `workspaces.txt` | Recently opened projects, newest first, at most 15 |
+| `ai.properties` | The assistant's endpoints, keys and host allowlist |
+| `tools/`, `drivers/`, `libraries/`, `jdtls-data/` | What the IDE downloaded or extracted for itself |
+| `logs/crashes/`, `logs/freezes/` | Crash reports, and reports of the window not responding |
+
+| `<project>/.smide/` | |
+|---|---|
+| `settings.json` | The per-project settings marked *project* below |
+| `run-configurations.json` | This project's run configurations |
+| `breakpoints.json` | Its breakpoints, by path relative to the project |
+
+## Settings
+
+`~/.smide/settings.json` is a flat JSON object - one level, no nesting - that the IDE
+rewrites whole on every change. Every value is written as a **string**, including numbers
+and flags (`"editor.fontSize": "14"`, `"appearance.dark": "true"`); lists are written as
+JSON arrays. Keys it does not recognise are kept and written back untouched, so notes of
+your own survive; a value that is a nested object is not, and is dropped on the next write.
+Edit it while the IDE is closed: a running one holds the file in memory and writes all of it
+on the next change, so an edit made underneath it is overwritten rather than read.
+
+Almost all of it is reachable through **Settings** (Ctrl+Alt+S). The file is there for the
+few that are not, for copying a setup between machines, and for reading what the IDE did.
+A project's own `<project>/.smide/settings.json` uses the same format and holds the keys
+marked *project*; where a key exists in both, the project's wins.
+
+**Appearance and the window**
+
+| Key | Type | Default | What it does |
+|---|---|---|---|
+| `appearance.dark` | boolean | `false` | The dark theme |
+| `ui.scale` | string | `Auto` | Interface scale on Linux: `Auto`, `100%`, `125%`, `150%`, `175%`, `200%`. Read before the toolkit starts, so it needs a restart |
+| `session.restore` | boolean | `true` | Reopen the last session's workspaces and files |
+| `explorer.autoscroll` | boolean | `true` | Select the file you are editing in the Project tree |
+
+**Editor**
+
+| Key | Type | Default | What it does |
+|---|---|---|---|
+| `editor.fontFamily` | string | JetBrains Mono, or the best monospace this machine has | The editor font |
+| `editor.fontSize` | int | `13` | Its size in points |
+| `editor.wrap` | boolean | `false` for code, `true` for Markdown | Wrap long lines |
+| `editor.highlightLine` | boolean | `true` | Tint the line the caret is on |
+| `editor.autoPopup` | boolean | `true` | Offer completion as you type, rather than only on Ctrl+Space. No checkbox: this file only |
+| `editor.hoverDocs` | boolean | `true` | Documentation when the pointer rests on a name. No checkbox: this file only |
+| `editors.recent` | list | `[]` | The last 50 files opened, newest first. Written by the IDE |
+| `keymap.<action>` | string | the action's own shortcut | One key per changed shortcut, e.g. `"keymap.file.save": "shortcut+S"`. An empty value means no shortcut |
+
+**Plugins, tools and toolchains**
+
+| Key | Type | Default | What it does |
+|---|---|---|---|
+| `plugins.disabled` | list | `[]` | Plugin ids not to load. Takes effect on restart |
+| `java.jdkHome` | string | found | The JDK to build and run with. Also *project* |
+| `java.mavenHome` | string | found | Where Maven is |
+| `java.preferWrapper` | boolean | `true` | Use a project's `mvnw` rather than that Maven |
+| `java.tomcatHome` | string | found | Where Tomcat is, for a war |
+| `java.jdtls.jvmArgs` | string | `-Xmx1G -XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90` | What the Java language server runs with |
+| `java.sourcesZip` | string | `""` | A JDK `src.zip`, for Ctrl+click into the JDK. Written when you point at one |
+| `library.sources.<group>:<artifact>` | string | `""` | A sources jar attached by hand, one key per library |
+| `gradle.home`, `node.home`, `python.home`, `go.home`, `rust.cargoHome`, `kotlin.home`, `dotnet.home`, `docker.home`, `cpp.cmakeHome`, `cpp.compilerHome`, `shell.bashHome`, `shell.pwshHome` | string | found, or downloaded on request | Where each toolchain is. Set from Settings > Languages, or written when the IDE downloads one |
+| `terminal.shell` | string | the platform's | The terminal's shell command |
+| `terminal.fontSize` | int | `13` | The terminal font size |
+| `database.connections` | list | `[]` | Saved connections, one line each. Passwords are never written here |
+| `markdown.mode` | string | `split` | The Markdown editor's last view: `split`, `preview` or the editor |
+
+**The assistant**
+
+| Key | Type | Default | What it does |
+|---|---|---|---|
+| `assistant.provider` | string | `""` | Which endpoint from `ai.properties` to talk to |
+| `assistant.model` | string | `""` | Which model on it |
+| `assistant.reviewScope` | string | `project` | Whether a review may read related files (`project`) or only the open one (`file`) |
+| `assistant.practiceLanguage` | string | any | The language the Practice tab asks about |
+
+The assistant's addresses, API keys and host allowlist are **not** here: they are in
+`~/.smide/ai.properties`, which also holds the Ask tab's `search.provider` and `search.key`.
+
+**Crash reporting**
+
+| Key | Type | Default | What it does |
+|---|---|---|---|
+| `crash.dialog` | boolean | `true` | Show the dialog when something fails. The report is saved either way |
+| `crash.server` | string | `""` | A server to send reports to; empty sends nothing |
+| `crash.token` | string | `""` | What that server expects |
+| `crash.github.repo` | string | `""` | `owner/name` to file an issue in |
+| `crash.github.token` | string | `""` | A GitHub token with permission to do so |
+| `crash.github.api` | string | `""` | A different GitHub API address, for Enterprise |
+
+**Per project** - in `<project>/.smide/settings.json`
+
+| Key | Type | Default | What it does |
+|---|---|---|---|
+| `run.selected` | string | the first one | The run configuration in the toolbar |
+| `java.jdkHome` | string | the global one | This project's JDK |
+| `deploy.docker.image`, `deploy.docker.tag`, `deploy.docker.port` | string | the artifact id, its version, `8080` | What Deploy builds and runs |
+| `deploy.installer.name`, `deploy.installer.mainClass`, `deploy.installer.type` | string | the artifact id, the main class found, `app-image` | What Deploy hands to jpackage |
+
+Nothing about the window is in settings.json: geometry, the open files and where the carets
+were live in `~/.smide/session.json`, which the IDE writes as it goes.
 
 ## Fonts
 

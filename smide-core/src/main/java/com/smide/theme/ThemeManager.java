@@ -29,13 +29,15 @@ public final class ThemeManager implements Theme {
             Map.entry("border", "#dfe5ec"), Map.entry("text", "#16202b"), Map.entry("text-muted", "#5a6875"),
             Map.entry("accent", "#0b6e7f"), Map.entry("accent-soft", "#dceef1"), Map.entry("danger", "#C0392B"),
             Map.entry("warning", "#B7791F"), Map.entry("success", "#2F855A"), Map.entry("selection", "#d5e5f2"),
-            Map.entry("scroll-thumb", "#aebbc9"), Map.entry("scroll-track", "#f6f8fa"));
+            Map.entry("scroll-thumb", "#aebbc9"), Map.entry("scroll-track", "#f6f8fa"),
+            Map.entry("current-line", "#eef3f7"));
     private static final Map<String, String> DARK = Map.ofEntries(
             Map.entry("paper", "#0f1620"), Map.entry("surface", "#131c26"), Map.entry("surface-alt", "#16212d"),
             Map.entry("border", "#22303f"), Map.entry("text", "#d7dee6"), Map.entry("text-muted", "#8a9aaa"),
             Map.entry("accent", "#3fb8cc"), Map.entry("accent-soft", "#16323c"), Map.entry("danger", "#E06C5B"),
             Map.entry("warning", "#D6A24A"), Map.entry("success", "#5FBF8A"), Map.entry("selection", "#243b52"),
-            Map.entry("scroll-thumb", "#3d4f63"), Map.entry("scroll-track", "#0f1620"));
+            Map.entry("scroll-thumb", "#3d4f63"), Map.entry("scroll-track", "#0f1620"),
+            Map.entry("current-line", "#141e29"));
 
     private final SimpleBooleanProperty dark = new SimpleBooleanProperty(false);
     private final Settings settings;
