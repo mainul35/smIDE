@@ -51,6 +51,7 @@ final class AskPanel extends BorderPane {
     private final Button send = new Button("Ask");
     private final Button stop = new Button("Stop");
     private final Button clear = new Button("New question");
+    private final Button copy = new Button("Copy");
     private final CheckBox letItFix = new CheckBox("Let it change files for this task");
     private final Label status = new Label();
     private final Waiting waiting = new Waiting(status);
@@ -85,14 +86,17 @@ final class AskPanel extends BorderPane {
         setCenter(transcript);
 
         input.setPromptText("Ask about this project - why it will not build, where something is done,"
-                + " what to change. Ctrl+Enter sends.");
+                + " what to change. Enter sends, Ctrl+Enter starts a line, ``` opens a code block.");
         input.setPrefRowCount(3);
         input.setWrapText(true);
         input.getStyleClass().add("assistant-question");
-        input.setOnKeyPressed(e -> {
-            if (e.getCode() == javafx.scene.input.KeyCode.ENTER && (e.isControlDown() || e.isMetaDown())) {
+        /* A filter rather than a handler: the box's own behaviour acts on the key press too, and
+           whichever runs first wins. Left as a handler, Tab put a tab in the box and then moved the
+           focus, which is both things at once and neither of them wanted. */
+        input.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, this::onKeyInInput);
+        input.addEventFilter(javafx.scene.input.KeyEvent.KEY_TYPED, e -> {
+            if ("	".equals(e.getCharacter())) {
                 e.consume();
-                ask();
             }
         });
 
@@ -101,9 +105,13 @@ final class AskPanel extends BorderPane {
         stop.setOnAction(e -> stop());
         stop.setDisable(true);
         clear.setOnAction(e -> reset());
+        copy.setOnAction(e -> copyConversation());
+        copy.setTooltip(com.smide.api.ui.Tooltips.of(
+                "Copies the whole conversation - questions, what was done, and the answers - as"
+                        + " Markdown, ready to paste into an issue or a note."));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox buttons = new HBox(6, send, stop, clear, spacer, letItFix);
+        HBox buttons = new HBox(6, send, stop, clear, copy, spacer, letItFix);
         buttons.setAlignment(Pos.CENTER_LEFT);
 
         status.getStyleClass().add("muted-small");
@@ -171,6 +179,63 @@ final class AskPanel extends BorderPane {
         ide.window().runInBackground(() -> working.ask(question));
     }
 
+    /**
+     * What the keys do in the question box.
+     *
+     * <p>Enter sends, because a question is usually one line and reaching for a second key to ask
+     * it is a small tax paid every time. Ctrl+Enter starts a line, for the times it is not. And
+     * inside a code block Enter starts a line by itself: somebody who has just typed ``` is
+     * pasting code, and sending it off after the first line of it is never what they meant.
+     *
+     * <p>Tab leaves the box rather than putting a tab character in it. A tab is not much use in a
+     * question, and a box that swallows Tab is a box the keyboard cannot get out of.
+     */
+    private void onKeyInInput(javafx.scene.input.KeyEvent e) {
+        if (e.getCode() == javafx.scene.input.KeyCode.TAB) {
+            e.consume();
+            if (e.isShiftDown()) {
+                clear.requestFocus();
+            } else {
+                send.requestFocus();
+            }
+            return;
+        }
+        if (e.getCode() != javafx.scene.input.KeyCode.ENTER) {
+            return;
+        }
+        if (e.isControlDown() || e.isMetaDown() || e.isShiftDown()) {
+            // A line of its own, wherever the caret is.
+            e.consume();
+            input.insertText(input.getCaretPosition(), "\n");
+            return;
+        }
+        if (insideCode(input.getText(), input.getCaretPosition())) {
+            // Left alone: the box puts the newline in, as it would anywhere else.
+            return;
+        }
+        e.consume();
+        ask();
+    }
+
+    /**
+     * Whether the caret is inside a code block that has been opened and not closed.
+     *
+     * <p>Counted rather than parsed: the fences before the caret, odd meaning open.
+     */
+    static boolean insideCode(String text, int caret) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String before = text.substring(0, Math.min(Math.max(caret, 0), text.length()));
+        int fences = 0;
+        int at = before.indexOf("```");
+        while (at >= 0) {
+            fences++;
+            at = before.indexOf("```", at + 3);
+        }
+        return fences % 2 == 1;
+    }
+
     static boolean meansFixIt(String question) {
         String lower = question.toLowerCase(Locale.ROOT);
         for (String phrase : ANYWHERE) {
@@ -211,6 +276,19 @@ final class AskPanel extends BorderPane {
         streaming = "";
         letItFix.setSelected(false);
         greet();
+    }
+
+    /** The conversation as it reads, on the clipboard. */
+    private void copyConversation() {
+        String conversation = closed(said.toString()).strip();
+        if (conversation.isEmpty()) {
+            status("There is nothing to copy yet.");
+            return;
+        }
+        javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+        content.putString(conversation);
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+        status("Copied the conversation - " + conversation.lines().count() + " lines.");
     }
 
     private void working(boolean busy) {

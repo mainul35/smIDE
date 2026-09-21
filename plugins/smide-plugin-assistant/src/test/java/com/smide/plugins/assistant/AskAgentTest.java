@@ -56,6 +56,30 @@ class AskAgentTest {
     }
 
     @Test
+    void enterInsideACodeBlockIsALineRatherThanASend() {
+        String opened = "Look at this:\n\n```java\nint a = 1;";
+
+        assertTrue(AskPanel.insideCode(opened, opened.length()));
+        // The caret before the fence is not in a block, whatever comes after it.
+        assertFalse(AskPanel.insideCode(opened, 5));
+    }
+
+    @Test
+    void aClosedBlockIsBehindYouAgain() {
+        String closed = "Look:\n\n```java\nint a = 1;\n```\nand then?";
+
+        assertFalse(AskPanel.insideCode(closed, closed.length()));
+        assertTrue(AskPanel.insideCode(closed, closed.indexOf("int a")));
+    }
+
+    @Test
+    void plainTextIsNeverACodeBlock() {
+        assertFalse(AskPanel.insideCode("Why will this not build?", 24));
+        assertFalse(AskPanel.insideCode("", 0));
+        assertFalse(AskPanel.insideCode(null, 0));
+    }
+
+    @Test
     void askingForAFixIsNotTheSameAsAskingAboutOne() {
         assertTrue(AskPanel.meansFixIt("Why will this not build? Fix it for me."));
         assertTrue(AskPanel.meansFixIt("go ahead and sort it out"));
