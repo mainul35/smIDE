@@ -163,7 +163,7 @@ final class AskPanel extends BorderPane {
         agent.setAutonomous(fixing);
 
         input.clear();
-        said.append("\n---\n\n**You:** ").append(question).append("\n\n");
+        said.append("\n\n### You asked\n\n").append(question).append("\n\n");
         transcript.show(said.toString());
         working(true);
         waiting.start(fixing ? "Working on it" : "Thinking");
@@ -239,7 +239,25 @@ final class AskPanel extends BorderPane {
 
     /** Shows the transcript with whatever the model is saying right now underneath it. */
     private void redraw() {
-        transcript.show(said + (streaming.isBlank() ? "" : "\n" + streaming));
+        transcript.show(closed(said + (streaming.isBlank() ? "" : "\n" + streaming)));
+    }
+
+    /**
+     * The same Markdown with every code fence closed.
+     *
+     * <p>The conversation is one document, and a reply that opens a fence without closing it -
+     * which a model cut off mid-answer does every time - turns everything after it into code: the
+     * next question, the steps beneath it, the next answer, all in one grey box. Counting the
+     * fences and closing the odd one out costs nothing and keeps the rest readable.
+     */
+    static String closed(String markdown) {
+        int fences = 0;
+        for (String line : markdown.split("\n", -1)) {
+            if (line.strip().startsWith("```")) {
+                fences++;
+            }
+        }
+        return fences % 2 == 0 ? markdown : markdown + "\n```\n";
     }
 
     // --------------------------------------------------------------- the agent's side
@@ -286,7 +304,7 @@ final class AskPanel extends BorderPane {
         public void answered(String markdown) {
             ide.window().runLater(() -> {
                 streaming = "";
-                said.append('\n').append(markdown).append('\n');
+                said.append('\n').append(closed(markdown)).append('\n');
                 redraw();
                 waiting.stop("");
                 working(false);

@@ -89,6 +89,7 @@ public final class AskAgent {
 
     public void forget() {
         history.clear();
+        refused.clear();
     }
 
     public void stop() {
@@ -187,10 +188,11 @@ public final class AskAgent {
         String path = string(call, "path");
         switch (tool) {
             case "read_file" -> {
-                return step("Reading " + path, () -> tools.readFile(path));
+                return step("Reading " + tools.shortened(path), () -> tools.readFile(path));
             }
             case "list_files" -> {
-                return step("Listing " + (path.isBlank() ? "the project" : path), () -> tools.listFiles(path));
+                return step("Listing " + (path.isBlank() ? "the project" : tools.shortened(path)),
+                        () -> tools.listFiles(path));
             }
             case "find_text" -> {
                 String text = string(call, "text");
@@ -228,6 +230,13 @@ public final class AskAgent {
             case "write_file" -> {
                 return write(tools.proposeWrite(path, string(call, "content")));
             }
+            case "delete_file" -> {
+                try {
+                    return write(tools.proposeDelete(path));
+                } catch (IllegalArgumentException e) {
+                    return e.getMessage();
+                }
+            }
             case "replace_in_file" -> {
                 try {
                     return write(tools.proposeReplace(path, string(call, "find"), string(call, "replace")));
@@ -241,9 +250,25 @@ public final class AskAgent {
         }
     }
 
+    /**
+     * Files the developer has already said no to.
+     *
+     * <p>Kept, because a model that is told "no, and do not try that again" will try it again:
+     * in the session this was built from, a file was refused, two folders were listed, and the
+     * same file was proposed a second time - which is the IDE asking the same question twice and
+     * hoping for a different answer. A refusal is about the file, not about the wording.
+     */
+    private final java.util.Set<String> refused = new java.util.HashSet<>();
+
     /** A change the developer says yes or no to, unless they have already said to get on with it. */
     private String write(AskTools.Change change) {
-        String what = (change.isNew() ? "Creating " : "Changing ") + change.relativeTo(tools.root());
+        String where = change.relativeTo(tools.root());
+        String what = change.verb() + " " + where;
+        if (refused.contains(where)) {
+            listener.did(what, "already refused");
+            return "The developer has already said no to " + where + " in this task."
+                    + " Leave it alone and tell them what you would do instead.";
+        }
         listener.doing(what);
         /* Asked about, unless the developer has said to get on with it - and even then the change
            goes through the editor, so it is one Ctrl+Z away and the file is theirs again. */
@@ -254,9 +279,10 @@ public final class AskAgent {
             allowed = false;
         }
         if (!allowed) {
+            refused.add(where);
             listener.did(what, "the developer said no");
-            return "The developer did not accept that change. Do not try it again;"
-                    + " ask them what they would prefer.";
+            return "The developer did not accept that change, and it will not be offered again."
+                    + " Ask them what they would prefer instead.";
         }
         String outcome = tools.apply(change);
         listener.did(what, outcome);
@@ -274,8 +300,8 @@ public final class AskAgent {
         if (autonomous) {
             return true;
         }
-        AskTools.Change asking = new AskTools.Change(tools.root().resolve("(a command)"),
-                null, String.join(" ", command), false);
+        AskTools.Change asking = new AskTools.Change(AskTools.Change.Kind.CHANGE,
+                tools.root().resolve("(a command)"), null, String.join(" ", command));
         try {
             return listener.approve(asking).join();
         } catch (RuntimeException e) {

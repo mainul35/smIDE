@@ -55,8 +55,23 @@ public final class AskTools {
         this.root = root;
     }
 
-    /** A file the agent wants to write, for the developer to accept or refuse. */
-    public record Change(Path file, String before, String after, boolean isNew) {
+    /** A file the agent wants to write or remove, for the developer to accept or refuse. */
+    public record Change(Kind kind, Path file, String before, String after) {
+
+        public enum Kind { CREATE, CHANGE, DELETE }
+
+        public boolean isNew() {
+            return kind == Kind.CREATE;
+        }
+
+        /** What this would do, in a word: for the card's button and the transcript. */
+        public String verb() {
+            return switch (kind) {
+                case CREATE -> "Creating";
+                case CHANGE -> "Changing";
+                case DELETE -> "Deleting";
+            };
+        }
 
         public String relativeTo(Path root) {
             try {
@@ -314,7 +329,19 @@ public final class AskTools {
     public Change proposeWrite(String relative, String content) {
         Path file = root.resolve(relative).normalize();
         String before = Files.isRegularFile(file) ? readOrEmpty(file) : null;
-        return new Change(file, before, content, before == null);
+        return new Change(before == null ? Change.Kind.CREATE : Change.Kind.CHANGE, file, before, content);
+    }
+
+    /** What removing a file would do. */
+    public Change proposeDelete(String relative) {
+        Path file = resolve(relative);
+        if (file == null) {
+            throw new IllegalArgumentException("There is no such file in this project: " + relative);
+        }
+        if (Files.isDirectory(file)) {
+            throw new IllegalArgumentException(relative + " is a folder, and this only removes files.");
+        }
+        return new Change(Change.Kind.DELETE, file, readOrEmpty(file), null);
     }
 
     /**
@@ -341,8 +368,8 @@ public final class AskTools {
             throw new IllegalArgumentException("That text appears more than once in " + relative
                     + ". Quote more of it, so there is only one place it can mean.");
         }
-        return new Change(file, before, before.substring(0, at) + replacement + before.substring(at + find.length()),
-                false);
+        return new Change(Change.Kind.CHANGE, file, before,
+                before.substring(0, at) + replacement + before.substring(at + find.length()));
     }
 
     /**
@@ -357,6 +384,11 @@ public final class AskTools {
 
     private String write(Change change) {
         try {
+            if (change.kind() == Change.Kind.DELETE) {
+                ide.editors().find(change.file()).ifPresent(editor -> ide.editors().close(editor));
+                Files.deleteIfExists(change.file());
+                return "Removed " + relative(change.file());
+            }
             Optional<Editor> open = ide.editors().find(change.file());
             if (open.isPresent() && open.get().asText().isPresent()) {
                 open.get().asText().get().setText(change.after());
@@ -386,6 +418,19 @@ public final class AskTools {
         }
         Path file = root.resolve(relative.strip()).normalize();
         return file.startsWith(root) && Files.exists(file) ? file : null;
+    }
+
+    /** A path as the project sees it: an absolute one the model sent, shortened to the root. */
+    public String shortened(String given) {
+        if (given == null || given.isBlank()) {
+            return "the project";
+        }
+        try {
+            Path file = root.resolve(given.strip()).normalize();
+            return file.startsWith(root) ? relative(file) : given;
+        } catch (RuntimeException e) {
+            return given;
+        }
     }
 
     public String relative(Path file) {

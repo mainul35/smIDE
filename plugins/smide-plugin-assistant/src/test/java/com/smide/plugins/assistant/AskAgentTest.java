@@ -39,6 +39,23 @@ class AskAgentTest {
     }
 
     @Test
+    void anUnclosedFenceDoesNotSwallowTheRestOfTheConversation() {
+        String cutOff = "Here is the fix:\n\n```java\nreturn 0;";
+
+        String fixed = AskPanel.closed(cutOff);
+
+        assertTrue(fixed.endsWith("```\n"), fixed);
+        assertEquals(2, fixed.lines().filter(line -> line.strip().startsWith("```")).count());
+    }
+
+    @Test
+    void oneThatIsClosedAlreadyIsLeftAlone() {
+        String whole = "Look:\n\n```java\nreturn 0;\n```\n";
+
+        assertEquals(whole, AskPanel.closed(whole));
+    }
+
+    @Test
     void askingForAFixIsNotTheSameAsAskingAboutOne() {
         assertTrue(AskPanel.meansFixIt("Why will this not build? Fix it for me."));
         assertTrue(AskPanel.meansFixIt("go ahead and sort it out"));
