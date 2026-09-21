@@ -60,9 +60,16 @@ final class MarkdownPane extends ScrollPane {
     /** For the colouring of fenced blocks; the IDE's own language plugins do it. */
     private final com.smide.api.Ide ide;
     private boolean follow = true;
+    /** What was last shown, for a copy that wants the Markdown rather than the drawing. */
+    private String shown = "";
 
     MarkdownPane(com.smide.api.Ide ide) {
         this.ide = ide;
+        // The click that starts a selection ends with a scroll pane holding the focus - this one,
+        // or a code block's own - so the shortcuts are watched for from up here, where every key
+        // pressed anywhere inside passes on its way down.
+        selection.keysFrom(this);
+        selection.wholeText(() -> shown);
         content.getStyleClass().add("md-pane");
         content.setPadding(new Insets(10, 12, 18, 12));
         content.setFillWidth(true);
@@ -89,7 +96,8 @@ final class MarkdownPane extends ScrollPane {
         // Whether the reader was already at the bottom decides whether they get dragged
         // there again: someone who has scrolled up to re-read is not to be yanked back.
         boolean pinned = getVvalue() >= 0.98 || content.getChildren().isEmpty();
-        content.getChildren().setAll(blocks(PARSER.parse(markdown == null ? "" : markdown)));
+        shown = markdown == null ? "" : markdown;
+        content.getChildren().setAll(blocks(PARSER.parse(shown)));
         // The text moved; what was selected of it is gone, and the pieces are found again.
         javafx.application.Platform.runLater(() -> selection.rebuilt(TextSelection.textsUnder(content)));
         if (follow && pinned) {

@@ -2,9 +2,14 @@ package com.smide.plugins.assistant;
 
 import javafx.scene.Node;
 import javafx.scene.Parent;
+import javafx.scene.control.ContextMenu;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Pane;
@@ -14,6 +19,7 @@ import javafx.scene.text.Text;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Selecting words out of something that is drawn rather than typed.
@@ -36,6 +42,7 @@ final class TextSelection {
     /** Every drawn piece of text, in the order it appears, rebuilt whenever the pane is. */
     private final List<Text> pieces = new ArrayList<>();
 
+    private Supplier<String> whole;
     private Text anchorPiece;
     private int anchorIndex;
     private Text focusPiece;
@@ -59,7 +66,22 @@ final class TextSelection {
                 e.consume();
             }
         });
-        content.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+        keysFrom(content);
+        content.addEventHandler(ContextMenuEvent.CONTEXT_MENU_REQUESTED, e -> {
+            menu().show(content, e.getScreenX(), e.getScreenY());
+            e.consume();
+        });
+    }
+
+    /**
+     * Also listen for the shortcuts here.
+     *
+     * <p>A press inside a scroll pane ends with the scroll pane holding the focus - it asks for it
+     * itself, after the press has gone past the thing that was clicked - so the node that was
+     * clicked is not the node the keystroke arrives at. Both get the filter.
+     */
+    void keysFrom(Node node) {
+        node.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (e.getCode() == KeyCode.C && (e.isControlDown() || e.isMetaDown())) {
                 copy();
                 e.consume();
@@ -70,6 +92,30 @@ final class TextSelection {
                 clear();
             }
         });
+    }
+
+    /** What the reader gets for "copy everything", when they have selected nothing. */
+    void wholeText(Supplier<String> whole) {
+        this.whole = whole;
+    }
+
+    /** Built fresh each time so that Copy is greyed out when there is nothing to copy. */
+    private ContextMenu menu() {
+        MenuItem copy = new MenuItem("Copy");
+        copy.setAccelerator(KeyCombination.keyCombination("Shortcut+C"));
+        copy.setDisable(selected().isBlank());
+        copy.setOnAction(e -> copy());
+
+        MenuItem all = new MenuItem("Select All");
+        all.setAccelerator(KeyCombination.keyCombination("Shortcut+A"));
+        all.setOnAction(e -> selectAll());
+
+        MenuItem everything = new MenuItem("Copy Everything");
+        everything.setOnAction(e -> put(whole == null ? "" : whole.get()));
+
+        ContextMenu menu = new ContextMenu(copy, all, new SeparatorMenuItem(), everything);
+        menu.setAutoHide(true);
+        return menu;
     }
 
     /** Called as the pane is rebuilt: what is on screen now, in reading order. */
@@ -104,8 +150,11 @@ final class TextSelection {
     }
 
     void copy() {
-        String text = selected();
-        if (text.isBlank()) {
+        put(selected());
+    }
+
+    private static void put(String text) {
+        if (text == null || text.isBlank()) {
             return;
         }
         ClipboardContent clip = new ClipboardContent();
