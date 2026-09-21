@@ -14,7 +14,7 @@ public final class Launcher {
 
     public static void main(String[] args) {
         // Before the toolkit starts, which is the only time glass.gtk.uiScale is read.
-        // com.smide.ui.UiScale.apply();
+        com.smide.ui.UiScale.apply();
         SmIdeApp.main(args);
     }
 }
