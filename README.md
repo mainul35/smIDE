@@ -71,6 +71,16 @@ recent workspaces, and a session that reopens what you had.
 **Navigation.** Search Everywhere (double Shift), Go to File, Find Action, Recent Files,
 Find in Files, Back and Forward (Ctrl+Alt+Left/Right).
 
+**The assistant.** Three tabs beside the editor. **Review** reads the open file for smells,
+security problems and technical debt, and never rewrites it. **Ask** answers questions about the
+project you are in: it reads the files that matter, searches them, builds the project when the
+question is why it will not build, and can look things up on the web. It proposes changes as a
+card showing what would be written, and nothing reaches a file until you press Apply - unless you
+ask it outright to fix something, which lets it work unattended for that one task and says so on
+screen. **Practice** teaches a topic and marks your answers. Model and endpoint are yours to
+choose (anything OpenAI-compatible, including a local Ollama), and the host allowlist means code
+cannot be sent anywhere you have not agreed to.
+
 **Markdown.** MDViewer embedded as a plugin: raw, split and preview modes with its own
 renderer, stylesheet, PlantUML, Mermaid and charts.
 

@@ -1578,6 +1578,12 @@
 
 /* The box for asking about a review. Prose, so not the monospace of the
    sources listing beside it. */
+/* What a change would do to a file, shown before it is made. */
+.assistant-change-preview {
+    -fx-font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", monospace;
+    -fx-font-size: 12px;
+}
+
 .assistant-question {
     -fx-font-size: 12px;
 }

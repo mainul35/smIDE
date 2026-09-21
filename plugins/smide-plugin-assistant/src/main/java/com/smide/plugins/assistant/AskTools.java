@@ -1,0 +1,424 @@
+package com.smide.plugins.assistant;
+
+import com.smide.api.Ide;
+import com.smide.api.editor.Editor;
+import com.smide.api.execution.ConsoleHandle;
+import com.smide.api.execution.ProcessSpec;
+import com.smide.api.problems.Diagnostic;
+import com.smide.api.project.ProjectModel;
+import com.smide.api.workspace.Workspace;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
+
+/**
+ * What the Ask agent can do to find an answer: read the project, search it, build it, look
+ * something up on the web, and - with the developer's say-so - write to it.
+ *
+ * <p>Every one of these runs off the window's thread and comes back as text for the model to read,
+ * which is the whole contract: a tool either answers or explains why it could not. Nothing here
+ * throws at the agent; a tool that fails says so in words, because the model can recover from a
+ * sentence and cannot recover from a stack trace.
+ *
+ * <p>The two that change the project - writing a file, replacing part of one - do nothing by
+ * themselves. They hand the change to whoever asked for the agent to run, and that is where the
+ * developer says yes or no.
+ */
+public final class AskTools {
+
+    /** How much of one file goes to the model. Past this, the middle is left out and said to be. */
+    private static final int FILE_CHARS = 40_000;
+    /** How much build output goes back: the end of it, which is where the errors are. */
+    private static final int OUTPUT_CHARS = 12_000;
+    private static final int MAX_LISTED = 300;
+    private static final int MAX_MATCHES = 60;
+    private static final long BUILD_MINUTES = 10;
+
+    private static final Set<String> SKIPPED = Set.of(".git", ".idea", ".smide", "target", "build",
+            "out", "node_modules", "dist", ".gradle", ".mvn", "bin", "obj", "venv", ".venv", "__pycache__");
+
+    private final Ide ide;
+    private final Path root;
+
+    public AskTools(Ide ide, Path root) {
+        this.ide = ide;
+        this.root = root;
+    }
+
+    /** A file the agent wants to write, for the developer to accept or refuse. */
+    public record Change(Path file, String before, String after, boolean isNew) {
+
+        public String relativeTo(Path root) {
+            try {
+                return root.relativize(file).toString().replace('\\', '/');
+            } catch (RuntimeException e) {
+                return file.toString();
+            }
+        }
+    }
+
+    public Path root() {
+        return root;
+    }
+
+
+    /**
+     * Runs something that touches the IDE on the window's thread, and waits for the answer.
+     *
+     * <p>The agent works on a thread of its own, because a model takes seconds to answer and the
+     * window has to stay alive; but an editor's text, the list of open files and the console a
+     * build runs in all belong to the window, and asking them anything from anywhere else throws.
+     * Every tool that reaches into the IDE comes through here.
+     */
+    private <T> T onWindow(java.util.concurrent.Callable<T> work, T whenItFails) {
+        if (javafx.application.Platform.isFxApplicationThread()) {
+            try {
+                return work.call();
+            } catch (Exception e) {
+                return whenItFails;
+            }
+        }
+        java.util.concurrent.FutureTask<T> task = new java.util.concurrent.FutureTask<>(work);
+        ide.window().runLater(task);
+        try {
+            return task.get(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return whenItFails;
+        } catch (Exception e) {
+            return whenItFails;
+        }
+    }
+
+    // ------------------------------------------------------------------ reading
+
+    /** One file, as the editor has it if it is open and unsaved, else as it is on disk. */
+    public String readFile(String relative) {
+        Path file = resolve(relative);
+        if (file == null) {
+            return "There is no such file in this project: " + relative;
+        }
+        String text = openText(file);
+        if (text == null) {
+            try {
+                text = Files.readString(file, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                return "Cannot read " + relative + ": " + e.getMessage();
+            }
+        }
+        if (text.length() > FILE_CHARS) {
+            int half = FILE_CHARS / 2;
+            return text.substring(0, half)
+                    + "\n\n... " + (text.length() - FILE_CHARS) + " characters left out of the middle ...\n\n"
+                    + text.substring(text.length() - half);
+        }
+        return text;
+    }
+
+    /** What is in a folder, one name per line, folders marked. */
+    public String listFiles(String relative) {
+        Path dir = relative == null || relative.isBlank() || ".".equals(relative) ? root : resolve(relative);
+        if (dir == null || !Files.isDirectory(dir)) {
+            return "There is no such folder in this project: " + relative;
+        }
+        List<String> names = new ArrayList<>();
+        try (Stream<Path> entries = Files.list(dir)) {
+            for (Path entry : entries.sorted().toList()) {
+                String name = entry.getFileName().toString();
+                if (SKIPPED.contains(name)) {
+                    continue;
+                }
+                names.add(Files.isDirectory(entry) ? name + "/" : name);
+                if (names.size() >= MAX_LISTED) {
+                    names.add("... and more");
+                    break;
+                }
+            }
+        } catch (IOException e) {
+            return "Cannot read " + relative + ": " + e.getMessage();
+        }
+        return names.isEmpty() ? "(empty)" : String.join("\n", names);
+    }
+
+    /** Where a piece of text appears in the project: file, line number and the line itself. */
+    public String findText(String needle) {
+        if (needle == null || needle.isBlank()) {
+            return "Nothing to look for.";
+        }
+        String wanted = needle.toLowerCase(Locale.ROOT);
+        List<String> hits = new ArrayList<>();
+        try (Stream<Path> tree = Files.walk(root, 12)) {
+            for (Path file : tree.filter(Files::isRegularFile).filter(this::worthReading).toList()) {
+                if (hits.size() >= MAX_MATCHES) {
+                    hits.add("... and more");
+                    break;
+                }
+                String text;
+                try {
+                    if (Files.size(file) > 2_000_000) {
+                        continue;
+                    }
+                    text = Files.readString(file, StandardCharsets.UTF_8);
+                } catch (IOException | RuntimeException e) {
+                    continue;
+                }
+                int line = 0;
+                for (String each : text.split("\n", -1)) {
+                    line++;
+                    if (each.toLowerCase(Locale.ROOT).contains(wanted)) {
+                        hits.add(relative(file) + ":" + line + ": " + each.strip());
+                        if (hits.size() >= MAX_MATCHES) {
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            return "Could not search: " + e.getMessage();
+        }
+        return hits.isEmpty() ? "No file in this project contains that." : String.join("\n", hits);
+    }
+
+    /** What the IDE knows about the project: build tool, modules, tasks, and what is open. */
+    public String projectInfo() {
+        StringBuilder out = new StringBuilder();
+        out.append("Project root: ").append(root).append('\n');
+        Optional<ProjectModel> model = workspace().flatMap(w -> ide.projects().modelOf(w));
+        if (model.isPresent()) {
+            ProjectModel project = model.get();
+            out.append("Name: ").append(project.name()).append('\n');
+            out.append("Built with: ").append(project.type()).append('\n');
+            out.append("Modules:\n");
+            for (ProjectModel.ProjectModule module : project.modules()) {
+                out.append("  ").append(module.name()).append("  (").append(relative(module.root())).append(")\n");
+            }
+            if (!project.tasks().isEmpty()) {
+                out.append("Build tasks: ");
+                out.append(project.tasks().stream().map(ProjectModel.BuildTask::name).distinct().limit(25)
+                        .reduce((a, b) -> a + ", " + b).orElse(""));
+                out.append('\n');
+            }
+        } else {
+            out.append("The IDE has not imported a build for this folder.\n");
+        }
+        List<String> open = onWindow(() -> ide.editors().open().stream()
+                .map(Editor::path).map(this::relative).limit(20).toList(), List.of());
+        if (!open.isEmpty()) {
+            out.append("Open in the editor: ").append(String.join(", ", open)).append('\n');
+        }
+        return out.toString();
+    }
+
+    /** What the IDE is complaining about right now, worst first. */
+    public String problems() {
+        List<Diagnostic> all = onWindow(() -> ide.problems().all().stream()
+                .filter(d -> d.file() != null && d.file().startsWith(root))
+                .sorted((a, b) -> a.severity().compareTo(b.severity()))
+                .limit(60)
+                .toList(), List.of());
+        if (all.isEmpty()) {
+            return "The IDE is reporting nothing wrong in this project.";
+        }
+        StringBuilder out = new StringBuilder();
+        for (Diagnostic d : all) {
+            out.append(d.severity()).append("  ").append(relative(d.file())).append(':')
+                    .append(d.startLine() + 1).append("  ").append(d.message()).append('\n');
+        }
+        return out.toString();
+    }
+
+    // ------------------------------------------------------------------ building
+
+    /** What the build says. The whole point of this one is the part where it fails. */
+    public String build() {
+        List<String> command = buildCommand();
+        if (command.isEmpty()) {
+            return "This project has no build the IDE knows how to run.";
+        }
+        return run(command, root, "Building for the assistant");
+    }
+
+    /** Runs a command in the project and gives back what it printed. */
+    public String run(List<String> command, Path workingDir, String title) {
+        try {
+            ConsoleHandle console = onWindow(() -> ide.execution().run(
+                    new ProcessSpec(title, command, workingDir == null ? root : workingDir, Map.of())), null);
+            if (console == null) {
+                return "Could not start " + String.join(" ", command) + ".";
+            }
+            Integer code = console.exitCode().get(BUILD_MINUTES, TimeUnit.MINUTES);
+            String output = console.output();
+            if (output.length() > OUTPUT_CHARS) {
+                output = "... earlier output left out ...\n" + output.substring(output.length() - OUTPUT_CHARS);
+            }
+            return "$ " + String.join(" ", command) + "\nexit code: " + code + "\n\n" + output;
+        } catch (java.util.concurrent.TimeoutException e) {
+            return "The command was still running after " + BUILD_MINUTES + " minutes; it was left to it.";
+        } catch (Exception e) {
+            return "Could not run " + String.join(" ", command) + ": " + e;
+        }
+    }
+
+    /**
+     * How this project builds.
+     *
+     * <p>The project's own build task when the IDE imported one - which is the wrapper script, the
+     * right module, the lot - and otherwise whatever the files in the root say it is.
+     */
+    public List<String> buildCommand() {
+        Optional<ProjectModel> model = workspace().flatMap(w -> ide.projects().modelOf(w));
+        if (model.isPresent()) {
+            for (String wanted : List.of("build", "compile", "package", "assemble")) {
+                for (ProjectModel.BuildTask task : model.get().tasks()) {
+                    if (task.name().equalsIgnoreCase(wanted) && !task.command().isEmpty()) {
+                        return task.command();
+                    }
+                }
+            }
+        }
+        if (Files.isRegularFile(root.resolve(windows() ? "gradlew.bat" : "gradlew"))) {
+            return List.of(root.resolve(windows() ? "gradlew.bat" : "gradlew").toString(), "build", "-x", "test");
+        }
+        if (Files.isRegularFile(root.resolve("pom.xml"))) {
+            return List.of(windows() ? "mvn.cmd" : "mvn", "-q", "-DskipTests", "compile");
+        }
+        if (Files.isRegularFile(root.resolve("Cargo.toml"))) {
+            return List.of("cargo", "build");
+        }
+        if (Files.isRegularFile(root.resolve("go.mod"))) {
+            return List.of("go", "build", "./...");
+        }
+        if (Files.isRegularFile(root.resolve("package.json"))) {
+            return List.of(windows() ? "npm.cmd" : "npm", "run", "build");
+        }
+        return List.of();
+    }
+
+    private static boolean windows() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    }
+
+    // ------------------------------------------------------------------ writing
+
+    /** What writing this file would do, for the developer to look at before it happens. */
+    public Change proposeWrite(String relative, String content) {
+        Path file = root.resolve(relative).normalize();
+        String before = Files.isRegularFile(file) ? readOrEmpty(file) : null;
+        return new Change(file, before, content, before == null);
+    }
+
+    /**
+     * What replacing one piece of a file would do.
+     *
+     * <p>The piece must appear exactly once. A model that has read the file can quote a line from
+     * it precisely, and one that has not should not be editing it: anything else is a guess at
+     * which of three similar lines was meant.
+     */
+    public Change proposeReplace(String relative, String find, String replacement) {
+        Path file = resolve(relative);
+        if (file == null) {
+            throw new IllegalArgumentException("There is no such file in this project: " + relative);
+        }
+        String before = openText(file);
+        if (before == null) {
+            before = readOrEmpty(file);
+        }
+        int at = before.indexOf(find);
+        if (at < 0) {
+            throw new IllegalArgumentException("That text is not in " + relative + ". Read the file again.");
+        }
+        if (before.indexOf(find, at + 1) >= 0) {
+            throw new IllegalArgumentException("That text appears more than once in " + relative
+                    + ". Quote more of it, so there is only one place it can mean.");
+        }
+        return new Change(file, before, before.substring(0, at) + replacement + before.substring(at + find.length()),
+                false);
+    }
+
+    /**
+     * Writes an accepted change.
+     *
+     * <p>Through the editor when the file is open, so the developer can undo it with Ctrl+Z like
+     * anything they typed themselves, and straight to disk when it is not.
+     */
+    public String apply(Change change) {
+        return onWindow(() -> write(change), "Could not write " + relative(change.file()));
+    }
+
+    private String write(Change change) {
+        try {
+            Optional<Editor> open = ide.editors().find(change.file());
+            if (open.isPresent() && open.get().asText().isPresent()) {
+                open.get().asText().get().setText(change.after());
+                open.get().save();
+            } else {
+                Files.createDirectories(change.file().getParent());
+                Files.writeString(change.file(), change.after(), StandardCharsets.UTF_8);
+                ide.editors().open(change.file());
+            }
+            return (change.isNew() ? "Created " : "Changed ") + relative(change.file());
+        } catch (IOException | RuntimeException e) {
+            return "Could not write " + relative(change.file()) + ": " + e.getMessage();
+        }
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    private Optional<Workspace> workspace() {
+        return ide.workspaces().all().stream().filter(w -> w.root().equals(root)).findFirst()
+                .or(() -> ide.workspaces().active());
+    }
+
+    /** A path inside the project, or null for one that is outside it or not there. */
+    private Path resolve(String relative) {
+        if (relative == null || relative.isBlank()) {
+            return null;
+        }
+        Path file = root.resolve(relative.strip()).normalize();
+        return file.startsWith(root) && Files.exists(file) ? file : null;
+    }
+
+    public String relative(Path file) {
+        try {
+            return root.relativize(file).toString().replace('\\', '/');
+        } catch (RuntimeException e) {
+            return String.valueOf(file);
+        }
+    }
+
+    private String openText(Path file) {
+        return onWindow(() -> ide.editors().find(file).flatMap(Editor::asText)
+                .map(com.smide.api.editor.TextEditor::text).orElse(null), null);
+    }
+
+    private static String readOrEmpty(Path file) {
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private boolean worthReading(Path file) {
+        for (Path part : root.relativize(file)) {
+            if (SKIPPED.contains(part.toString())) {
+                return false;
+            }
+        }
+        String name = file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        String extension = dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        return !Set.of("jar", "class", "png", "jpg", "jpeg", "gif", "pdf", "zip", "gz", "exe", "dll", "so",
+                "bin", "ico", "woff", "woff2", "ttf", "mp4", "webm").contains(extension);
+    }
+}

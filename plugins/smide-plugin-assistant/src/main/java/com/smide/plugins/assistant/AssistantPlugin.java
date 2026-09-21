@@ -49,6 +49,13 @@ public final class AssistantPlugin implements Plugin {
                 .description("Which model the assistant uses, and what it may see")
                 .perform(ctx -> ide.showSettings("Tools/Assistant")));
 
+        context.registerAction(Action.of("assistant.ask", "Ask About This Project...")
+                .menu("Tools").icon("fth-message-square").order(21)
+                .shortcut("shortcut+alt+A")
+                .perform(ctx -> {
+                    ide.toolWindows().show(AssistantToolWindow.ID);
+                    toolWindow.showAsk();
+                }));
         context.registerAction(Action.of("assistant.practice", "Practice Session...")
                 .menu("Tools").icon("fth-award").order(71)
                 .description("Practise a topic: questions one at a time, marked when you submit")

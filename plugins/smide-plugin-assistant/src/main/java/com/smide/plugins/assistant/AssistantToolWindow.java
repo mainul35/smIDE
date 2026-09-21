@@ -21,6 +21,7 @@ public final class AssistantToolWindow implements ToolWindowFactory {
     private final Assistant assistant;
     private TabPane tabs;
     private ReviewPanel review;
+    private AskPanel ask;
     private PracticePanel practice;
 
     public AssistantToolWindow(Assistant assistant) {
@@ -61,12 +62,17 @@ public final class AssistantToolWindow implements ToolWindowFactory {
     public Node create(ToolWindowContext context) {
         if (tabs == null) {
             review = new ReviewPanel(assistant);
+            ask = new AskPanel(assistant);
             practice = new PracticePanel(assistant);
             Tab reviewTab = new Tab("Review", review);
             reviewTab.setClosable(false);
+            // Between the two, because it sits between them in what it does: Review reads one
+            // file and reports, Practice teaches, and this one works on the project.
+            Tab askTab = new Tab("Ask", ask);
+            askTab.setClosable(false);
             Tab practiceTab = new Tab("Practice", practice);
             practiceTab.setClosable(false);
-            tabs = new TabPane(reviewTab, practiceTab);
+            tabs = new TabPane(reviewTab, askTab, practiceTab);
             tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         }
         return tabs;
@@ -83,13 +89,22 @@ public final class AssistantToolWindow implements ToolWindowFactory {
     /** Brings Practice forward, for the menu item that starts a session. */
     void showPractice() {
         if (tabs != null) {
-            tabs.getSelectionModel().select(1);
+            tabs.getSelectionModel().select(2);
         }
+    }
+
+    /** Brings the Ask tab up, for the action and for anything that wants a question asked. */
+    void showAsk() {
+        tabs.getSelectionModel().select(1);
+        ask.focusInput();
     }
 
     void dispose() {
         if (practice != null) {
             practice.dispose();
+        if (ask != null) {
+            ask.dispose();
+        }
         }
     }
 }

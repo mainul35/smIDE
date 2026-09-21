@@ -8,6 +8,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
@@ -264,8 +265,44 @@ final class AssistantSettingsPage implements SettingsPage {
         scopeNote.getStyleClass().add("settings-note");
         scopeNote.setWrapText(true);
 
+        /* Web search for the Ask tab. Its own key, and its own engine: the model's provider
+           answers from what it was trained on, and a question about a library released last
+           month needs something that went and looked. Without a key the tab still works - it
+           reads the project, and it can be given a URL - and it says so rather than guessing. */
+        Label searchSection = new Label("Web search, for the Ask tab");
+        searchSection.getStyleClass().add("settings-section");
+        ChoiceBox<String> searchProvider = new ChoiceBox<>();
+        searchProvider.getItems().addAll("none", "tavily", "brave");
+        String configuredSearch = config.text("search.provider", "none");
+        searchProvider.setValue(searchProvider.getItems().contains(configuredSearch) ? configuredSearch : "none");
+        PasswordField searchKey = new PasswordField();
+        searchKey.setPromptText(config.text("search.key", "").isBlank() ? "no key saved" : "a key is saved");
+        Button saveSearch = new Button("Save search settings");
+        Label searchNote = new Label("Tavily and Brave both have a free allowance. The key is kept in"
+                + " ~/.smide/ai.properties, beside the model's. Without one, Ask answers from the"
+                + " project and from what the model knows, and can still read a URL you give it.");
+        searchNote.getStyleClass().add("settings-note");
+        searchNote.setWrapText(true);
+        saveSearch.setOnAction(e -> {
+            config.setText("search.provider", searchProvider.getValue());
+            if (!searchKey.getText().isBlank()) {
+                config.setText("search.key", searchKey.getText().strip());
+                searchKey.clear();
+                searchKey.setPromptText("a key is saved");
+            }
+            result.setText("Web search saved.");
+        });
+        GridPane searchGrid = new GridPane();
+        searchGrid.setHgap(10);
+        searchGrid.setVgap(8);
+        searchGrid.getColumnConstraints().addAll(labels, fields);
+        searchGrid.addRow(0, new Label("Search with"), searchProvider);
+        searchGrid.addRow(1, new Label("Search key"), searchKey);
+        searchGrid.addRow(2, new Label(""), saveSearch);
+
         VBox box = new VBox(8, section, grid, buttons, endpointNote,
-                permissions, allowHost, hostNote, scope, scopeNote, result);
+                permissions, allowHost, hostNote, scope, scopeNote,
+                searchSection, searchGrid, searchNote, result);
         box.setFillWidth(true);
         return box;
     }

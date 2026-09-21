@@ -146,6 +146,42 @@ public final class AssistantConfig {
         return "";
     }
 
+    /**
+     * A value out of {@code ai.properties} that {@code AiConfig} has no opinion about - the
+     * search engine and its key, which are the IDE's business rather than the model's.
+     */
+    public String text(String key, String fallback) {
+        java.util.Properties properties = new java.util.Properties();
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(file())) {
+            properties.load(in);
+        } catch (java.io.IOException | RuntimeException e) {
+            return fallback;
+        }
+        String value = properties.getProperty(key);
+        return value == null || value.isBlank() ? fallback : value.strip();
+    }
+
+    /** Writes one of those values back, leaving the rest of the file as it was. */
+    public boolean setText(String key, String value) {
+        java.util.Properties properties = new java.util.Properties();
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(file())) {
+            properties.load(in);
+        } catch (java.io.IOException | RuntimeException e) {
+            // A file that is not there yet is a file with nothing in it.
+        }
+        if (value == null || value.isBlank()) {
+            properties.remove(key);
+        } else {
+            properties.setProperty(key, value.strip());
+        }
+        try (java.io.OutputStream out = java.nio.file.Files.newOutputStream(file())) {
+            properties.store(out, "smIDE assistant");
+            return true;
+        } catch (java.io.IOException e) {
+            return false;
+        }
+    }
+
     public int intValue(String key, int fallback) {
         return config.intValue(key, fallback);
     }
