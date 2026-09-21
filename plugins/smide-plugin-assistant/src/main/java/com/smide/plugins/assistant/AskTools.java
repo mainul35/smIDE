@@ -58,7 +58,7 @@ public final class AskTools {
     /** A file the agent wants to write or remove, for the developer to accept or refuse. */
     public record Change(Kind kind, Path file, String before, String after) {
 
-        public enum Kind { CREATE, CHANGE, DELETE }
+        public enum Kind { CREATE, CHANGE, DELETE, COMMAND }
 
         public boolean isNew() {
             return kind == Kind.CREATE;
@@ -70,6 +70,7 @@ public final class AskTools {
                 case CREATE -> "Creating";
                 case CHANGE -> "Changing";
                 case DELETE -> "Deleting";
+                case COMMAND -> "Running";
             };
         }
 

@@ -84,7 +84,7 @@ public final class ProjectErrors {
                 + (errors.size() == 1 ? "it" : "them") + ".");
         alert.setContentText(listed.toString().stripTrailing());
         alert.getDialogPane().setMinWidth(560);
-        focusedWindow().ifPresent(alert::initOwner);
+        com.smide.api.ui.Windows.belongsTo(alert, focusedWindow().orElse(null));
         try {
             ide.theme().style(alert.getDialogPane().getScene().getWindow());
         } catch (RuntimeException e) {

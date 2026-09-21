@@ -49,8 +49,7 @@ public final class RunConfigurationsDialog {
 
     public void show() {
         Stage stage = new Stage();
-        stage.initOwner(ide.window().stage());
-        stage.initModality(Modality.WINDOW_MODAL);
+        com.smide.api.ui.Windows.belongsTo(stage, ide.window().stage());
         stage.setTitle("Run/Debug Configurations - " + workspace.name());
 
         list.getItems().setAll(ide.execution().configurations(workspace));

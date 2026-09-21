@@ -51,8 +51,7 @@ public final class GitCompare {
     private static void choose(Ide ide, GitUi ui, Path root, Consumer<String> onChosen) {
         ui.read(() -> ui.git().refs(root), refs -> {
             Stage stage = new Stage();
-            stage.initOwner(ide.window().stage());
-            stage.initModality(Modality.WINDOW_MODAL);
+            com.smide.api.ui.Windows.belongsTo(stage, ide.window().stage());
             stage.setTitle("Compare with");
 
             ListView<RefInfo> list = new ListView<>();
@@ -133,7 +132,7 @@ public final class GitCompare {
         diff.setContent(leftLabel, leftText, rightLabel, rightText);
 
         Stage stage = new Stage();
-        stage.initOwner(ide.window().stage());
+        com.smide.api.ui.Windows.belongsTo(stage, ide.window().stage());
         stage.setTitle(file.getFileName() + " - working tree against " + revision);
         stage.setScene(new Scene(diff, 1000, 640));
         ide.theme().style(stage);

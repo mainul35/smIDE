@@ -474,7 +474,7 @@ public final class GutterFactory implements IntFunction<Node> {
         dialog.getEditor().setPrefColumnCount(36);
         Scene owner = area.getScene();
         if (owner != null) {
-            dialog.initOwner(owner.getWindow());
+            com.smide.api.ui.Windows.belongsTo(dialog, owner.getWindow());
             // Styled like the window it came from, as the theme styles any window: its
             // stylesheet, and the dark class when that window has it.
             Scene scene = dialog.getDialogPane().getScene();

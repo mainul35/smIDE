@@ -75,7 +75,7 @@ public final class WindowServiceImpl implements WindowService {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, message, ButtonType.OK, ButtonType.CANCEL);
         alert.setTitle(title);
         alert.setHeaderText(null);
-        alert.initOwner(stage);
+        com.smide.api.ui.Windows.belongsTo(alert, stage);
         theme.style(alert.getDialogPane().getScene().getWindow());
         return alert.showAndWait().filter(b -> b == ButtonType.OK).isPresent();
     }
@@ -85,7 +85,7 @@ public final class WindowServiceImpl implements WindowService {
         Alert alert = new Alert(Alert.AlertType.INFORMATION, message, ButtonType.OK);
         alert.setTitle(title);
         alert.setHeaderText(null);
-        alert.initOwner(stage);
+        com.smide.api.ui.Windows.belongsTo(alert, stage);
         theme.style(alert.getDialogPane().getScene().getWindow());
         alert.showAndWait();
     }
@@ -96,7 +96,7 @@ public final class WindowServiceImpl implements WindowService {
         dialog.setTitle(title);
         dialog.setHeaderText(null);
         dialog.setContentText(label);
-        dialog.initOwner(stage);
+        com.smide.api.ui.Windows.belongsTo(dialog, stage);
         theme.style(dialog.getDialogPane().getScene().getWindow());
         return dialog.showAndWait().map(String::strip).filter(s -> !s.isEmpty());
     }

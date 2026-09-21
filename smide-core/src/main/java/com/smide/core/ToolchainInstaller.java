@@ -291,7 +291,7 @@ public final class ToolchainInstaller {
         com.smide.ui.Dialogs.fitButtonsIn(alert, text);
         alert.getDialogPane().setMinWidth(560);
         alert.getDialogPane().getStyleClass().add("toolchain-download");
-        owner().ifPresent(alert::initOwner);
+        com.smide.api.ui.Windows.belongsTo(alert, owner().orElse(null));
         style(alert.getDialogPane().getScene().getWindow());
         return alert.showAndWait().orElse(no) == yes;
     }
@@ -501,8 +501,8 @@ public final class ToolchainInstaller {
 
         Progress(String title) {
             stage.setTitle(title);
+            com.smide.api.ui.Windows.belongsTo(stage, owner().orElse(null));
             stage.initModality(Modality.NONE);
-            owner().ifPresent(stage::initOwner);
             Label heading = new Label(title + "...");
             heading.getStyleClass().add("toolchain-download-title");
             message.setMinHeight(Region.USE_PREF_SIZE);

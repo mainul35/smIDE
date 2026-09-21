@@ -698,7 +698,7 @@ public final class IdeImpl implements Ide {
                 + "Java " + System.getProperty("java.version") + "   JavaFX " + System.getProperty("javafx.version")
                 + "\nSettings: " + homeDir + "\nPlugins loaded: " + plugins.loaded().stream()
                 .filter(PluginManager.LoadedPlugin::isStarted).count());
-        alert.initOwner(stage);
+        com.smide.api.ui.Windows.belongsTo(alert, stage);
         theme.style(alert.getDialogPane().getScene().getWindow());
         alert.showAndWait();
     }

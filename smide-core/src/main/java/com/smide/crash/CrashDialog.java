@@ -185,10 +185,7 @@ final class CrashDialog {
             default -> "unexpected error";
         });
         stage.setScene(new Scene(root));
-        if (owner != null && owner.isShowing()) {
-            stage.initOwner(owner);
-            stage.initModality(Modality.WINDOW_MODAL);
-        }
+        com.smide.api.ui.Windows.belongsTo(stage, owner);
         try {
             styler.accept(stage);
         } catch (RuntimeException e) {

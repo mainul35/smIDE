@@ -41,8 +41,7 @@ public final class NewProjectDialog {
 
     public void show() {
         Stage stage = new Stage();
-        stage.initOwner(ide.window().stage());
-        stage.initModality(Modality.WINDOW_MODAL);
+        com.smide.api.ui.Windows.belongsTo(stage, ide.window().stage());
         stage.setTitle("New Project");
 
         List<NewProjectTemplate> templates = new ArrayList<>(registry.templates());

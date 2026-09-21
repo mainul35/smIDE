@@ -14,6 +14,36 @@ public final class Dialogs {
     private Dialogs() {
     }
 
+    private static final boolean LINUX =
+            System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("linux");
+
+    /**
+     * Ties a dialog to the window it belongs to, without costing that window its size.
+     *
+     * <p>A modal dialog is the obvious thing to want: while it is up, the window behind it should
+     * not be typed into. What that costs on Linux is the window itself. Making a window modal
+     * disables the one behind it, and disabling a window is done by pinning its size - the
+     * smallest it may be and the largest it may be, both set to the size it has - and a window
+     * that may not be resized is one a window manager will not keep maximised. It is restored,
+     * and a maximised IDE drops to whatever size it had before it was maximised, which is what
+     * kept being reported here.
+     *
+     * <p>So on Linux the dialog is owned but not modal: it opens over its window, stays in front
+     * of it, and closes with it. What is lost is that the window behind can still be clicked; what
+     * is kept is the window. Everywhere else the dialog is modal as before.
+     */
+    public static void belongsTo(javafx.stage.Stage dialog, Window owner) {
+        if (owner != null && owner.isShowing()) {
+            dialog.initOwner(owner);
+        }
+        if (LINUX) {
+            dialog.initModality(javafx.stage.Modality.NONE);
+            dialog.setAlwaysOnTop(true);
+        } else {
+            dialog.initModality(javafx.stage.Modality.WINDOW_MODAL);
+        }
+    }
+
     /**
      * Makes sure a dialog's buttons are inside its window, whatever its text does.
      *

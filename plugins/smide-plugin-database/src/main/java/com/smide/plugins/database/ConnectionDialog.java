@@ -43,8 +43,7 @@ final class ConnectionDialog {
     /** Shows the form; calls back with the connection when the user accepts it. */
     void show(DataSource initial, Consumer<DataSource> onAccept) {
         Stage stage = new Stage();
-        stage.initOwner(ui.ide().window().stage());
-        stage.initModality(Modality.WINDOW_MODAL);
+        com.smide.api.ui.Windows.belongsTo(stage, ui.ide().window().stage());
         stage.setTitle(initial == null ? "New Connection" : "Edit Connection");
         DataSource start = initial == null ? DataSource.blank() : initial;
 

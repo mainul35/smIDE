@@ -300,8 +300,8 @@ public final class AskAgent {
         if (autonomous) {
             return true;
         }
-        AskTools.Change asking = new AskTools.Change(AskTools.Change.Kind.CHANGE,
-                tools.root().resolve("(a command)"), null, String.join(" ", command));
+        AskTools.Change asking = new AskTools.Change(AskTools.Change.Kind.COMMAND,
+                tools.root(), null, String.join(" ", command));
         try {
             return listener.approve(asking).join();
         } catch (RuntimeException e) {

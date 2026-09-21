@@ -83,7 +83,7 @@ public final class DatabaseUi {
             return;
         }
         Dialog<String> dialog = new Dialog<>();
-        dialog.initOwner(ide.window().stage());
+        com.smide.api.ui.Windows.belongsTo(dialog, ide.window().stage());
         dialog.setTitle("Password");
         dialog.setHeaderText(null);
         PasswordField field = new PasswordField();

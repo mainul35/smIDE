@@ -340,19 +340,39 @@ final class AskPanel extends BorderPane {
 
     private void showApproval(AskTools.Change change, CompletableFuture<Boolean> answer) {
         approval.getChildren().clear();
-        boolean command = change.before() == null && !change.isNew();
+        boolean command = change.kind() == AskTools.Change.Kind.COMMAND;
         Label what = new Label(command
                 ? "Run:  " + change.after()
-                : (change.isNew() ? "Create " : "Change ") + change.relativeTo(root));
+                : switch (change.kind()) {
+                    case CREATE -> "Create ";
+                    case CHANGE -> "Change ";
+                    case DELETE -> "Delete ";
+                    case COMMAND -> "Run ";
+                } + change.relativeTo(root));
         what.getStyleClass().add("assistant-file");
 
-        TextArea preview = new TextArea(command ? change.after() : previewOf(change));
+        /* Whichever of the two sides this change has. A new file has what would go in it, a
+           changed one has the lines that differ, and a file about to be removed has only what is
+           in it now - which is exactly what the developer is being asked to part with, and was
+           what crashed this card when it went looking for text that a deletion does not have. */
+        String shown = switch (change.kind()) {
+            case COMMAND, CREATE -> change.after();
+            case CHANGE -> previewOf(change);
+            case DELETE -> change.before();
+        };
+        shown = shown == null ? "" : shown;
+        TextArea preview = new TextArea(shown);
         preview.setEditable(false);
-        preview.setPrefRowCount(Math.min(14, Math.max(3, (int) change.after().lines().count() + 1)));
+        preview.setPrefRowCount(Math.min(14, Math.max(3, (int) shown.lines().count() + 1)));
         preview.setWrapText(false);
         preview.getStyleClass().add("assistant-change-preview");
 
-        Button apply = new Button(command ? "Run it" : change.isNew() ? "Create it" : "Apply it");
+        Button apply = new Button(switch (change.kind()) {
+            case COMMAND -> "Run it";
+            case CREATE -> "Create it";
+            case CHANGE -> "Apply it";
+            case DELETE -> "Delete it";
+        });
         Button skip = new Button("No");
         apply.setOnAction(e -> {
             hideApproval();

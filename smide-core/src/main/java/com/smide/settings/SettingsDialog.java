@@ -62,8 +62,7 @@ public final class SettingsDialog {
 
     public void show(String initialPath) {
         stage = new Stage();
-        stage.initOwner(ide.window().stage());
-        stage.initModality(Modality.WINDOW_MODAL);
+        com.smide.api.ui.Windows.belongsTo(stage, ide.window().stage());
         stage.setTitle("Settings");
 
         TreeItem<String> root = new TreeItem<>("Settings");

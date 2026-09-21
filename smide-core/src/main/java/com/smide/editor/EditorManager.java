@@ -518,7 +518,7 @@ public final class EditorManager implements Editors {
                 editor.path().getFileName() + " has unsaved changes.", save, discard, ButtonType.CANCEL);
         alert.setTitle("Unsaved changes");
         alert.setHeaderText(null);
-        alert.initOwner(window.stage());
+        com.smide.api.ui.Windows.belongsTo(alert, window.stage());
         theme.style(alert.getDialogPane().getScene().getWindow());
         Optional<ButtonType> choice = alert.showAndWait();
         if (choice.isEmpty() || choice.get() == ButtonType.CANCEL) {

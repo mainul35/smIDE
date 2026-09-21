@@ -80,7 +80,7 @@ final class QueryConsole {
         BorderPane root = new BorderPane(split);
         root.setTop(bar);
         Stage stage = new Stage();
-        stage.initOwner(ui.ide().window().stage());
+        com.smide.api.ui.Windows.belongsTo(stage, ui.ide().window().stage());
         stage.setTitle("Query - " + source.name());
         Scene scene = new Scene(root, 900, 600);
         // Ctrl+Enter from anywhere in the window, which is where the hands already are.

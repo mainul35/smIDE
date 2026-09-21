@@ -390,7 +390,7 @@ public final class GitToolWindow implements ToolWindowFactory {
             }
             diff.setContent(historyPath + "  at  " + label, text, historyPath + "  (working tree)", working);
             javafx.stage.Stage stage = new javafx.stage.Stage();
-            stage.initOwner(ide.window().stage());
+            com.smide.api.ui.Windows.belongsTo(stage, ide.window().stage());
             stage.setTitle(historyFile.getFileName() + " - working tree against " + label);
             stage.setScene(new javafx.scene.Scene(diff, 1000, 640));
             ide.theme().style(stage);
