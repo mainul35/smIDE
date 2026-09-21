@@ -75,6 +75,7 @@ final class AskPrompts {
 
                 THE PROJECT
                 %s
+                Building it runs: %s
                 """.formatted(
                         autonomous
                                 ? "The developer has asked you to carry the fix out, so make the changes"
@@ -86,6 +87,7 @@ final class AskPrompts {
                                         + " project - a library's behaviour, a version, an error nobody"
                                         + " here wrote - and say where it came from."
                                 : web.whyNotSearching(),
-                        tools.projectInfo());
+                        tools.projectInfo(),
+                        tools.buildDescription());
     }
 }

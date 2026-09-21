@@ -1578,6 +1578,12 @@
 
 /* The box for asking about a review. Prose, so not the monospace of the
    sources listing beside it. */
+/* What the reader has selected in an answer, drawn behind the words. */
+.md-selection-band {
+    -fx-fill: -smide-selection;
+    -fx-stroke: transparent;
+}
+
 /* What a change would do to a file, shown before it is made. */
 .assistant-change-preview {
     -fx-font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", monospace;

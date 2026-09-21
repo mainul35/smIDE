@@ -65,6 +65,12 @@ final class AskPanel extends BorderPane {
     private Path root;
     /** Whether this turn's freedom came from the words used rather than from the tick. */
     private boolean tickedItself;
+    /** What has been asked in this tab, oldest first, for the up arrow to walk back through. */
+    private final java.util.List<String> questions = new java.util.ArrayList<>();
+    /** Where the up arrow has got to, counting back from the end; -1 is "not walking". */
+    private int recalled = -1;
+    /** What was in the box before the walk started, to come back to. */
+    private String beforeRecall = "";
 
     AskPanel(Assistant assistant) {
         this.assistant = assistant;
@@ -107,8 +113,8 @@ final class AskPanel extends BorderPane {
         clear.setOnAction(e -> reset());
         copy.setOnAction(e -> copyConversation());
         copy.setTooltip(com.smide.api.ui.Tooltips.of(
-                "Copies the whole conversation - questions, what was done, and the answers - as"
-                        + " Markdown, ready to paste into an issue or a note."));
+                "Copies what you have selected, or the whole conversation when nothing is."
+                        + " Dragging over the answer selects it; Ctrl+C copies that too."));
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox buttons = new HBox(6, send, stop, clear, copy, spacer, letItFix);
@@ -171,6 +177,9 @@ final class AskPanel extends BorderPane {
         agent.setAutonomous(fixing);
 
         input.clear();
+        // Kept for the up arrow, which is how the same question is asked again with one word changed.
+        questions.add(question);
+        recalled = -1;
         said.append("\n\n### You asked\n\n").append(question).append("\n\n");
         transcript.show(said.toString());
         working(true);
@@ -191,6 +200,12 @@ final class AskPanel extends BorderPane {
      * question, and a box that swallows Tab is a box the keyboard cannot get out of.
      */
     private void onKeyInInput(javafx.scene.input.KeyEvent e) {
+        if (e.getCode() == javafx.scene.input.KeyCode.UP || e.getCode() == javafx.scene.input.KeyCode.DOWN) {
+            if (recall(e.getCode() == javafx.scene.input.KeyCode.UP)) {
+                e.consume();
+            }
+            return;
+        }
         if (e.getCode() == javafx.scene.input.KeyCode.TAB) {
             e.consume();
             if (e.isShiftDown()) {
@@ -215,6 +230,50 @@ final class AskPanel extends BorderPane {
         }
         e.consume();
         ask();
+    }
+
+    /**
+     * The question before this one, and the one before that.
+     *
+     * <p>Only from the first line going back and the last line coming forward, so the arrows still
+     * move the caret about inside a question of several lines. What was typed before the walk
+     * started is kept, and coming forward past the newest question puts it back.
+     *
+     * @return whether the key was used for this
+     */
+    private boolean recall(boolean backwards) {
+        if (questions.isEmpty()) {
+            return false;
+        }
+        String text = input.getText() == null ? "" : input.getText();
+        int caret = input.getCaretPosition();
+        boolean onFirstLine = text.lastIndexOf('\n', Math.max(caret - 1, 0)) < 0;
+        boolean onLastLine = text.indexOf('\n', caret) < 0;
+        if (backwards && !onFirstLine || !backwards && !onLastLine) {
+            return false;
+        }
+        if (backwards) {
+            if (recalled < 0) {
+                beforeRecall = text;
+                recalled = questions.size() - 1;
+            } else if (recalled > 0) {
+                recalled--;
+            }
+        } else {
+            if (recalled < 0) {
+                return false;
+            }
+            recalled++;
+            if (recalled >= questions.size()) {
+                recalled = -1;
+                input.setText(beforeRecall);
+                input.positionCaret(input.getText().length());
+                return true;
+            }
+        }
+        input.setText(questions.get(recalled));
+        input.positionCaret(input.getText().length());
+        return true;
     }
 
     /**
@@ -274,12 +333,21 @@ final class AskPanel extends BorderPane {
         }
         said.setLength(0);
         streaming = "";
+        recalled = -1;
         letItFix.setSelected(false);
         greet();
     }
 
-    /** The conversation as it reads, on the clipboard. */
+    /** What is selected if anything is, and the whole conversation if not. */
     private void copyConversation() {
+        String picked = transcript.selectedText();
+        if (picked != null && !picked.isBlank()) {
+            javafx.scene.input.ClipboardContent part = new javafx.scene.input.ClipboardContent();
+            part.putString(picked);
+            javafx.scene.input.Clipboard.getSystemClipboard().setContent(part);
+            status("Copied what you selected - " + picked.lines().count() + " lines.");
+            return;
+        }
         String conversation = closed(said.toString()).strip();
         if (conversation.isEmpty()) {
             status("There is nothing to copy yet.");

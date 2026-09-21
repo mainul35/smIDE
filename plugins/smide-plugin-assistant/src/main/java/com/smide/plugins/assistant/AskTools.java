@@ -266,6 +266,17 @@ public final class AskTools {
 
     /** Runs a command in the project and gives back what it printed. */
     public String run(List<String> command, Path workingDir, String title) {
+        if (!command.isEmpty() && !canRun(command.get(0))) {
+            /* Said rather than attempted. The IDE starts the process and the failure comes back as
+               "the system cannot find the file specified", which tells the model nothing it can
+               act on - so it tries the same thing spelled differently, and again, until the steps
+               are gone. This says what is missing and what the project has instead. */
+            List<String> wrapper = wrapperIn(workingDir == null ? root : workingDir);
+            return command.get(0) + " is not installed on this machine, or not on the PATH."
+                    + (wrapper.isEmpty()
+                            ? " There is no wrapper in the project either; ask the developer how they build it."
+                            : " This project has its own: run " + wrapper.get(0) + " instead.");
+        }
         try {
             ConsoleHandle console = onWindow(() -> ide.execution().run(
                     new ProcessSpec(title, command, workingDir == null ? root : workingDir, Map.of())), null);
@@ -285,6 +296,12 @@ public final class AskTools {
         }
     }
 
+    /** What this project builds with, for the model to be told before it guesses. */
+    public String buildDescription() {
+        List<String> command = buildCommand();
+        return command.isEmpty() ? "no build this IDE knows how to run" : String.join(" ", command);
+    }
+
     /**
      * How this project builds.
      *
@@ -296,14 +313,16 @@ public final class AskTools {
         if (model.isPresent()) {
             for (String wanted : List.of("build", "compile", "package", "assemble")) {
                 for (ProjectModel.BuildTask task : model.get().tasks()) {
-                    if (task.name().equalsIgnoreCase(wanted) && !task.command().isEmpty()) {
+                    if (task.name().equalsIgnoreCase(wanted) && !task.command().isEmpty()
+                            && canRun(task.command().get(0))) {
                         return task.command();
                     }
                 }
             }
         }
-        if (Files.isRegularFile(root.resolve(windows() ? "gradlew.bat" : "gradlew"))) {
-            return List.of(root.resolve(windows() ? "gradlew.bat" : "gradlew").toString(), "build", "-x", "test");
+        List<String> wrapper = wrapperIn(root);
+        if (!wrapper.isEmpty()) {
+            return wrapper;
         }
         if (Files.isRegularFile(root.resolve("pom.xml"))) {
             return List.of(windows() ? "mvn.cmd" : "mvn", "-q", "-DskipTests", "compile");
@@ -318,6 +337,63 @@ public final class AskTools {
             return List.of(windows() ? "npm.cmd" : "npm", "run", "build");
         }
         return List.of();
+    }
+
+    /**
+     * The build the project brought with it.
+     *
+     * <p>A wrapper is what a project means by "build me": it is checked in, it fetches the version
+     * the project was written against, and it is there precisely because nobody can assume Maven
+     * or Gradle is installed. The IDE assuming otherwise is how an agent ended up running `mvn`
+     * on a machine that has no mvn, reading "the system cannot find the file specified", and
+     * trying again in a slightly different way until it ran out of steps.
+     */
+    static List<String> wrapperIn(Path dir) {
+        if (windows()) {
+            if (Files.isRegularFile(dir.resolve("mvnw.cmd"))) {
+                return List.of(dir.resolve("mvnw.cmd").toString(), "-q", "-DskipTests", "compile");
+            }
+            if (Files.isRegularFile(dir.resolve("gradlew.bat"))) {
+                return List.of(dir.resolve("gradlew.bat").toString(), "build", "-x", "test");
+            }
+            return List.of();
+        }
+        if (Files.isRegularFile(dir.resolve("mvnw"))) {
+            return List.of(dir.resolve("mvnw").toString(), "-q", "-DskipTests", "compile");
+        }
+        if (Files.isRegularFile(dir.resolve("gradlew"))) {
+            return List.of(dir.resolve("gradlew").toString(), "build", "-x", "test");
+        }
+        return List.of();
+    }
+
+    /** Whether a command exists to be run: a path that is there, or a name on the PATH. */
+    static boolean canRun(String command) {
+        if (command == null || command.isBlank()) {
+            return false;
+        }
+        if (command.contains("/") || command.contains("\\")) {
+            return Files.isRegularFile(Path.of(command));
+        }
+        String path = System.getenv("PATH");
+        if (path == null) {
+            return true;
+        }
+        for (String each : path.split(java.io.File.pathSeparator)) {
+            if (each.isBlank()) {
+                continue;
+            }
+            Path folder = Path.of(each);
+            if (Files.isRegularFile(folder.resolve(command))) {
+                return true;
+            }
+            for (String extension : List.of(".exe", ".cmd", ".bat")) {
+                if (Files.isRegularFile(folder.resolve(command + extension))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean windows() {

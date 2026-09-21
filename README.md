@@ -266,6 +266,8 @@ marked *project*; where a key exists in both, the project's wins.
 | `assistant.model` | string | `""` | Which model on it |
 | `assistant.reviewScope` | string | `project` | Whether a review may read related files (`project`) or only the open one (`file`) |
 | `assistant.practiceLanguage` | string | any | The language the Practice tab asks about |
+| `assistant.ask.maxSteps` | int | `24` | How many tools one question in Ask may use before it stops and reports |
+| `assistant.ask.windowChars` | int | `110000` | How much of the conversation is kept when talking to the model. Raise it for a model with a large context, lower it for a small local one |
 
 The assistant's addresses, API keys and host allowlist are **not** here: they are in
 `~/.smide/ai.properties`, which also holds the Ask tab's `search.provider` and `search.key`.

@@ -26,10 +26,16 @@ import java.util.regex.Pattern;
  */
 public final class AskAgent {
 
-    /** Enough turns to read a few files, build, and fix something; not enough to run all day. */
-    private static final int MAX_STEPS = 16;
-    /** What the conversation may grow to before the oldest tool results are dropped. */
-    private static final int WINDOW_CHARS = 110_000;
+    /**
+     * Enough turns to read a few files, build, and fix something; not enough to run all day.
+     *
+     * <p>Both of these are settings - {@code assistant.ask.maxSteps} and
+     * {@code assistant.ask.windowChars} - because what is enough depends on the model. A local
+     * one with a small window needs the conversation kept short; a hosted one with a large window
+     * can be let run. The defaults suit the middle.
+     */
+    private static final int DEFAULT_MAX_STEPS = 24;
+    private static final int DEFAULT_WINDOW_CHARS = 110_000;
 
     /** A fenced block asking for a tool: ```smide { "tool": ... } ``` */
     private static final Pattern CALL = Pattern.compile(
@@ -100,12 +106,24 @@ public final class AskAgent {
         }
     }
 
+    private int maxSteps() {
+        return Math.max(4, Math.min(100,
+                assistant.ide().settings().getInt("assistant.ask.maxSteps", DEFAULT_MAX_STEPS)));
+    }
+
+    private int windowChars() {
+        return Math.max(20_000, Math.min(2_000_000,
+                assistant.ide().settings().getInt("assistant.ask.windowChars", DEFAULT_WINDOW_CHARS)));
+    }
+
     /** Asks, and works until there is an answer. Runs on the caller's thread: not the window's. */
     public void ask(String question) {
         stopped = false;
+        done.clear();
         history.add(new ChatProvider.Message("user", question));
+        int steps = maxSteps();
         try {
-            for (int step = 0; step < MAX_STEPS && !stopped; step++) {
+            for (int step = 0; step < steps && !stopped; step++) {
                 String reply = round();
                 if (stopped) {
                     return;
@@ -117,6 +135,16 @@ public final class AskAgent {
                     return;
                 }
                 history.add(new ChatProvider.Message("assistant", reply));
+                if (done.getOrDefault(call, 0) >= 2) {
+                    /* Twice is a coincidence, three times is a loop. It happens when a tool keeps
+                       failing for a reason the model cannot act on, and it spends the remaining
+                       steps trying the same thing again. */
+                    history.add(new ChatProvider.Message("user", "TOOL RESULT:\nYou have already done"
+                            + " exactly this twice and got the same answer. Do something else, or tell"
+                            + " the developer what is in the way."));
+                    continue;
+                }
+                done.merge(call, 1, Integer::sum);
                 String result = run(call);
                 if (stopped) {
                     return;
@@ -125,8 +153,10 @@ public final class AskAgent {
                 trim();
             }
             if (!stopped) {
-                listener.answered("I stopped after " + MAX_STEPS + " steps without finishing."
-                        + " Ask me to carry on if that is what you want.");
+                listener.answered("I stopped after " + steps + " steps without finishing"
+                        + (lastStep == null ? "" : " - the last thing I did was " + lastStep)
+                        + ". Say \"carry on\" and I will go further, or tell me what to try instead."
+                        + " The number of steps is `assistant.ask.maxSteps` in settings.json.");
             }
         } catch (RuntimeException e) {
             if (!stopped) {
@@ -259,6 +289,10 @@ public final class AskAgent {
      * hoping for a different answer. A refusal is about the file, not about the wording.
      */
     private final java.util.Set<String> refused = new java.util.HashSet<>();
+    /** What has been done this turn and how often, so a loop is cut short rather than run out. */
+    private final java.util.Map<String, Integer> done = new java.util.HashMap<>();
+    /** The last step taken, for the message when the steps run out. */
+    private volatile String lastStep;
 
     /** A change the developer says yes or no to, unless they have already said to get on with it. */
     private String write(AskTools.Change change) {
@@ -310,6 +344,7 @@ public final class AskAgent {
     }
 
     private String step(String what, java.util.function.Supplier<String> work) {
+        lastStep = what;
         listener.doing(what);
         String result = work.get();
         listener.did(what, result);
@@ -318,7 +353,8 @@ public final class AskAgent {
 
     /** Keeps the conversation inside the window by forgetting the oldest tool results first. */
     private void trim() {
-        while (size() > WINDOW_CHARS && history.size() > 4) {
+        int window = windowChars();
+        while (size() > window && history.size() > 4) {
             for (int i = 0; i < history.size(); i++) {
                 if (history.get(i).content().startsWith("TOOL RESULT:")) {
                     history.remove(i);

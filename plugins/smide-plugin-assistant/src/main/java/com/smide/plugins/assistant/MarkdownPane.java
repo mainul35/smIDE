@@ -52,6 +52,11 @@ final class MarkdownPane extends ScrollPane {
     private static final Parser PARSER = Parser.builder().build();
 
     private final VBox content = new VBox(2);
+    /** Behind the text: the bands that show what is selected. */
+    private final javafx.scene.layout.Pane highlight = new javafx.scene.layout.Pane();
+    /** The whole of it, so the highlight and the text share a coordinate space. */
+    private final javafx.scene.layout.StackPane layers = new javafx.scene.layout.StackPane(highlight, content);
+    private final TextSelection selection = new TextSelection(highlight, layers);
     /** For the colouring of fenced blocks; the IDE's own language plugins do it. */
     private final com.smide.api.Ide ide;
     private boolean follow = true;
@@ -61,10 +66,17 @@ final class MarkdownPane extends ScrollPane {
         content.getStyleClass().add("md-pane");
         content.setPadding(new Insets(10, 12, 18, 12));
         content.setFillWidth(true);
-        setContent(content);
+        layers.setAlignment(javafx.geometry.Pos.TOP_LEFT);
+        layers.setFocusTraversable(true);
+        setContent(layers);
         setFitToWidth(true);
         setHbarPolicy(ScrollBarPolicy.NEVER);
         getStyleClass().add("md-scroll");
+    }
+
+    /** What the reader has selected with the mouse, for whoever wants to copy it. */
+    String selectedText() {
+        return selection.selected();
     }
 
     /** Whether new text scrolls the view down with it. */
@@ -78,6 +90,8 @@ final class MarkdownPane extends ScrollPane {
         // there again: someone who has scrolled up to re-read is not to be yanked back.
         boolean pinned = getVvalue() >= 0.98 || content.getChildren().isEmpty();
         content.getChildren().setAll(blocks(PARSER.parse(markdown == null ? "" : markdown)));
+        // The text moved; what was selected of it is gone, and the pieces are found again.
+        javafx.application.Platform.runLater(() -> selection.rebuilt(TextSelection.textsUnder(content)));
         if (follow && pinned) {
             // After layout, or the value is set against the old height and lands short.
             javafx.application.Platform.runLater(() -> setVvalue(1.0));
