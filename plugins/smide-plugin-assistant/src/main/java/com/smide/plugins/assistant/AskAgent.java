@@ -34,7 +34,9 @@ public final class AskAgent {
      * one with a small window needs the conversation kept short; a hosted one with a large window
      * can be let run. The defaults suit the middle.
      */
-    private static final int DEFAULT_MAX_STEPS = 24;
+    private static final int DEFAULT_MAX_STEPS = 60;
+    /** And how long one question may run, whatever it is doing. */
+    private static final int DEFAULT_MINUTES = 15;
     private static final int DEFAULT_WINDOW_CHARS = 110_000;
 
     /** A fenced block asking for a tool: ```smide { "tool": ... } ``` */
@@ -111,6 +113,12 @@ public final class AskAgent {
                 assistant.ide().settings().getInt("assistant.ask.maxSteps", DEFAULT_MAX_STEPS)));
     }
 
+    /** How long one question may take before the answer is asked for. */
+    private int minutes() {
+        return Math.max(1, Math.min(120,
+                assistant.ide().settings().getInt("assistant.ask.minutes", DEFAULT_MINUTES)));
+    }
+
     private int windowChars() {
         return Math.max(20_000, Math.min(2_000_000,
                 assistant.ide().settings().getInt("assistant.ask.windowChars", DEFAULT_WINDOW_CHARS)));
@@ -122,16 +130,29 @@ public final class AskAgent {
         done.clear();
         history.add(new ChatProvider.Message("user", question));
         int steps = maxSteps();
+        long until = System.currentTimeMillis() + minutes() * 60_000L;
         try {
-            for (int step = 0; step < steps && !stopped; step++) {
-                String reply = round();
+            for (int step = 0; !stopped; step++) {
+                /* The work is finished when the model answers, not when a counter says so. The
+                   limits are here to stop a runaway, and a runaway is a thing that has stopped
+                   getting anywhere - so the model is warned as they approach, told outright when
+                   they are reached, and asked for its answer rather than left to trail off. The
+                   developer should never have to say "carry on" to a thing that was in the middle
+                   of doing what they asked. */
+                boolean lastChance = step >= steps || System.currentTimeMillis() > until;
+                if (step == steps - WARN_BEFORE && !lastChance) {
+                    history.add(new ChatProvider.Message("user",
+                            "You have " + WARN_BEFORE + " steps left before you must answer."
+                                    + " Stop exploring and do the part that matters."));
+                }
+                String reply = lastChance ? finalAnswer() : round();
                 if (stopped) {
                     return;
                 }
-                String call = callIn(reply);
+                String call = lastChance ? null : callIn(reply);
                 if (call == null) {
                     history.add(new ChatProvider.Message("assistant", reply));
-                    listener.answered(reply);
+                    listener.answered(lastChance ? reply + tookTooLong(steps) : reply);
                     return;
                 }
                 history.add(new ChatProvider.Message("assistant", reply));
@@ -152,17 +173,37 @@ public final class AskAgent {
                 history.add(new ChatProvider.Message("user", "TOOL RESULT:\n" + result));
                 trim();
             }
-            if (!stopped) {
-                listener.answered("I stopped after " + steps + " steps without finishing"
-                        + (lastStep == null ? "" : " - the last thing I did was " + lastStep)
-                        + ". Say \"carry on\" and I will go further, or tell me what to try instead."
-                        + " The number of steps is `assistant.ask.maxSteps` in settings.json.");
-            }
         } catch (RuntimeException e) {
             if (!stopped) {
                 listener.failed(String.valueOf(e.getMessage() == null ? e : e.getMessage()));
             }
         }
+    }
+
+    /** How many steps before the end the model is told to start finishing. */
+    private static final int WARN_BEFORE = 5;
+
+    /**
+     * The answer, asked for with the tools taken away.
+     *
+     * <p>What a reader gets when the work has gone on too long: not "I gave up, ask me to carry
+     * on", but what was found, what was done, and what is left - which is worth having even when
+     * the job is half done, and which the model can only write if it is asked for it.
+     */
+    private String finalAnswer() {
+        listener.doing("Writing up what I found");
+        history.add(new ChatProvider.Message("user",
+                "Stop here. Do not use another tool - any tool call in this reply will be ignored."
+                        + " Answer now with what you have: what you found, what you changed, what is"
+                        + " still wrong, and what you would do next."));
+        return round();
+    }
+
+    private String tookTooLong(int steps) {
+        return "\n\n---\n\n*I stopped here after " + steps + " steps"
+                + (lastStep == null ? "" : ", the last being " + lastStep)
+                + ". Ask me to go on and I will pick this up; `assistant.ask.maxSteps` and"
+                + " `assistant.ask.minutes` in settings.json set how far I get in one go.*";
     }
 
     /** One exchange with the model, blocking until it has finished speaking. */
@@ -218,7 +259,17 @@ public final class AskAgent {
         String path = string(call, "path");
         switch (tool) {
             case "read_file" -> {
+                List<String> several = strings(call, "paths");
+                if (!several.isEmpty()) {
+                    return step("Reading " + several.size() + " files", () -> tools.readFiles(several));
+                }
                 return step("Reading " + tools.shortened(path), () -> tools.readFile(path));
+            }
+            case "tree" -> {
+                int depth = call.has("depth") && call.get("depth").isJsonPrimitive()
+                        ? call.get("depth").getAsInt() : 3;
+                return step("Looking through " + (path.isBlank() ? "the project" : tools.shortened(path)),
+                        () -> tools.tree(path, depth));
             }
             case "list_files" -> {
                 return step("Listing " + (path.isBlank() ? "the project" : tools.shortened(path)),

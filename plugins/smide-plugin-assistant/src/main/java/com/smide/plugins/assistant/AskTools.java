@@ -141,6 +141,71 @@ public final class AskTools {
         return text;
     }
 
+    /**
+     * Several files at once.
+     *
+     * <p>One file per step is how an agent spends twenty-four steps reading a package and never
+     * gets to the question. A model that knows it needs four files should be able to say so.
+     */
+    public String readFiles(List<String> relatives) {
+        StringBuilder out = new StringBuilder();
+        int budget = FILE_CHARS * 2;
+        for (String relative : relatives) {
+            String text = readFile(relative);
+            out.append("=== ").append(shortened(relative)).append(" ===\n");
+            if (out.length() + text.length() > budget) {
+                out.append("(left out: the files before this one filled the reply)\n\n");
+                continue;
+            }
+            out.append(text).append("\n\n");
+        }
+        return out.toString();
+    }
+
+    /**
+     * The tree under a folder, to a depth.
+     *
+     * <p>So that "what is in this project" is one step rather than one step per folder.
+     */
+    public String tree(String relative, int depth) {
+        Path dir = relative == null || relative.isBlank() || ".".equals(relative) ? root : resolve(relative);
+        if (dir == null || !Files.isDirectory(dir)) {
+            return "There is no such folder in this project: " + relative;
+        }
+        List<String> lines = new ArrayList<>();
+        walk(dir, dir, Math.max(1, Math.min(depth <= 0 ? 3 : depth, 8)), lines);
+        if (lines.size() >= MAX_LISTED) {
+            lines.add("... and more; ask for a folder in particular");
+        }
+        return lines.isEmpty() ? "(empty)" : String.join("\n", lines);
+    }
+
+    private void walk(Path from, Path dir, int depth, List<String> into) {
+        if (depth <= 0 || into.size() >= MAX_LISTED) {
+            return;
+        }
+        try (Stream<Path> entries = Files.list(dir)) {
+            for (Path entry : entries.sorted().toList()) {
+                if (into.size() >= MAX_LISTED) {
+                    return;
+                }
+                String name = entry.getFileName().toString();
+                if (SKIPPED.contains(name) || name.startsWith(".") && !name.equals(".github")) {
+                    continue;
+                }
+                String shown = from.relativize(entry).toString().replace('\\', '/');
+                if (Files.isDirectory(entry)) {
+                    into.add(shown + "/");
+                    walk(from, entry, depth - 1, into);
+                } else {
+                    into.add(shown);
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            // A folder that cannot be read is left out rather than failing the listing.
+        }
+    }
+
     /** What is in a folder, one name per line, folders marked. */
     public String listFiles(String relative) {
         Path dir = relative == null || relative.isBlank() || ".".equals(relative) ? root : resolve(relative);

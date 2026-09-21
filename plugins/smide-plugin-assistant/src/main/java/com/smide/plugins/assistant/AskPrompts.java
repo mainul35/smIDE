@@ -34,7 +34,9 @@ final class AskPrompts {
                 THE TOOLS
                 {"tool": "project_info"}                     what the IDE knows: build, modules, open files
                 {"tool": "list_files", "path": "src/main"}   what is in a folder ("" for the project root)
+                {"tool": "tree", "path": "", "depth": 3}     everything under a folder, in one step
                 {"tool": "read_file", "path": "..."}         one file, as the editor has it
+                {"tool": "read_file", "paths": ["a", "b"]}   several files in one step - prefer this
                 {"tool": "find_text", "text": "..."}         every place that text appears
                 {"tool": "problems"}                         what the IDE is reporting right now
                 {"tool": "build"}                            build the project and read the output
@@ -58,6 +60,10 @@ final class AskPrompts {
                 - Look before you answer. A question about this project is answered from this
                   project: read the files that matter rather than guessing from their names. Say
                   what you read.
+                - Look in as few steps as you can. `tree` before a string of `list_files`, and one
+                  `read_file` with several paths before several with one each. You have a limited
+                  number of steps for each question and reading a package one file at a time is how
+                  they are wasted.
                 - When the developer asks why something will not build, build it and read the
                   error. Do not guess at an error you have not seen.
                 - Tell them what is wrong and what would fix it. %s
