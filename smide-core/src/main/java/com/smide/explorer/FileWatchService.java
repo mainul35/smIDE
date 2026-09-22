@@ -38,6 +38,8 @@ public final class FileWatchService {
     }
 
     public void start() {
+        // Real, not virtual: WatchService.take() blocks in the operating system for the life of
+        // the session, which would pin a carrier thread and never give it back. See arc42 §8.2.
         thread = new Thread(this::loop, "smide-file-watcher");
         thread.setDaemon(true);
         thread.start();

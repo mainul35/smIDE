@@ -96,6 +96,9 @@ public final class LspSession {
      * does. Closing the window left the process running and the terminal that started it
      * never got its prompt back.
      */
+    /* Real threads rather than virtual ones, for the same reason they are daemons: each one sits
+       in a blocking read on a process's output for the whole session, which is exactly the shape
+       a virtual thread cannot help with - it would pin its carrier and hold it. See arc42 §8.2. */
     private static final ExecutorService LISTENERS = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "smide-lsp-listener");
         t.setDaemon(true);

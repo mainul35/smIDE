@@ -457,9 +457,40 @@ The following extension points are available for plugins:
 
 ### 8.2 Threading Model
 
-- **UI Thread (JavaFX Application Thread)**: All UI updates must happen here
-- **Worker Threads**: Long-running operations (LSP communication, Git operations) run on background threads
-- **Plugin Thread Pool**: Plugins execute in a shared thread pool
+- **UI thread (JavaFX Application Thread)**: every UI change happens here. `Ide.window().runLater()`
+  runs straight through when it is already on this thread, so calling it from either side is safe.
+- **Background work**: `Ide.window().runInBackground()` gives each task a **virtual thread**
+  (`smide-background-N`). Tasks are many, short and spend their time waiting — on a build, a model,
+  a file — which is what virtual threads are for. Plugins use the same service, so there is one
+  place where this is decided.
+- **Threads of their own**: a few things keep a platform thread, and each says why at the point it
+  is created. The rule is:
+
+  | Keep a platform thread when | Because |
+  |---|---|
+  | It blocks in native code for the life of the session — a process's output (`ProcessConsole`, LSP listeners, DAP, JDI), `WatchService.take()` | A virtual thread cannot be unmounted from a native frame. It would pin its carrier and never give it back. |
+  | One worker in order is the point — highlighting, run markers, Maven POM parsing, manifest checks | Virtual threads add concurrency, and these need the opposite. The work is CPU-bound too, which virtual threads do not make faster. |
+  | It watches for trouble — `FreezeReporter`, `MemoryWatch` | Something that reports a stuck IDE should not be queued behind whatever is stuck. |
+
+  Everything else that needs a thread should use the background service rather than making one.
+
+- **Java 21 note**: blocking inside `synchronized` pins a virtual thread's carrier (fixed in later
+  releases). Code that runs on background threads and must block while holding a lock should use
+  `ReentrantLock`, which parks the virtual thread instead.
+
+### 8.2.1 Native code
+
+smIDE calls no native code of its own: there is no JNI, no `System.loadLibrary`, and no native
+method anywhere in the source. Everything outside the JVM is reached as a separate process
+(`ProcessBuilder`) or over a socket, which is also what keeps a language server's crash from
+being smIDE's crash.
+
+If that ever has to change, it is the **Foreign Function & Memory API** (`java.lang.foreign`) and
+not JNI: no second build toolchain, no native library to ship per platform, and memory access that
+is checked rather than hoped for. `NativeAccessTest` fails the build if JNI appears in the source.
+
+The one native library in the process is a dependency's: pty4j, under the terminal plugin, for a
+real pseudo-terminal. That is JNI, it is JetBrains' to maintain, and it is confined to that plugin.
 
 ### 8.3 Error Handling
 
@@ -514,6 +545,43 @@ The following extension points are available for plugins:
 - Cross-platform support
 - Bundled with Java 21 runtime
 - Larger distribution size
+
+### ADR-004: Virtual Threads for Background Work
+
+**Status**: Accepted
+
+**Context**: Background work — builds, language-server requests, the assistant's turns, file
+scans — was run on a cached pool of platform threads. A session that ran for two hours had
+created two hundred of them, each holding a megabyte of stack, and the crash reported as
+issue #2 was an exhausted heap.
+
+**Decision**: `Ide.window().runInBackground()` gives each task a virtual thread. Work that
+blocks in native code for the life of the session, work that must be done by one worker in
+order, and the watchdogs keep platform threads; see §8.2 for the rule and the reasons.
+
+**Consequences**:
+- A task costs a few hundred bytes rather than a megabyte, so nothing has to pool them.
+- Threads are still named, so a thread dump still says what was running.
+- On Java 21 a virtual thread that blocks inside `synchronized` pins its carrier, so background
+  code that locks uses `ReentrantLock`.
+
+### ADR-005: FFM, Not JNI, If Native Access Is Ever Needed
+
+**Status**: Accepted
+
+**Context**: smIDE has no native code of its own and reaches everything outside the JVM as a
+separate process. Should that change — a platform API with no Java equivalent — there are two
+ways to do it.
+
+**Decision**: the Foreign Function & Memory API (`java.lang.foreign`). JNI is not to appear in
+smIDE's source, and a test fails the build if it does.
+
+**Consequences**:
+- No C toolchain in the build and no native library to ship for each platform.
+- Memory access is bounds-checked and lifetimes are explicit, so a mistake is an exception
+  rather than the kind of crash issue #2 first looked like.
+- A dependency may still use JNI — pty4j does, for the terminal — and that stays the
+  dependency's business, inside its own plugin.
 
 ## 10. Glossary
 

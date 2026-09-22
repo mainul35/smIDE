@@ -32,12 +32,29 @@ public final class WindowServiceImpl implements WindowService {
         this.stage = stage;
         this.hostServices = hostServices;
         this.theme = theme;
+        this.pool = backgroundExecutor();
+    }
+
+    /**
+     * Where everything that is not the window runs.
+     *
+     * <p>One virtual thread for each task, which is what these tasks are: a few hundred short
+     * pieces of waiting - on a build, on a model, on a file - rather than anything that needs a
+     * thread of its own to keep. The cached pool of real threads this replaced held on to every
+     * one of them for a minute after it finished, and a two-hour session had made two hundred.
+     *
+     * <p>Numbered all the same. A virtual thread is nameless unless it is given a name, and a
+     * thread dump of unnamed threads is a wall of {@code VirtualThread[#47]} - which is exactly
+     * what one wants to read when working out what a hung IDE was doing.
+     *
+     * <p>Not everything in smIDE belongs here: a thread that blocks in native code for the life
+     * of the session - a process's output, a file watcher - would pin a carrier thread and never
+     * give it back. Those keep threads of their own; see arc42 §8.2.
+     */
+    static ExecutorService backgroundExecutor() {
         AtomicInteger n = new AtomicInteger();
-        this.pool = Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r, "smide-background-" + n.incrementAndGet());
-            t.setDaemon(true);
-            return t;
-        });
+        return Executors.newThreadPerTaskExecutor(runnable ->
+                Thread.ofVirtual().name("smide-background-" + n.incrementAndGet()).unstarted(runnable));
     }
 
     @Override

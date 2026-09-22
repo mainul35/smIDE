@@ -55,6 +55,8 @@ public final class MemoryWatch {
 
     /** Starts looking, on a daemon thread that costs nothing between readings. */
     public void start() {
+        // A real thread on purpose: something watching for trouble should not be waiting its turn
+        // on the scheduler that the trouble is in. See arc42 §8.2.
         ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "smide-memory");
             thread.setDaemon(true);

@@ -62,6 +62,9 @@ public final class ProcessConsole implements ConsoleHandle {
             view.setInputEnabled(false);
             return;
         }
+        /* A real thread, not a virtual one: reading a process's output blocks inside the operating
+           system, where a virtual thread cannot be unmounted, so one of these would hold a carrier
+           thread for as long as the process ran. See arc42 §8.2. */
         Thread pump = new Thread(this::pump, "smide-console-" + spec.title());
         pump.setDaemon(true);
         pump.start();
