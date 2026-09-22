@@ -52,16 +52,25 @@ final class MarkdownPane extends ScrollPane {
     private static final Parser PARSER = Parser.builder().build();
 
     private final VBox content = new VBox(2);
-    /** Behind the text: the bands that show what is selected. */
+    /**
+     * Over the text: the bands that show what is selected.
+     *
+     * <p>Over, not behind, and translucent. Behind the text it was invisible wherever anything
+     * drew a background of its own - which is every fenced block, the one place people most want
+     * to take something from. Dragging over a command selected it perfectly and showed nothing at
+     * all, so nobody believed it had worked, which is the same as it not working.
+     */
     private final javafx.scene.layout.Pane highlight = new javafx.scene.layout.Pane();
     /** The whole of it, so the highlight and the text share a coordinate space. */
-    private final javafx.scene.layout.StackPane layers = new javafx.scene.layout.StackPane(highlight, content);
+    private final javafx.scene.layout.StackPane layers = new javafx.scene.layout.StackPane(content, highlight);
     private final TextSelection selection = new TextSelection(highlight, layers);
     /** For the colouring of fenced blocks; the IDE's own language plugins do it. */
     private final com.smide.api.Ide ide;
     private boolean follow = true;
     /** What was last shown, for a copy that wants the Markdown rather than the drawing. */
     private String shown = "";
+    /** Which folded results the reader has opened, by what is in them; see {@link #folded}. */
+    private final java.util.Set<Integer> opened = new java.util.HashSet<>();
 
     MarkdownPane(com.smide.api.Ide ide) {
         this.ide = ide;
@@ -79,6 +88,11 @@ final class MarkdownPane extends ScrollPane {
         setFitToWidth(true);
         setHbarPolicy(ScrollBarPolicy.NEVER);
         getStyleClass().add("md-scroll");
+    }
+
+    /** Lets go of what was selected, for whoever needs the words left plain. */
+    void clearSelection() {
+        selection.clear();
     }
 
     /** What the reader has selected with the mouse, for whoever wants to copy it. */
@@ -194,16 +208,71 @@ final class MarkdownPane extends ScrollPane {
            each snippet: a line and a half of leading over the rows themselves. */
         int rows = body.isEmpty() ? 1 : body.split("\n", -1).length;
         sideways.setPrefHeight(Math.min(400, 20 + 16.5 * rows));
+        /* Scrolling a block moves its text out from under the band drawn over it, and a highlight
+           left behind on the words either side is worse than no highlight. It goes. */
+        sideways.hvalueProperty().addListener((value, was, now) -> selection.clear());
 
-        String label = Fences.label(ide, info);
-        if (label.isEmpty()) {
-            return sideways;
-        }
-        Label name = new Label(label);
+        // "details" is this pane's own word for a folded tool result, not a language to label.
+        Label name = new Label("details".equals(info) ? "" : Fences.label(ide, info));
         name.getStyleClass().add("md-code-lang");
-        VBox block = new VBox(name, sideways);
+        javafx.scene.layout.Region gap = new javafx.scene.layout.Region();
+        javafx.scene.layout.HBox.setHgrow(gap, javafx.scene.layout.Priority.ALWAYS);
+
+        /* A command in an answer is there to be run, and getting it out of a drawn block by hand
+           means selecting it exactly, which nobody enjoys and a long line makes impossible. The
+           button takes the block whole - the text as it was written, not as it was coloured. */
+        javafx.scene.control.Button copy = new javafx.scene.control.Button("Copy");
+        copy.getStyleClass().add("md-code-copy");
+        copy.setFocusTraversable(false);
+        copy.setOnAction(e -> {
+            javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+            content.putString(body);
+            javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+            copy.setText("Copied");
+            javafx.animation.PauseTransition back =
+                    new javafx.animation.PauseTransition(javafx.util.Duration.seconds(1.5));
+            back.setOnFinished(done -> copy.setText("Copy"));
+            back.play();
+        });
+
+        javafx.scene.layout.HBox header = new javafx.scene.layout.HBox(name, gap, copy);
+        header.getStyleClass().add("md-code-header");
+        header.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        VBox block = new VBox(header, sideways);
         block.getStyleClass().add("md-code-block");
-        return block;
+        // Out of the way until the pointer is on the block, so an answer reads as an answer.
+        copy.visibleProperty().bind(block.hoverProperty());
+        return "details".equals(info) ? folded(block, body) : block;
+    }
+
+    /**
+     * What a tool found, shut until somebody wants it.
+     *
+     * <p>A step in the transcript says what was done and how much came back - "Reading 3 files
+     * (241 lines)" - which is the right amount to read while the agent works and no use when the
+     * 241 lines are the reason the answer is wrong. They go in here: closed, so the transcript
+     * stays a list of steps, and one click from being read.
+     */
+    private Node folded(Node block, String body) {
+        long lines = body.isBlank() ? 0 : body.lines().count();
+        javafx.scene.control.TitledPane details = new javafx.scene.control.TitledPane(
+                lines + (lines == 1 ? " line" : " lines") + " - click to read", block);
+        details.setAnimated(false);
+        details.getStyleClass().add("md-details");
+        /* Opened by its contents, not by where it sits. Every token the model streams redraws
+           this whole pane from scratch, so a result the reader had opened would shut itself a
+           quarter of a second later - and keeping a list by position would open the wrong one
+           the moment another project's conversation came up. */
+        int what = body.hashCode();
+        details.setExpanded(opened.contains(what));
+        details.expandedProperty().addListener((value, was, now) -> {
+            if (Boolean.TRUE.equals(now)) {
+                opened.add(what);
+            } else {
+                opened.remove(what);
+            }
+        });
+        return details;
     }
 
     /**

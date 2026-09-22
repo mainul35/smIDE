@@ -1578,10 +1578,14 @@
 
 /* The box for asking about a review. Prose, so not the monospace of the
    sources listing beside it. */
-/* What the reader has selected in an answer, drawn behind the words. */
+/* What the reader has selected in an answer. Drawn over the words rather than behind
+   them, because behind them it disappeared under the background of every fenced block -
+   and a command in a block is the thing people select. Translucent, so the words it is
+   over can still be read. */
 .md-selection-band {
     -fx-fill: -smide-selection;
     -fx-stroke: transparent;
+    -fx-opacity: 0.7;
 }
 
 /* What a change would do to a file, shown before it is made. */
@@ -1684,6 +1688,60 @@
     -fx-text-fill: -smide-text-muted;
     -fx-font-size: 10px;
     -fx-padding: 0 0 2 2;
+}
+
+/* What a tool found, folded away under the step that found it. Quiet when shut - a
+   transcript of steps should read as a list of steps - and a normal code block once it
+   is open, with the same Copy button on it as any other. */
+.md-details {
+    -fx-padding: 0 0 2 8;
+}
+
+.md-details > .title {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 1 0 1 0;
+    -fx-font-size: 10.5px;
+    -fx-text-fill: -smide-text-muted;
+    -fx-cursor: hand;
+}
+
+.md-details > .title > .text {
+    -fx-fill: -smide-text-muted;
+}
+
+.md-details:hover > .title > .text {
+    -fx-fill: -smide-accent;
+}
+
+.md-details > .content {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0;
+}
+
+/* The strip above a block: what language it is on the left, and a way to take it on the
+   right. The button appears with the pointer, so a page of answers is not a page of
+   buttons, and it keeps its space either way so nothing moves when it does appear. */
+.md-code-header {
+    -fx-padding: 0 2 1 0;
+    -fx-min-height: 18px;
+}
+
+.md-code-copy {
+    -fx-background-color: transparent;
+    -fx-border-color: -smide-border;
+    -fx-border-radius: 3px;
+    -fx-background-radius: 3px;
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 10px;
+    -fx-padding: 0 6 0 6;
+    -fx-cursor: hand;
+}
+
+.md-code-copy:hover {
+    -fx-text-fill: -smide-text;
+    -fx-background-color: -smide-surface-alt;
 }
 
 .md-code-body {

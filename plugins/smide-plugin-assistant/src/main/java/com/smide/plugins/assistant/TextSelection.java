@@ -55,10 +55,19 @@ final class TextSelection {
         highlight.getStyleClass().add("md-selection");
 
         content.addEventFilter(MouseEvent.MOUSE_PRESSED, e -> {
-            if (e.isPrimaryButtonDown()) {
-                content.requestFocus();
-                begin(e);
+            if (!e.isPrimaryButtonDown()) {
+                return;
             }
+            if (onAScrollBar(e.getTarget())) {
+                /* A press on a code block's scrollbar is a press on the scrollbar. These are
+                   filters - they run before the thing that was clicked ever sees the event - so
+                   without this the drag that should have moved the bar was eaten by a selection
+                   nobody asked for, and the bar did not move at all. */
+                clear();
+                return;
+            }
+            content.requestFocus();
+            begin(e);
         });
         content.addEventFilter(MouseEvent.MOUSE_DRAGGED, e -> {
             if (e.isPrimaryButtonDown() && anchorPiece != null) {
@@ -181,6 +190,13 @@ final class TextSelection {
 
     private void begin(MouseEvent e) {
         clear();
+        /* Found again on every press rather than only when the pane was drawn. A fenced block is
+           a scroll pane of its own, and a scroll pane has no children until the toolkit has built
+           its skin - which happens on a later pulse than the one that drew the answer. Collected
+           once, up front, the code in every block was missing from the list, and code was the one
+           thing anybody wanted to select. */
+        pieces.clear();
+        pieces.addAll(textsUnder(content));
         Text piece = pieceAt(e);
         if (piece == null) {
             return;
@@ -274,6 +290,18 @@ final class TextSelection {
         }
     }
 
+    /** Whether this event was aimed at a scrollbar, which has its own use for a drag. */
+    private static boolean onAScrollBar(javafx.event.EventTarget target) {
+        Node node = target instanceof Node ? (Node) target : null;
+        while (node != null) {
+            if (node instanceof javafx.scene.control.ScrollBar) {
+                return true;
+            }
+            node = node.getParent();
+        }
+        return false;
+    }
+
     /** Every piece of text under a node, in the order it is drawn. */
     static List<Text> textsUnder(Node node) {
         List<Text> out = new ArrayList<>();
@@ -282,6 +310,11 @@ final class TextSelection {
     }
 
     private static void collect(Node node, List<Text> out) {
+        if (!node.isVisible()) {
+            // A folded tool result is not on screen, and selecting through it would take words
+            // nobody can see between two that they can.
+            return;
+        }
         if (node instanceof Text text) {
             out.add(text);
         } else if (node instanceof Parent parent) {

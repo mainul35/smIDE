@@ -514,6 +514,9 @@ final class AskPanel extends BorderPane {
                 String note = summarise(result);
                 if (!note.isBlank()) {
                     conversation.said.append("  ").append(note).append('\n');
+                }
+                conversation.said.append(readable(result));
+                if (!note.isBlank() || !readable(result).isEmpty()) {
                     if (inFront()) {
                         redraw();
                     }
@@ -583,6 +586,45 @@ final class AskPanel extends BorderPane {
             return first;
         }
         return "(" + lines + " lines)";
+    }
+
+    /** How much of a tool's answer is kept to be read; past this, the model had more than you do. */
+    private static final int READABLE_CHARS = 20_000;
+
+    /**
+     * The whole of what a tool found, folded away under the step that found it.
+     *
+     * <p>"(241 lines)" is a fair summary and no use at all when the 241 lines are the reason the
+     * answer is wrong. The step stays one line, and what came back goes underneath it in something
+     * that opens: shut by default, because a transcript of every file the agent read is not a
+     * transcript anybody can follow, and there when it matters.
+     *
+     * <p>Written as Markdown, like everything else here, so that copying the conversation still
+     * gets it and so that it is still there when the conversation is read back tomorrow.
+     */
+    static String readable(String result) {
+        if (result == null || result.isBlank()) {
+            return "";
+        }
+        String text = result.strip();
+        if (text.lines().count() <= 1 && text.length() <= 120) {
+            // Already said in full beside the step; saying it twice helps nobody.
+            return "";
+        }
+        if (text.length() > READABLE_CHARS) {
+            text = text.substring(0, READABLE_CHARS) + "\n... the rest is not kept here ...";
+        }
+        /* A fence long enough to survive its contents. A file being read is as likely as not to
+           have ``` in it - every README does - and three backticks inside three backticks ends
+           the block early and turns the rest of the answer into code. */
+        int longest = 0;
+        int run = 0;
+        for (char c : text.toCharArray()) {
+            run = c == '`' ? run + 1 : 0;
+            longest = Math.max(longest, run);
+        }
+        String fence = "`".repeat(Math.max(3, longest + 1));
+        return "\n" + fence + "details\n" + text + "\n" + fence + "\n\n";
     }
 
     // --------------------------------------------------------------- approval
