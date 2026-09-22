@@ -100,6 +100,26 @@ public final class AskAgent {
         refused.clear();
     }
 
+    /** What the model has been told so far, for the conversation to keep between sessions. */
+    List<ChatProvider.Message> history() {
+        return List.copyOf(history);
+    }
+
+    /**
+     * Gives the model back what it knew.
+     *
+     * <p>Called when a conversation is picked up again - another project brought to the front,
+     * or the IDE started afresh - so that "and the other one?" means something. The system prompt
+     * is not among these: it is written from the project as it is now, every turn, which is how a
+     * conversation from last week asks about today's files.
+     */
+    void restore(List<ChatProvider.Message> remembered) {
+        history.clear();
+        if (remembered != null) {
+            history.addAll(remembered);
+        }
+    }
+
     public void stop() {
         stopped = true;
         Assistant.Turn running = turn;

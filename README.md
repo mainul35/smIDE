@@ -77,7 +77,9 @@ project you are in: it reads the files that matter, searches them, builds the pr
 question is why it will not build, and can look things up on the web. It proposes changes as a
 card showing what would be written, and nothing reaches a file until you press Apply - unless you
 ask it outright to fix something, which lets it work unattended for that one task and says so on
-screen. **Practice** teaches a topic and marks your answers. Model and endpoint are yours to
+screen. Each project has its own conversation: switching workspace puts that project's questions
+and answers up, and they are still there after the IDE has been closed and opened again.
+**Practice** teaches a topic and marks your answers. Model and endpoint are yours to
 choose (anything OpenAI-compatible, including a local Ollama), and the host allowlist means code
 cannot be sent anywhere you have not agreed to.
 
@@ -194,6 +196,7 @@ Every shortcut is editable in Settings → Keymap.
 | `session.json` | The last session: window geometry, open workspaces and files, carets, tool windows |
 | `workspaces.txt` | Recently opened projects, newest first, at most 15 |
 | `ai.properties` | The assistant's endpoints, keys and host allowlist |
+| `ask/` | One Ask conversation per project - what was said, what was asked, and what the model remembers. Kept here rather than in the project, because a conversation is yours and a project folder is shared |
 | `tools/`, `drivers/`, `libraries/`, `jdtls-data/` | What the IDE downloaded or extracted for itself |
 | `logs/crashes/`, `logs/freezes/` | Crash reports, and reports of the window not responding |
 

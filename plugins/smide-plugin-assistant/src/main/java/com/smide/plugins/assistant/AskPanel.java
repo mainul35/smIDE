@@ -58,15 +58,17 @@ final class AskPanel extends BorderPane {
     private final Label where = new Label();
     private final VBox approval = new VBox(6);
 
-    /** Everything said so far, as Markdown; the pane shows it whole each time it grows. */
-    private final StringBuilder said = new StringBuilder();
-    private String streaming = "";
-    private AskAgent agent;
+    /**
+     * One conversation for each project, and the one on screen.
+     *
+     * <p>Every question is about the project in front, so the answer belongs to that project too.
+     * Switching workspace puts the other conversation up - including a turn still running in it -
+     * rather than carrying one transcript between projects that have nothing to do with each
+     * other.
+     */
+    private final java.util.Map<Path, AskConversation> conversations = new java.util.HashMap<>();
+    private AskConversation current = new AskConversation(null);
     private Path root;
-    /** Whether this turn's freedom came from the words used rather than from the tick. */
-    private boolean tickedItself;
-    /** What has been asked in this tab, oldest first, for the up arrow to walk back through. */
-    private final java.util.List<String> questions = new java.util.ArrayList<>();
     /** Where the up arrow has got to, counting back from the end; -1 is "not walking". */
     private int recalled = -1;
     /** What was in the box before the walk started, to come back to. */
@@ -127,8 +129,13 @@ final class AskPanel extends BorderPane {
 
         approval.setVisible(false);
         approval.setManaged(false);
+        // A half-typed question is kept with its project, so switching away does not lose it.
+        input.focusedProperty().addListener((value, had, has) -> {
+            if (!has && root != null) {
+                current.draft = input.getText() == null ? "" : input.getText();
+            }
+        });
         followTheWorkspace();
-        greet();
     }
 
     /** The project every question is about: whichever workspace is in front. */
@@ -140,19 +147,64 @@ final class AskPanel extends BorderPane {
     private void updateRoot() {
         Optional<Workspace> active = ide.workspaces().active();
         Path now = active.map(Workspace::root).orElse(null);
-        if (now != null && !now.equals(root)) {
-            root = now;
-            agent = null;
-            where.setText(active.get().name());
-        } else if (now == null) {
+        if (now == null) {
             where.setText("No project open");
+            if (root == null) {
+                // Nothing has ever been in front: there is no conversation to show, so say why.
+                transcript.show("Open a project and I can read it, search it, build it and look"
+                        + " things up. Each one keeps its own conversation.\n\n");
+            }
+            return;
+        }
+        if (now.equals(root)) {
+            where.setText(active.get().name());
+            return;
+        }
+        leave();
+        root = now;
+        where.setText(active.get().name());
+        show(conversations.computeIfAbsent(now, at -> AskConversation.read(ide.homeDir(), at)));
+    }
+
+    /** Puts the conversation on screen away: what was typed, what was said, all of it. */
+    private void leave() {
+        if (root == null) {
+            return;
+        }
+        current.draft = input.getText() == null ? "" : input.getText();
+        current.write(ide.homeDir());
+    }
+
+    /** Brings a project's conversation up, whatever state it was left in. */
+    private void show(AskConversation conversation) {
+        current = conversation;
+        if (conversation.isEmpty()) {
+            greet();
+        }
+        recalled = -1;
+        beforeRecall = "";
+        input.setText(conversation.draft);
+        input.positionCaret(input.getText().length());
+        hideApproval();
+        letItFix.setSelected(false);
+        /* A turn left running in this project carries on in the background, and comes back to
+           the screen it belongs to: the buttons say what is true of the project in front. */
+        working(conversation.busy);
+        if (conversation.busy) {
+            waiting.start("Thinking");
+        } else {
+            waiting.stop("");
+        }
+        redraw();
+        if (!conversation.questions.isEmpty()) {
+            status("Carrying on from " + conversation.questions.size()
+                    + (conversation.questions.size() == 1 ? " question" : " questions") + " here.");
         }
     }
 
     private void greet() {
-        said.append("Ask about **this project**. I can read it, search it, build it and look"
+        current.said.append("Ask about **this project**. I can read it, search it, build it and look"
                 + " things up - and I will show you any change before it is made.\n\n");
-        transcript.show(said.toString());
     }
 
     // --------------------------------------------------------------- asking
@@ -165,27 +217,31 @@ final class AskPanel extends BorderPane {
             }
             return;
         }
-        if (agent == null) {
+        AskConversation conversation = current;
+        if (conversation.agent == null) {
             AskTools tools = new AskTools(ide, root);
-            agent = new AskAgent(assistant, tools, web(), new PanelListener());
+            conversation.agent = new AskAgent(assistant, tools, web(), new PanelListener(conversation));
+            // What was said before the IDE was last closed, or before another project was in front.
+            conversation.agent.restore(conversation.remembered());
         }
+        AskAgent agent = conversation.agent;
         // "Fix it" is a different request from "what is wrong": it is the one that may write.
         boolean asked = meansFixIt(question);
         boolean fixing = letItFix.isSelected() || asked;
-        tickedItself = asked && !letItFix.isSelected();
+        conversation.tickedItself = asked && !letItFix.isSelected();
         letItFix.setSelected(fixing);
         agent.setAutonomous(fixing);
 
         input.clear();
+        conversation.draft = "";
         // Kept for the up arrow, which is how the same question is asked again with one word changed.
-        questions.add(question);
+        conversation.questions.add(question);
         recalled = -1;
-        said.append("\n\n### You asked\n\n").append(question).append("\n\n");
-        transcript.show(said.toString());
+        conversation.said.append("\n\n### You asked\n\n").append(question).append("\n\n");
+        redraw();
         working(true);
         waiting.start(fixing ? "Working on it" : "Thinking");
-        AskAgent working = agent;
-        ide.window().runInBackground(() -> working.ask(question));
+        ide.window().runInBackground(() -> agent.ask(question));
     }
 
     /**
@@ -242,6 +298,7 @@ final class AskPanel extends BorderPane {
      * @return whether the key was used for this
      */
     private boolean recall(boolean backwards) {
+        java.util.List<String> questions = current.questions;
         if (questions.isEmpty()) {
             return false;
         }
@@ -318,8 +375,8 @@ final class AskPanel extends BorderPane {
     }
 
     private void stop() {
-        if (agent != null) {
-            agent.stop();
+        if (current.agent != null) {
+            current.agent.stop();
         }
         waiting.stop("Stopped.");
         working(false);
@@ -328,14 +385,13 @@ final class AskPanel extends BorderPane {
 
     private void reset() {
         stop();
-        if (agent != null) {
-            agent.forget();
-        }
-        said.setLength(0);
-        streaming = "";
+        current.forget(ide.homeDir());
         recalled = -1;
+        beforeRecall = "";
+        input.clear();
         letItFix.setSelected(false);
         greet();
+        redraw();
     }
 
     /** What is selected if anything is, and the whole conversation if not. */
@@ -348,7 +404,7 @@ final class AskPanel extends BorderPane {
             status("Copied what you selected - " + picked.lines().count() + " lines.");
             return;
         }
-        String conversation = closed(said.toString()).strip();
+        String conversation = closed(current.said.toString()).strip();
         if (conversation.isEmpty()) {
             status("There is nothing to copy yet.");
             return;
@@ -365,11 +421,12 @@ final class AskPanel extends BorderPane {
         input.setDisable(busy);
         /* The freedom to change files was given for one task, and the task is over. A tick the
            developer put there themselves stays where they put it. */
-        if (!busy && tickedItself) {
-            tickedItself = false;
+        current.busy = busy;
+        if (!busy && current.tickedItself) {
+            current.tickedItself = false;
             letItFix.setSelected(false);
-            if (agent != null) {
-                agent.setAutonomous(false);
+            if (current.agent != null) {
+                current.agent.setAutonomous(false);
             }
         }
     }
@@ -385,7 +442,8 @@ final class AskPanel extends BorderPane {
 
     /** Shows the transcript with whatever the model is saying right now underneath it. */
     private void redraw() {
-        transcript.show(closed(said + (streaming.isBlank() ? "" : "\n" + streaming)));
+        transcript.show(closed(current.said
+                + (current.streaming.isBlank() ? "" : "\n" + current.streaming)));
     }
 
     /**
@@ -408,23 +466,45 @@ final class AskPanel extends BorderPane {
 
     // --------------------------------------------------------------- the agent's side
 
+    /**
+     * The agent's side of one project's conversation.
+     *
+     * <p>Bound to the conversation it was made for rather than to whatever is on screen. A turn
+     * takes minutes, a developer switches project while it runs, and everything it says has to go
+     * where it belongs: the transcript it started in, the buttons of the project it is about.
+     * Only what is being looked at is drawn; the rest is there when that project comes forward.
+     */
     private final class PanelListener implements AskAgent.Listener {
+
+        private final AskConversation conversation;
+
+        PanelListener(AskConversation conversation) {
+            this.conversation = conversation;
+        }
+
+        private boolean inFront() {
+            return conversation == current;
+        }
 
         @Override
         public void streaming(String soFar) {
             ide.window().runLater(() -> {
-                streaming = soFar;
-                redraw();
+                conversation.streaming = soFar;
+                if (inFront()) {
+                    redraw();
+                }
             });
         }
 
         @Override
         public void doing(String what) {
             ide.window().runLater(() -> {
-                streaming = "";
-                said.append("- *").append(what).append("*\n");
-                redraw();
-                status(what);
+                conversation.streaming = "";
+                conversation.said.append("- *").append(what).append("*\n");
+                if (inFront()) {
+                    redraw();
+                    status(what);
+                }
             });
         }
 
@@ -433,8 +513,10 @@ final class AskPanel extends BorderPane {
             ide.window().runLater(() -> {
                 String note = summarise(result);
                 if (!note.isBlank()) {
-                    said.append("  ").append(note).append('\n');
-                    redraw();
+                    conversation.said.append("  ").append(note).append('\n');
+                    if (inFront()) {
+                        redraw();
+                    }
                 }
             });
         }
@@ -442,30 +524,51 @@ final class AskPanel extends BorderPane {
         @Override
         public CompletableFuture<Boolean> approve(AskTools.Change change) {
             CompletableFuture<Boolean> answer = new CompletableFuture<>();
-            ide.window().runLater(() -> showApproval(change, answer));
+            ide.window().runLater(() -> {
+                if (inFront()) {
+                    showApproval(change, answer);
+                    return;
+                }
+                /* Nobody can agree to a change they cannot see. The card would appear under
+                   another project's conversation, about a file that is not the one on screen, so
+                   it is refused - and the developer is told which project wanted what. */
+                answer.complete(false);
+                ide.notifications().info("Ask",
+                        "The assistant wanted to " + change.verb().toLowerCase(Locale.ROOT) + " "
+                                + change.relativeTo(conversation.root()) + " in "
+                                + conversation.root().getFileName()
+                                + ". Open that project and ask again to let it.");
+            });
             return answer;
         }
 
         @Override
         public void answered(String markdown) {
             ide.window().runLater(() -> {
-                streaming = "";
-                said.append('\n').append(closed(markdown)).append('\n');
-                redraw();
-                waiting.stop("");
-                working(false);
+                conversation.streaming = "";
+                conversation.said.append('\n').append(closed(markdown)).append('\n');
+                done();
             });
         }
 
         @Override
         public void failed(String message) {
             ide.window().runLater(() -> {
-                streaming = "";
-                said.append("\n**That did not work.** ").append(message).append('\n');
+                conversation.streaming = "";
+                conversation.said.append("\n**That did not work.** ").append(message).append('\n');
+                done();
+            });
+        }
+
+        /** The turn is over: shown if this project is in front, and written down either way. */
+        private void done() {
+            conversation.busy = false;
+            if (inFront()) {
                 redraw();
                 waiting.stop("");
                 working(false);
-            });
+            }
+            conversation.write(ide.homeDir());
         }
     }
 
@@ -574,9 +677,16 @@ final class AskPanel extends BorderPane {
         input.requestFocus();
     }
 
+    /** The IDE is closing: stop what is running and write every conversation down. */
     void dispose() {
-        if (agent != null) {
-            agent.stop();
+        if (root != null) {
+            current.draft = input.getText() == null ? "" : input.getText();
+        }
+        for (AskConversation conversation : conversations.values()) {
+            if (conversation.agent != null) {
+                conversation.agent.stop();
+            }
+            conversation.write(ide.homeDir());
         }
         waiting.stop("");
     }
