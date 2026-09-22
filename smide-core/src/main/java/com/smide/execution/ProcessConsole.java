@@ -174,4 +174,19 @@ public final class ProcessConsole implements ConsoleHandle {
             return output.toString();
         }
     }
+
+    /**
+     * Lets go of what this process printed.
+     *
+     * <p>For a console nobody can see any more. Until something says so, every byte a process
+     * printed is kept in case it is asked for, which is right while the tab is open and is several
+     * megabytes of nothing once it is not.
+     */
+    public void forget() {
+        synchronized (output) {
+            output.setLength(0);
+            output.trimToSize();
+        }
+        listeners.clear();
+    }
 }

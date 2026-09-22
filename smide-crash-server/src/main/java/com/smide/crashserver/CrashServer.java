@@ -297,9 +297,40 @@ public final class CrashServer implements AutoCloseable {
     private static byte[] read(HttpExchange exchange) throws IOException {
         try (InputStream in = exchange.getRequestBody()) {
             byte[] body = in.readNBytes(MAX_BODY + 1);
-            return body.length > MAX_BODY ? null : body;
+            if (body.length <= MAX_BODY) {
+                return body;
+            }
+            drain(in);
+            return null;
         }
     }
+
+    /**
+     * Reads the rest of a request that is going to be refused anyway.
+     *
+     * <p>Because the sender is still sending. Closing the stream at the limit and answering 413
+     * leaves the connection half-spoken-to, and a client that keeps it alive - which is every
+     * client - finds the next request on it dying with "bytes received: 0" instead of reading the
+     * 413 that explains everything. Hearing someone out before saying no costs a megabyte of
+     * reading and is the difference between a clear answer and a broken pipe.
+     *
+     * <p>Not without end, though: past {@link #DRAIN_LIMIT} the sender is not making a point worth
+     * listening to, and the connection is dropped on them.
+     */
+    private static void drain(InputStream in) throws IOException {
+        byte[] scratch = new byte[8192];
+        long left = DRAIN_LIMIT;
+        while (left > 0) {
+            int read = in.read(scratch, 0, (int) Math.min(scratch.length, left));
+            if (read < 0) {
+                return;
+            }
+            left -= read;
+        }
+    }
+
+    /** How much of an oversized request is heard out before the connection is simply dropped. */
+    private static final long DRAIN_LIMIT = 8L * MAX_BODY;
 
     private static Map<String, String> query(HttpExchange exchange) {
         Map<String, String> out = new LinkedHashMap<>();

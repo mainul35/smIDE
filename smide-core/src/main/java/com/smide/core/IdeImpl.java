@@ -227,6 +227,7 @@ public final class IdeImpl implements Ide {
             return true;
         });
         registry.addToolWindow(new RunToolWindow(execution));
+        new MemoryWatch(notifications()).start();
         registry.addToolWindow(new ProblemsToolWindow(this, problems));
         findInPath = new FindInPathToolWindow(this, languages, fileIndex);
         registry.addToolWindow(findInPath);

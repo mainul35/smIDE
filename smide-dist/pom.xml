@@ -350,8 +350,17 @@ as does any build from Adoptium - and build again.
                                         -->
                                         <argument>--jlink-options</argument>
                                         <argument>--no-man-pages --no-header-files</argument>
+                                        <!--
+                                            A share of the machine rather than a number. -Xmx2g was
+                                            the same two gigabytes on a laptop with four and on a
+                                            workstation with sixty-four, and on a machine with
+                                            plenty it was reached: a session ran for two hours, the
+                                            heap filled, and the Java runtime died inside its own
+                                            event loop. A quarter leaves room for the language
+                                            servers, which are separate processes with their own.
+                                        -->
                                         <argument>--java-options</argument>
-                                        <argument>-Xmx2g</argument>
+                                        <argument>-XX:MaxRAMPercentage=25</argument>
                                         <argument>--vendor</argument>
                                         <argument>smIDE</argument>
                                     </arguments>

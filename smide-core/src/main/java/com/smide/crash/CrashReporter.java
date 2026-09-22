@@ -425,7 +425,7 @@ public final class CrashReporter {
             }
             String excerpt = excerpt(log.get());
             CrashReport report = CrashReport.withoutThrowable(CrashReport.PREVIOUS_SESSION,
-                    "The Java runtime stopped smIDE the last time it ran, and wrote down why in " + log.get(),
+                    headline(excerpt) + " The Java runtime wrote down why in " + log.get(),
                     version, excerpt);
             save(report);
             return Optional.of(report);
@@ -453,8 +453,34 @@ public final class CrashReporter {
     }
 
     /**
-     * The part of a runtime crash log that says what happened: its header, down to where
-     * the long lists of loaded libraries and memory maps begin.
+     * What the crash log says in one sentence, for the title of the report.
+     *
+     * <p>"The Java runtime stopped smIDE" was true of every one of these and useful about none of
+     * them. The first of these that the log bears out is worth more than the whole of the rest of
+     * the report: running out of memory is smIDE's fault and fixable, and a fault in the graphics
+     * driver is neither.
+     */
+    static String headline(String excerpt) {
+        if (excerpt.contains("OutOfMemoryError") || excerpt.contains("Out of Memory Error")) {
+            return "smIDE ran out of memory, and the Java runtime stopped it.";
+        }
+        if (excerpt.contains("StackOverflowError")) {
+            return "Something in smIDE called itself until the stack ran out.";
+        }
+        if (excerpt.contains("EXCEPTION_ACCESS_VIOLATION") || excerpt.contains("SIGSEGV")) {
+            return "The Java runtime stopped smIDE: a fault in native code.";
+        }
+        return "The Java runtime stopped smIDE the last time it ran.";
+    }
+
+    /**
+     * The part of a runtime crash log that says what happened.
+     *
+     * <p>Its header, down to where the long lists of loaded libraries and memory maps begin - and
+     * then the two lists at the far end of the log that say what the runtime was doing: the heap
+     * it had at the time, and the exceptions thrown inside it just before it died. Those are what
+     * told us that a two-hour session had filled its heap rather than tripped over a driver, and
+     * without them a report is a stack of hexadecimal nobody can act on.
      */
     private static String excerpt(Path log) throws IOException {
         List<String> lines = Files.readAllLines(log, StandardCharsets.UTF_8);
@@ -467,6 +493,35 @@ public final class CrashReporter {
             out.append(line).append('\n');
             taken++;
         }
+        for (String heading : List.of("Internal exceptions", "Heap:")) {
+            String section = section(lines, heading);
+            if (!section.isEmpty()) {
+                out.append('\n').append(section);
+            }
+        }
         return out.toString();
     }
+
+    /** One section of the log, from its heading to the blank line that ends it. */
+    private static String section(List<String> lines, String heading) {
+        StringBuilder out = new StringBuilder();
+        boolean inside = false;
+        for (String line : lines) {
+            if (!inside && line.startsWith(heading)) {
+                inside = true;
+            } else if (inside && line.isBlank()) {
+                break;
+            }
+            if (inside) {
+                out.append(line).append('\n');
+                if (out.length() > SECTION_CHARS) {
+                    break;
+                }
+            }
+        }
+        return out.toString();
+    }
+
+    /** How much of one section is worth carrying; the last events matter more than all of them. */
+    private static final int SECTION_CHARS = 4_000;
 }
