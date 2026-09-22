@@ -186,7 +186,41 @@ public final class CrashReporter {
         // Printed first, as the JVM would have: a terminal, when there is one, still gets it.
         System.err.println("Exception in thread \"" + thread.getName() + "\"");
         failure.printStackTrace();
-        report(CrashReport.EXCEPTION, failure, thread.getName(), true);
+        // Still written down, never shown: the report is there if the day comes when it matters.
+        report(CrashReport.EXCEPTION, failure, thread.getName(), !harmless(failure));
+    }
+
+    /**
+     * Whether this is the toolkit talking to itself rather than smIDE failing.
+     *
+     * <p>A dialog that interrupts somebody to report something that did not affect them is worse
+     * than the thing it reports. This list is for failures that are known, are nobody's to fix
+     * here, and leave the IDE exactly as it was - and it is meant to stay short. Anything whose
+     * consequence is not understood belongs in front of the reader, not in here.
+     *
+     * <ul>
+     *   <li>{@code grabFocus}: JavaFX embeds Swing by grabbing the focus for the whole window on
+     *       the Swing component's behalf, on a later turn of the event loop - and throws if the
+     *       window stopped being focused in between, which is to say if the reader clicked on
+     *       something else at the wrong moment. The grab does not happen; nothing else changes.
+     *       Reported as issue #3, and the terminal no longer asks for focus at that moment, but
+     *       the race belongs to JavaFX and this is not the only way into it.
+     * </ul>
+     */
+    static boolean harmless(Throwable failure) {
+        if (failure instanceof IllegalStateException
+                && String.valueOf(failure.getMessage()).contains("must be focused when calling grabFocus")) {
+            return thrownBy(failure, "com.sun.glass.ui.Window", "grabFocus");
+        }
+        return false;
+    }
+
+    /** Whether the top of the stack is this method of this class - the toolkit's, not ours. */
+    private static boolean thrownBy(Throwable failure, String className, String method) {
+        StackTraceElement[] stack = failure.getStackTrace();
+        return stack.length > 0
+                && className.equals(stack[0].getClassName())
+                && method.equals(stack[0].getMethodName());
     }
 
     /**

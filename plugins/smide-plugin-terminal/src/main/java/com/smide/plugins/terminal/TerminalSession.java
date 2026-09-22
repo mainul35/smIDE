@@ -10,6 +10,7 @@ import javafx.embed.swing.SwingNode;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.StackPane;
+import javafx.stage.Window;
 
 import javax.swing.SwingUtilities;
 import java.nio.file.Path;
@@ -157,11 +158,44 @@ final class TerminalSession {
         });
     }
 
-    /** Gives the terminal keyboard focus. JavaFX thread. */
+    /**
+     * Gives the terminal keyboard focus. JavaFX thread.
+     *
+     * <p>Only while the window has the focus to give. Asking Swing for focus inside a SwingNode
+     * makes JavaFX grab the focus for the whole stage, and that grab throws outright if the
+     * window is not focused when it runs - "The window must be focused when calling grabFocus()",
+     * reported as issue #3. So a terminal asked to take focus while the reader is in another
+     * application waits for them to come back to this one, and takes it then.
+     */
     void focus() {
         if (disposed.get()) {
             return;
         }
+        Window window = swingNode.getScene() == null ? null : swingNode.getScene().getWindow();
+        if (window != null && !window.isFocused()) {
+            whenFocused(window);
+            return;
+        }
+        takeFocus();
+    }
+
+    /** Takes the focus the next time this window has it, and only the next time. */
+    private void whenFocused(Window window) {
+        window.focusedProperty().addListener(new javafx.beans.value.ChangeListener<Boolean>() {
+            @Override
+            public void changed(javafx.beans.value.ObservableValue<? extends Boolean> value,
+                                Boolean was, Boolean focused) {
+                if (Boolean.TRUE.equals(focused)) {
+                    value.removeListener(this);
+                    if (!disposed.get()) {
+                        takeFocus();
+                    }
+                }
+            }
+        });
+    }
+
+    private void takeFocus() {
         // Both halves are needed: the SwingNode must be the focused FX node for key events to
         // be forwarded, and the Swing panel must be the focus owner inside the embedded frame.
         swingNode.requestFocus();
