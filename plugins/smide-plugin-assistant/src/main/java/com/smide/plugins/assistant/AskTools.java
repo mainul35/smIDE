@@ -4,6 +4,8 @@ import com.smide.api.Ide;
 import com.smide.api.editor.Editor;
 import com.smide.api.execution.ConsoleHandle;
 import com.smide.api.execution.ProcessSpec;
+import com.smide.api.execution.RunConfiguration;
+import com.smide.api.execution.RunConfigurationType;
 import com.smide.api.problems.Diagnostic;
 import com.smide.api.project.ProjectModel;
 import com.smide.api.workspace.Workspace;
@@ -13,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -56,9 +59,14 @@ public final class AskTools {
     }
 
     /** A file the agent wants to write or remove, for the developer to accept or refuse. */
-    public record Change(Kind kind, Path file, String before, String after) {
+    public record Change(Kind kind, Path file, String before, String after, String what) {
 
-        public enum Kind { CREATE, CHANGE, DELETE, COMMAND }
+        public enum Kind { CREATE, CHANGE, DELETE, COMMAND, CONFIG }
+
+        /** Everything that is about a file, which is everything except a run configuration. */
+        public Change(Kind kind, Path file, String before, String after) {
+            this(kind, file, before, after, null);
+        }
 
         public boolean isNew() {
             return kind == Kind.CREATE;
@@ -71,12 +79,13 @@ public final class AskTools {
                 case CHANGE -> "Changing";
                 case DELETE -> "Deleting";
                 case COMMAND -> "Running";
+                case CONFIG -> "Setting up";
             };
         }
 
         public String relativeTo(Path root) {
             try {
-                return root.relativize(file).toString().replace('\\', '/');
+                return what != null ? what : root.relativize(file).toString().replace('\\', '/');
             } catch (RuntimeException e) {
                 return file.toString();
             }
@@ -576,7 +585,163 @@ public final class AskTools {
      * anything they typed themselves, and straight to disk when it is not.
      */
     public String apply(Change change) {
+        if (change.kind() == Change.Kind.CONFIG) {
+            return onWindow(() -> saveRunConfig(change), "Could not save that run configuration.");
+        }
         return onWindow(() -> write(change), "Could not write " + relative(change.file()));
+    }
+
+    // ------------------------------------------------------- how the project is run
+
+    /** Where a run configuration's settings are written for the card to show. */
+    private static final String TYPE_LINE = "# type: ";
+
+    /**
+     * Every way this project can be run, and what each of them is set to.
+     *
+     * <p>Both kinds: the ones somebody saved and the ones the IDE worked out by looking at the
+     * project. The settings are the same flat map the dialog edits and the same one the file on
+     * disk holds, so what the model reads here is what it can write back.
+     */
+    public String runConfigurations() {
+        return onWindow(() -> {
+            Optional<Workspace> workspace = workspace();
+            if (workspace.isEmpty()) {
+                return "No project is open, so there is nothing to run.";
+            }
+            List<RunConfiguration> all = ide.execution().configurations(workspace.get());
+            if (all.isEmpty()) {
+                return "This project has no run configurations yet." + kinds();
+            }
+            StringBuilder out = new StringBuilder();
+            for (RunConfiguration configuration : all) {
+                out.append(configuration.name())
+                        .append("  [").append(configuration.type().id()).append(']')
+                        .append(configuration.isTemporary() ? "  (worked out from the project,"
+                                + " and saved as soon as it is changed)" : "")
+                        .append('\n')
+                        .append(settings(configuration.toMap()))
+                        .append('\n');
+            }
+            return out + kinds();
+        }, "Could not read this project's run configurations.");
+    }
+
+    private String kinds() {
+        StringBuilder out = new StringBuilder("\nKinds a new one can be: ");
+        for (RunConfigurationType type : ide.execution().configurationTypes()) {
+            out.append(type.id()).append(" (").append(type.displayName()).append("), ");
+        }
+        return out.substring(0, Math.max(0, out.length() - 2));
+    }
+
+    /** One configuration's settings, as the card shows them and as they are read back. */
+    private static String settings(Map<String, String> values) {
+        StringBuilder out = new StringBuilder();
+        values.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> out.append("  ").append(entry.getKey()).append(" = ")
+                        .append(entry.getValue() == null ? "" : entry.getValue()).append('\n'));
+        return out.isEmpty() ? "  (nothing set)\n" : out.toString();
+    }
+
+    /**
+     * What changing a run configuration would do, for the developer to look at first.
+     *
+     * <p>Held as text rather than as the configuration itself, because the card between here and
+     * the change shows text and because what is shown has to be exactly what would happen. It is
+     * read back in {@link #saveRunConfig}.
+     */
+    public Proposal proposeRunConfig(String name, String typeId, Map<String, String> values) {
+        return onWindow(() -> {
+            Workspace workspace = workspace().orElse(null);
+            if (workspace == null) {
+                return new Proposal(null, "No project is open.");
+            }
+            if (name == null || name.isBlank()) {
+                return new Proposal(null, "A run configuration needs a name.");
+            }
+            RunConfiguration existing = find(workspace, name);
+            if (existing == null && (typeId == null || typeId.isBlank())) {
+                return new Proposal(null, "There is no run configuration called \"" + name
+                        + "\". To make one, say which kind it is." + kinds());
+            }
+            String kind = existing != null ? existing.type().id() : typeId;
+            RunConfigurationType type = typeOf(kind);
+            if (type == null) {
+                return new Proposal(null, "There is no kind of run configuration called \""
+                        + kind + "\"." + kinds());
+            }
+            Map<String, String> before = existing == null
+                    ? new LinkedHashMap<>() : new LinkedHashMap<>(existing.toMap());
+            Map<String, String> after = new LinkedHashMap<>(before);
+            after.putAll(values);
+            if (existing == null) {
+                after.put("name", name);
+            }
+            return new Proposal(new Change(Change.Kind.CONFIG,
+                    root.resolve(".smide/run-configurations.json"),
+                    existing == null ? "" : settings(before),
+                    TYPE_LINE + kind + "\n" + settings(after),
+                    "run configuration \"" + name + "\""), null);
+        }, new Proposal(null, "The IDE did not answer about its run configurations."));
+    }
+
+    /** A change to offer, or the reason there is none to offer. */
+    public record Proposal(Change change, String problem) {
+    }
+
+    /** Puts the settings from the card on the configuration, making it if it is not there yet. */
+    private String saveRunConfig(Change change) {
+        Workspace workspace = workspace().orElse(null);
+        if (workspace == null) {
+            return "No project is open.";
+        }
+        String name = change.what() == null ? "" : change.what()
+                .replace("run configuration ", "").replace("\"", "").strip();
+        Map<String, String> values = new LinkedHashMap<>();
+        String typeId = "";
+        for (String line : change.after().split("\n")) {
+            if (line.startsWith(TYPE_LINE)) {
+                typeId = line.substring(TYPE_LINE.length()).strip();
+            } else if (line.contains(" = ")) {
+                int at = line.indexOf(" = ");
+                values.put(line.substring(0, at).strip(), line.substring(at + 3));
+            }
+        }
+        RunConfiguration configuration = find(workspace, name);
+        boolean made = configuration == null;
+        if (made) {
+            RunConfigurationType type = typeOf(typeId);
+            if (type == null) {
+                return "There is no kind of run configuration called \"" + typeId + "\".";
+            }
+            configuration = type.create(workspace);
+        }
+        configuration.fromMap(values);
+        configuration.setName(name);
+        ide.execution().saveConfiguration(configuration);
+        ide.execution().selectConfiguration(configuration);
+        return (made ? "Made " : "Changed ") + "the run configuration \"" + name
+                + "\" and selected it. " + settings(configuration.toMap()).strip();
+    }
+
+    private RunConfiguration find(Workspace workspace, String name) {
+        for (RunConfiguration configuration : ide.execution().configurations(workspace)) {
+            if (configuration.name().equalsIgnoreCase(name)) {
+                return configuration;
+            }
+        }
+        return null;
+    }
+
+    private RunConfigurationType typeOf(String id) {
+        for (RunConfigurationType type : ide.execution().configurationTypes()) {
+            if (type.id().equalsIgnoreCase(id) || type.displayName().equalsIgnoreCase(id)) {
+                return type;
+            }
+        }
+        return null;
     }
 
     private String write(Change change) {

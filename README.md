@@ -77,7 +77,9 @@ project you are in: it reads the files that matter, searches them, builds the pr
 question is why it will not build, and can look things up on the web. It proposes changes as a
 card showing what would be written, and nothing reaches a file until you press Apply - unless you
 ask it outright to fix something, which lets it work unattended for that one task and says so on
-screen. Each project has its own conversation: switching workspace puts that project's questions
+screen. It can also set the project up to run: it reads the IDE's run configurations, and creates
+or changes one - main class, arguments, VM options, profiles, environment - as a card you accept
+first. Each project has its own conversation: switching workspace puts that project's questions
 and answers up, and they are still there after the IDE has been closed and opened again.
 **Practice** teaches a topic and marks your answers. Model and endpoint are yours to
 choose (anything OpenAI-compatible, including a local Ollama), and the host allowlist means code

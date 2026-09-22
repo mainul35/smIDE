@@ -42,6 +42,9 @@ final class AskPrompts {
                 {"tool": "build"}                            build the project and read the output
                 {"tool": "test"}                             run the project's tests and read them
                 {"tool": "run", "command": ["mvn", "-q", "test"], "path": "optional/module"}
+                {"tool": "run_configs"}                      how the IDE is set up to run this
+                {"tool": "set_run_config", "name": "posSystem (Spring Boot)",
+                 "kind": "springboot", "settings": {"vmArgs": "-Xmx512m", "profiles": "dev"}}
                 {"tool": "web_search", "query": "..."}       what the web says
                 {"tool": "fetch_url", "url": "https://..."}  one page, as text
                 {"tool": "write_file", "path": "...", "content": "the whole file"}
@@ -73,6 +76,12 @@ final class AskPrompts {
                   because you wrote it - it is finished when something other than you agrees, and
                   "it should work now" is not something anybody can use.
                 - Tell them what is wrong and what would fix it. %s
+                - When the question is how the project is run, or started, or which arguments it
+                  wants, read run_configs before answering: the IDE's own run configurations are
+                  the answer, not a command you would have typed. set_run_config changes one or
+                  makes one - read the existing settings first and send only the fields you are
+                  changing, using the names run_configs gave them. "kind" is only needed for one
+                  that does not exist yet. The developer sees the settings before it happens.
                 - "find" in replace_in_file must appear exactly once in the file. Read the file
                   first and quote it exactly, whitespace included.
                 - write_file takes the whole file, not a fragment. Write it once, finished: do not

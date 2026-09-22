@@ -402,7 +402,8 @@ public final class AskAgent {
     /** What this IDE can be asked for; anything else in a JSON object is not a call. */
     private static final java.util.Set<String> TOOLS = java.util.Set.of(
             "project_info", "list_files", "tree", "read_file", "find_text", "problems", "build",
-            "test", "run", "web_search", "fetch_url", "write_file", "replace_in_file", "delete_file");
+            "test", "run", "run_configs", "set_run_config", "web_search", "fetch_url",
+            "write_file", "replace_in_file", "delete_file");
 
     /** Does what the call asks for, and says what happened. */
     private String run(String json) {
@@ -441,6 +442,18 @@ public final class AskAgent {
             }
             case "problems" -> {
                 return step("Reading the problems", tools::problems);
+            }
+            case "run_configs" -> {
+                return step("Reading how this project is run", tools::runConfigurations);
+            }
+            case "set_run_config" -> {
+                String name = string(call, "name");
+                AskTools.Proposal proposal = tools.proposeRunConfig(name, string(call, "kind"),
+                        settings(call));
+                if (proposal.problem() != null) {
+                    return proposal.problem();
+                }
+                return write(proposal.change());
             }
             case "build" -> {
                 built = true;
@@ -635,6 +648,19 @@ public final class AskAgent {
 
     private static String string(JsonObject call, String name) {
         return call.has(name) && call.get(name).isJsonPrimitive() ? call.get(name).getAsString() : "";
+    }
+
+    /** The fields of a run configuration, as the dialog's form names them. */
+    private static java.util.Map<String, String> settings(JsonObject call) {
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        if (call.has("settings") && call.get("settings").isJsonObject()) {
+            call.getAsJsonObject("settings").entrySet().forEach(entry -> {
+                if (entry.getValue().isJsonPrimitive()) {
+                    out.put(entry.getKey(), entry.getValue().getAsString());
+                }
+            });
+        }
+        return out;
     }
 
     private static List<String> strings(JsonObject call, String name) {

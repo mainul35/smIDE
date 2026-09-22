@@ -639,6 +639,7 @@ final class AskPanel extends BorderPane {
                     case CHANGE -> "Change ";
                     case DELETE -> "Delete ";
                     case COMMAND -> "Run ";
+                    case CONFIG -> "Set up the ";
                 } + change.relativeTo(root));
         what.getStyleClass().add("assistant-file");
 
@@ -647,7 +648,7 @@ final class AskPanel extends BorderPane {
            in it now - which is exactly what the developer is being asked to part with, and was
            what crashed this card when it went looking for text that a deletion does not have. */
         String shown = switch (change.kind()) {
-            case COMMAND, CREATE -> change.after();
+            case COMMAND, CREATE, CONFIG -> change.after();
             case CHANGE -> previewOf(change);
             case DELETE -> change.before();
         };
@@ -663,6 +664,7 @@ final class AskPanel extends BorderPane {
             case CREATE -> "Create it";
             case CHANGE -> "Apply it";
             case DELETE -> "Delete it";
+            case CONFIG -> "Set it up";
         });
         Button skip = new Button("No");
         apply.setOnAction(e -> {
