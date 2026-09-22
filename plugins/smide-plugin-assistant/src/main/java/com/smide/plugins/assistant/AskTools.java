@@ -432,33 +432,15 @@ public final class AskTools {
         return List.of();
     }
 
-    /** Whether a command exists to be run: a path that is there, or a name on the PATH. */
+    /**
+     * Whether a command exists to be run: a path that is there, or a name on the PATH.
+     *
+     * <p>The IDE's own answer, so that what this tells the model and what starting the process
+     * does cannot disagree - which they did, on Windows, over the difference between the {@code
+     * mvn} shell script on the PATH and the {@code mvn.cmd} next to it.
+     */
     static boolean canRun(String command) {
-        if (command == null || command.isBlank()) {
-            return false;
-        }
-        if (command.contains("/") || command.contains("\\")) {
-            return Files.isRegularFile(Path.of(command));
-        }
-        String path = System.getenv("PATH");
-        if (path == null) {
-            return true;
-        }
-        for (String each : path.split(java.io.File.pathSeparator)) {
-            if (each.isBlank()) {
-                continue;
-            }
-            Path folder = Path.of(each);
-            if (Files.isRegularFile(folder.resolve(command))) {
-                return true;
-            }
-            for (String extension : List.of(".exe", ".cmd", ".bat")) {
-                if (Files.isRegularFile(folder.resolve(command + extension))) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return com.smide.api.execution.Executables.canRun(command);
     }
 
     private static boolean windows() {

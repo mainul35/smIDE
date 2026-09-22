@@ -145,7 +145,7 @@ public final class AskAgent {
                             "You have " + WARN_BEFORE + " steps left before you must answer."
                                     + " Stop exploring and do the part that matters."));
                 }
-                String reply = lastChance ? finalAnswer() : round();
+                String reply = lastChance ? finalAnswer() : speak();
                 if (stopped) {
                     return;
                 }
@@ -173,10 +173,73 @@ public final class AskAgent {
                 history.add(new ChatProvider.Message("user", "TOOL RESULT:\n" + result));
                 trim();
             }
-        } catch (RuntimeException e) {
+        } catch (Throwable e) {
+            /* Everything, not just the runtime kind. Whatever went wrong in here, the developer
+               is owed a sentence about it: a turn that ends without one looks exactly like a turn
+               that stopped for no reason, and leaves the tab waiting on an answer that is never
+               coming. */
             if (!stopped) {
-                listener.failed(String.valueOf(e.getMessage() == null ? e : e.getMessage()));
+                listener.failed(describe(e));
             }
+        }
+    }
+
+    /** What to put in front of the developer when something threw. */
+    private static String describe(Throwable e) {
+        String message = e.getMessage();
+        if (message == null || message.isBlank()) {
+            return e.getClass().getSimpleName() + " - nothing was said about why.";
+        }
+        return message;
+    }
+
+    /**
+     * The model's next reply, insisted upon.
+     *
+     * <p>A provider that drops a connection, rate-limits, or returns an empty body used to end the
+     * turn on the spot: the steps so far stayed on screen, no answer arrived, and nothing said
+     * why. None of those are reasons to abandon work that is half done, so they are simply tried
+     * again, and only a provider that will not speak three times running is given up on - out
+     * loud.
+     */
+    private String speak() {
+        RuntimeException last = null;
+        for (int attempt = 0; attempt < ATTEMPTS && !stopped; attempt++) {
+            if (attempt > 0) {
+                listener.doing("The model did not answer, trying again");
+                sleep(1500L * attempt);
+                if (stopped) {
+                    break;
+                }
+            }
+            try {
+                String reply = round();
+                if (reply != null && !reply.isBlank()) {
+                    return reply;
+                }
+            } catch (RuntimeException e) {
+                last = e;
+            }
+        }
+        if (stopped) {
+            return "";
+        }
+        throw last != null ? last
+                : new IllegalStateException("the model sent nothing back, " + ATTEMPTS + " times over."
+                        + " The provider may be rate limiting, or the conversation may be too long"
+                        + " for its window - `assistant.ask.windowChars` in settings.json sets how"
+                        + " much of it is kept.");
+    }
+
+    /** How many times a silent provider is asked again before the developer is told. */
+    private static final int ATTEMPTS = 3;
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            stopped = true;
         }
     }
 
@@ -196,7 +259,7 @@ public final class AskAgent {
                 "Stop here. Do not use another tool - any tool call in this reply will be ignored."
                         + " Answer now with what you have: what you found, what you changed, what is"
                         + " still wrong, and what you would do next."));
-        return round();
+        return speak();
     }
 
     private String tookTooLong(int steps) {

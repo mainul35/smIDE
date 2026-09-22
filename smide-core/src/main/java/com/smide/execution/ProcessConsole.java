@@ -1,6 +1,7 @@
 package com.smide.execution;
 
 import com.smide.api.execution.ConsoleHandle;
+import com.smide.api.execution.Executables;
 import com.smide.api.execution.ProcessSpec;
 
 import java.io.IOException;
@@ -44,7 +45,11 @@ public final class ProcessConsole implements ConsoleHandle {
         if (spec.workingDir() != null) {
             view.appendSystem("in " + spec.workingDir());
         }
-        ProcessBuilder pb = new ProcessBuilder(spec.command()).redirectErrorStream(true);
+        // "mvn" on Windows is a shell script that CreateProcess cannot start; mvn.cmd beside it
+        // is the one it can. Every process the IDE runs goes through here, so it is asked for by
+        // name once, here, and started by the path of the file that actually exists.
+        ProcessBuilder pb = new ProcessBuilder(Executables.runnable(spec.command()))
+                .redirectErrorStream(true);
         if (spec.workingDir() != null) {
             pb.directory(spec.workingDir().toFile());
         }
