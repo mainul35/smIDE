@@ -185,6 +185,13 @@ final class MarkdownPane extends ScrollPane {
      */
     private Node code(String literal, String info) {
         String body = literal.stripTrailing();
+        // A folded result costs a title until somebody opens it. Every token the model streams
+        // rebuilds this pane, and colouring three hundred lines nobody is looking at, forty times
+        // a second, is where an answer stops arriving and starts crawling.
+        return "details".equals(info) ? folded(body, info) : drawn(body, info);
+    }
+
+    private Node drawn(String body, String info) {
         String[] classes = colouring(body, Fences.highlighter(ide, info));
         VBox lines = new VBox();
         lines.getStyleClass().add("md-code-body");
@@ -242,7 +249,7 @@ final class MarkdownPane extends ScrollPane {
         block.getStyleClass().add("md-code-block");
         // Out of the way until the pointer is on the block, so an answer reads as an answer.
         copy.visibleProperty().bind(block.hoverProperty());
-        return "details".equals(info) ? folded(block, body) : block;
+        return block;
     }
 
     /**
@@ -253,18 +260,34 @@ final class MarkdownPane extends ScrollPane {
      * 241 lines are the reason the answer is wrong. They go in here: closed, so the transcript
      * stays a list of steps, and one click from being read.
      */
-    private Node folded(Node block, String body) {
+    private Node folded(String body, String info) {
         long lines = body.isBlank() ? 0 : body.lines().count();
         javafx.scene.control.TitledPane details = new javafx.scene.control.TitledPane(
-                lines + (lines == 1 ? " line" : " lines") + " - click to read", block);
+                lines + (lines == 1 ? " line" : " lines") + " - click to read",
+                new javafx.scene.layout.Region());
         details.setAnimated(false);
         details.getStyleClass().add("md-details");
+        details.setExpanded(false);
+        // Built the first time it is opened, and only then.
+        details.expandedProperty().addListener((value, was, now) -> {
+            if (Boolean.TRUE.equals(now)) {
+                fill(details, body, info);
+            }
+        });
         /* Opened by its contents, not by where it sits. Every token the model streams redraws
            this whole pane from scratch, so a result the reader had opened would shut itself a
            quarter of a second later - and keeping a list by position would open the wrong one
            the moment another project's conversation came up. */
         int what = body.hashCode();
-        details.setExpanded(opened.contains(what));
+        boolean open = opened.contains(what);
+        if (open) {
+            /* Filled before it is told to open, not by the listener that watches for opening: a
+               TitledPane starts expanded, so setting it expanded changes nothing and tells
+               nobody - which showed up as a result that had been open coming back empty after
+               the next token was streamed. */
+            fill(details, body, info);
+        }
+        details.setExpanded(open);
         details.expandedProperty().addListener((value, was, now) -> {
             if (Boolean.TRUE.equals(now)) {
                 opened.add(what);
@@ -273,6 +296,13 @@ final class MarkdownPane extends ScrollPane {
             }
         });
         return details;
+    }
+
+    /** Draws what is inside a fold, once, the first time anybody wants to see it. */
+    private void fill(javafx.scene.control.TitledPane details, String body, String info) {
+        if (!(details.getContent() instanceof VBox)) {
+            details.setContent(drawn(body, info));
+        }
     }
 
     /**

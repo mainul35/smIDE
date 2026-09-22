@@ -91,6 +91,23 @@ final class AskConversation {
         return said.length() == 0 && questions.isEmpty();
     }
 
+    /**
+     * Keeps what is on screen to a size that can be drawn.
+     *
+     * <p>The same limit as the one on disk, applied as the conversation grows rather than only
+     * when it is saved. A transcript is parsed and rebuilt from its text every time it changes,
+     * so one that grows without end is an IDE that gets slower all afternoon and then holds the
+     * whole of it in memory for every project that is open.
+     */
+    void trim() {
+        if (said.length() <= MOST_CHARACTERS) {
+            return;
+        }
+        said.delete(0, said.length() - MOST_CHARACTERS);
+        said.insert(0, "*The beginning of this conversation was dropped to keep it a sensible"
+                + " size; it is in the answers above, not lost.*\n\n");
+    }
+
     /** What the model should be told it already knows, when its agent is made. */
     List<ChatProvider.Message> remembered() {
         return remembered;

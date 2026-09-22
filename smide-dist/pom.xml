@@ -359,8 +359,36 @@ as does any build from Adoptium - and build again.
                                             event loop. A quarter leaves room for the language
                                             servers, which are separate processes with their own.
                                         -->
+                                        <!--
+                                            A ceiling low enough to be a desktop application and
+                                            high enough for a large project: an IDE that takes two
+                                            gigabytes before anything is open is one nobody wants
+                                            beside a browser. A share of the machine was worse than
+                                            a number - on a workstation it meant eight gigabytes,
+                                            and a garbage collector given eight gigabytes will use
+                                            them rather than collect.
+                                        -->
                                         <argument>--java-options</argument>
-                                        <argument>-XX:MaxRAMPercentage=25</argument>
+                                        <argument>-Xms192m</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-Xmx1g</argument>
+                                        <!--
+                                            And give it back. The default collector keeps whatever
+                                            it has ever needed, so one indexing pass at startup is
+                                            paid for all day. These shrink the heap after a
+                                            collection and ask for a collection when the machine is
+                                            idle, which is when an editor usually is.
+                                        -->
+                                        <argument>--java-options</argument>
+                                        <argument>-XX:MinHeapFreeRatio=10</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-XX:MaxHeapFreeRatio=25</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-XX:G1PeriodicGCInterval=30000</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-XX:G1PeriodicGCSystemLoadThreshold=0</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-XX:+UseStringDeduplication</argument>
                                         <argument>--vendor</argument>
                                         <argument>smIDE</argument>
                                     </arguments>

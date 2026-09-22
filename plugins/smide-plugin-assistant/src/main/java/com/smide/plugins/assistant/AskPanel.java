@@ -440,8 +440,46 @@ final class AskPanel extends BorderPane {
         return new AskWeb(config.text("search.provider", ""), config.text("search.key", ""));
     }
 
+    /** When the transcript was last drawn, and whether a drawing is already on its way. */
+    private long drawnAt;
+    private boolean drawSoon;
+
+    /**
+     * Draws at a speed a person can read rather than at the speed a model types.
+     *
+     * <p>Every token redrew everything: parse the whole conversation, build every heading,
+     * paragraph and block again, lay it all out - forty times a second, against a transcript that
+     * only grows. That is the sluggishness, and it is worst exactly when the answer is longest.
+     * A few times a second looks the same to read and costs a fraction of it.
+     */
+    private void redrawSoon() {
+        long now = System.currentTimeMillis();
+        long since = now - drawnAt;
+        if (since >= DRAW_EVERY_MS) {
+            drawnAt = now;
+            redraw();
+            return;
+        }
+        if (drawSoon) {
+            return;
+        }
+        drawSoon = true;
+        javafx.animation.PauseTransition wait = new javafx.animation.PauseTransition(
+                javafx.util.Duration.millis(DRAW_EVERY_MS - since));
+        wait.setOnFinished(e -> {
+            drawSoon = false;
+            drawnAt = System.currentTimeMillis();
+            redraw();
+        });
+        wait.play();
+    }
+
+    /** How often the transcript is redrawn while the model is speaking. */
+    private static final long DRAW_EVERY_MS = 150;
+
     /** Shows the transcript with whatever the model is saying right now underneath it. */
     private void redraw() {
+        drawnAt = System.currentTimeMillis();
         transcript.show(closed(current.said
                 + (current.streaming.isBlank() ? "" : "\n" + current.streaming)));
     }
@@ -491,7 +529,7 @@ final class AskPanel extends BorderPane {
             ide.window().runLater(() -> {
                 conversation.streaming = soFar;
                 if (inFront()) {
-                    redraw();
+                    redrawSoon();
                 }
             });
         }
@@ -566,6 +604,7 @@ final class AskPanel extends BorderPane {
         /** The turn is over: shown if this project is in front, and written down either way. */
         private void done() {
             conversation.busy = false;
+            conversation.trim();
             if (inFront()) {
                 redraw();
                 waiting.stop("");
