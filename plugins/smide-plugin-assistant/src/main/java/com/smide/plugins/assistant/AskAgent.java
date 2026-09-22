@@ -128,6 +128,11 @@ public final class AskAgent {
     public void ask(String question) {
         stopped = false;
         done.clear();
+        changedSomething = false;
+        built = false;
+        tested = false;
+        askedToBuild = false;
+        askedToTest = false;
         history.add(new ChatProvider.Message("user", question));
         int steps = maxSteps();
         long until = System.currentTimeMillis() + minutes() * 60_000L;
@@ -151,6 +156,14 @@ public final class AskAgent {
                 }
                 String call = lastChance ? null : callIn(reply);
                 if (call == null) {
+                    String check = unchecked();
+                    if (check != null) {
+                        /* It has changed the project and is about to say so without having looked
+                           at what it did. Nobody would accept that from a person. */
+                        history.add(new ChatProvider.Message("assistant", reply));
+                        history.add(new ChatProvider.Message("user", check));
+                        continue;
+                    }
                     history.add(new ChatProvider.Message("assistant", reply));
                     listener.answered(lastChance ? reply + tookTooLong(steps) : reply);
                     return;
@@ -369,7 +382,7 @@ public final class AskAgent {
     /** What this IDE can be asked for; anything else in a JSON object is not a call. */
     private static final java.util.Set<String> TOOLS = java.util.Set.of(
             "project_info", "list_files", "tree", "read_file", "find_text", "problems", "build",
-            "run", "web_search", "fetch_url", "write_file", "replace_in_file", "delete_file");
+            "test", "run", "web_search", "fetch_url", "write_file", "replace_in_file", "delete_file");
 
     /** Does what the call asks for, and says what happened. */
     private String run(String json) {
@@ -410,7 +423,12 @@ public final class AskAgent {
                 return step("Reading the problems", tools::problems);
             }
             case "build" -> {
+                built = true;
                 return step("Building the project", tools::build);
+            }
+            case "test" -> {
+                tested = true;
+                return step("Running the tests", tools::test);
             }
             case "run" -> {
                 List<String> command = strings(call, "command");
@@ -420,6 +438,10 @@ public final class AskAgent {
                 if (!allowedToRun(command)) {
                     return "The developer did not agree to run that.";
                 }
+                // Checking its work by hand counts as checking its work.
+                String what = String.join(" ", command).toLowerCase(java.util.Locale.ROOT);
+                built |= what.contains("build") || what.contains("compile") || what.contains("test");
+                tested |= what.contains("test");
                 return step("Running " + String.join(" ", command),
                         () -> tools.run(command, path.isBlank() ? null : tools.root().resolve(path),
                                 "The assistant: " + String.join(" ", command)));
@@ -466,6 +488,40 @@ public final class AskAgent {
     private final java.util.Set<String> refused = new java.util.HashSet<>();
     /** What has been done this turn and how often, so a loop is cut short rather than run out. */
     private final java.util.Map<String, Integer> done = new java.util.HashMap<>();
+    /** Whether the project has been changed since it was last built and tested, and by how far. */
+    private volatile boolean changedSomething;
+    private volatile boolean built;
+    private volatile boolean tested;
+    /** Each reason to send it back is used once: a model that ignores it will ignore it twice. */
+    private boolean askedToBuild;
+    private boolean askedToTest;
+
+    /**
+     * What the agent still owes the developer before it is allowed to say it is finished.
+     *
+     * <p>A change that has not been built is a guess, and a change that builds but was never run
+     * is half an answer: "it compiles" is not what anybody asked. So a turn that changed the
+     * project and then went quiet is sent back to look at what it did - once for the build, once
+     * for the tests, and no further, because an agent that cannot get a clean build is not helped
+     * by being told to try again forever. Null when there is nothing owed.
+     */
+    private String unchecked() {
+        if (!changedSomething) {
+            return null;
+        }
+        if (!built && !askedToBuild) {
+            askedToBuild = true;
+            return "You changed this project and have not built it since. Build it now, and if it"
+                    + " fails, fix what you broke before you answer.";
+        }
+        if (built && !tested && !askedToTest && !tools.testCommand().isEmpty()) {
+            askedToTest = true;
+            return "It builds. Now run the tests - " + String.join(" ", tools.testCommand())
+                    + " - and tell the developer what passed and what failed. Do not describe a"
+                    + " change as working until something other than you has said so.";
+        }
+        return null;
+    }
     /** The last step taken, for the message when the steps run out. */
     private volatile String lastStep;
 
@@ -494,6 +550,10 @@ public final class AskAgent {
                     + " Ask them what they would prefer instead.";
         }
         String outcome = tools.apply(change);
+        // Whatever it built or ran before this, it was a different project a moment ago.
+        changedSomething = true;
+        built = false;
+        tested = false;
         listener.did(what, outcome);
         return outcome;
     }

@@ -40,6 +40,7 @@ final class AskPrompts {
                 {"tool": "find_text", "text": "..."}         every place that text appears
                 {"tool": "problems"}                         what the IDE is reporting right now
                 {"tool": "build"}                            build the project and read the output
+                {"tool": "test"}                             run the project's tests and read them
                 {"tool": "run", "command": ["mvn", "-q", "test"], "path": "optional/module"}
                 {"tool": "web_search", "query": "..."}       what the web says
                 {"tool": "fetch_url", "url": "https://..."}  one page, as text
@@ -66,6 +67,11 @@ final class AskPrompts {
                   they are wasted.
                 - When the developer asks why something will not build, build it and read the
                   error. Do not guess at an error you have not seen.
+                - Check your own work. Every time you change a file, build afterwards, and if it
+                  builds, run the tests. Read what they say and fix what you broke. Then report
+                  it: what passed, what failed, what you did not manage. A change is not finished
+                  because you wrote it - it is finished when something other than you agrees, and
+                  "it should work now" is not something anybody can use.
                 - Tell them what is wrong and what would fix it. %s
                 - "find" in replace_in_file must appear exactly once in the file. Read the file
                   first and quote it exactly, whitespace included.
@@ -82,10 +88,11 @@ final class AskPrompts {
                 THE PROJECT
                 %s
                 Building it runs: %s
+                Testing it runs: %s
                 """.formatted(
                         autonomous
-                                ? "The developer has asked you to carry the fix out, so make the changes"
-                                        + " and build afterwards to check them."
+                                ? "The developer has asked you to carry the fix out, so make the changes,"
+                                        + " then build and test them and say what happened."
                                 : "Then stop. Do not change a file unless the developer asks you to"
                                         + " fix it; answering is not a licence to edit.",
                         web.canSearch()
@@ -94,6 +101,7 @@ final class AskPrompts {
                                         + " here wrote - and say where it came from."
                                 : web.whyNotSearching(),
                         tools.projectInfo(),
-                        tools.buildDescription());
+                        tools.buildDescription(),
+                        tools.testDescription());
     }
 }

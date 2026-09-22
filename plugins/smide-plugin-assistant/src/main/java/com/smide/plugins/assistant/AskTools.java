@@ -329,6 +329,22 @@ public final class AskTools {
         return run(command, root, "Building for the assistant");
     }
 
+    /**
+     * What the tests say.
+     *
+     * <p>The other half of building. A change that compiles is a change that parses, and the
+     * question the developer actually has - did this work - is answered by the project's own
+     * tests or not at all.
+     */
+    public String test() {
+        List<String> command = testCommand();
+        if (command.isEmpty()) {
+            return "This project has no tests the IDE knows how to run."
+                    + " Say so rather than claiming the change is good.";
+        }
+        return run(command, root, "Testing for the assistant");
+    }
+
     /** Runs a command in the project and gives back what it printed. */
     public String run(List<String> command, Path workingDir, String title) {
         if (!command.isEmpty() && !canRun(command.get(0))) {
@@ -367,6 +383,53 @@ public final class AskTools {
         return command.isEmpty() ? "no build this IDE knows how to run" : String.join(" ", command);
     }
 
+    /** And what it tests with. */
+    public String testDescription() {
+        List<String> command = testCommand();
+        return command.isEmpty() ? "no tests this IDE knows how to run" : String.join(" ", command);
+    }
+
+    /**
+     * How this project runs its tests.
+     *
+     * <p>Same order as the build: the task the IDE imported, then the wrapper the project brought
+     * with it, then whatever the files in the root say this is.
+     */
+    public List<String> testCommand() {
+        Optional<ProjectModel> model = workspace().flatMap(w -> ide.projects().modelOf(w));
+        if (model.isPresent()) {
+            for (String wanted : List.of("test", "check", "verify")) {
+                for (ProjectModel.BuildTask task : model.get().tasks()) {
+                    if (task.name().equalsIgnoreCase(wanted) && !task.command().isEmpty()
+                            && canRun(task.command().get(0))) {
+                        return task.command();
+                    }
+                }
+            }
+        }
+        List<String> wrapper = wrapperTestIn(root);
+        if (!wrapper.isEmpty()) {
+            return wrapper;
+        }
+        if (Files.isRegularFile(root.resolve("pom.xml"))) {
+            return List.of("mvn", "-q", "test");
+        }
+        if (Files.isRegularFile(root.resolve("build.gradle"))
+                || Files.isRegularFile(root.resolve("build.gradle.kts"))) {
+            return List.of("gradle", "test");
+        }
+        if (Files.isRegularFile(root.resolve("Cargo.toml"))) {
+            return List.of("cargo", "test");
+        }
+        if (Files.isRegularFile(root.resolve("go.mod"))) {
+            return List.of("go", "test", "./...");
+        }
+        if (Files.isRegularFile(root.resolve("package.json"))) {
+            return List.of("npm", "test");
+        }
+        return List.of();
+    }
+
     /**
      * How this project builds.
      *
@@ -389,8 +452,13 @@ public final class AskTools {
         if (!wrapper.isEmpty()) {
             return wrapper;
         }
+        // Plain names: which file on this machine they mean is settled when the process starts.
         if (Files.isRegularFile(root.resolve("pom.xml"))) {
-            return List.of(windows() ? "mvn.cmd" : "mvn", "-q", "-DskipTests", "compile");
+            return List.of("mvn", "-q", "-DskipTests", "compile");
+        }
+        if (Files.isRegularFile(root.resolve("build.gradle"))
+                || Files.isRegularFile(root.resolve("build.gradle.kts"))) {
+            return List.of("gradle", "build", "-x", "test");
         }
         if (Files.isRegularFile(root.resolve("Cargo.toml"))) {
             return List.of("cargo", "build");
@@ -399,7 +467,7 @@ public final class AskTools {
             return List.of("go", "build", "./...");
         }
         if (Files.isRegularFile(root.resolve("package.json"))) {
-            return List.of(windows() ? "npm.cmd" : "npm", "run", "build");
+            return List.of("npm", "run", "build");
         }
         return List.of();
     }
@@ -414,22 +482,27 @@ public final class AskTools {
      * trying again in a slightly different way until it ran out of steps.
      */
     static List<String> wrapperIn(Path dir) {
-        if (windows()) {
-            if (Files.isRegularFile(dir.resolve("mvnw.cmd"))) {
-                return List.of(dir.resolve("mvnw.cmd").toString(), "-q", "-DskipTests", "compile");
-            }
-            if (Files.isRegularFile(dir.resolve("gradlew.bat"))) {
-                return List.of(dir.resolve("gradlew.bat").toString(), "build", "-x", "test");
-            }
-            return List.of();
+        String maven = scriptIn(dir, windows() ? "mvnw.cmd" : "mvnw");
+        if (maven != null) {
+            return List.of(maven, "-q", "-DskipTests", "compile");
         }
-        if (Files.isRegularFile(dir.resolve("mvnw"))) {
-            return List.of(dir.resolve("mvnw").toString(), "-q", "-DskipTests", "compile");
+        String gradle = scriptIn(dir, windows() ? "gradlew.bat" : "gradlew");
+        return gradle == null ? List.of() : List.of(gradle, "build", "-x", "test");
+    }
+
+    /** The same wrapper, asked to run the tests instead of skipping them. */
+    static List<String> wrapperTestIn(Path dir) {
+        String maven = scriptIn(dir, windows() ? "mvnw.cmd" : "mvnw");
+        if (maven != null) {
+            return List.of(maven, "-q", "test");
         }
-        if (Files.isRegularFile(dir.resolve("gradlew"))) {
-            return List.of(dir.resolve("gradlew").toString(), "build", "-x", "test");
-        }
-        return List.of();
+        String gradle = scriptIn(dir, windows() ? "gradlew.bat" : "gradlew");
+        return gradle == null ? List.of() : List.of(gradle, "test");
+    }
+
+    private static String scriptIn(Path dir, String name) {
+        Path script = dir.resolve(name);
+        return Files.isRegularFile(script) ? script.toString() : null;
     }
 
     /**
