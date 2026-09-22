@@ -194,14 +194,84 @@ function Invoke-Step {
     exit ($(if ($null -eq $code) { 1 } else { $code }))
 }
 
+# ------------------------------------------------------- getting it to let go
+
+# A running smIDE holds its own Java runtime open - jvm.dll is loaded into the process, and
+# Windows will not let a loaded DLL be deleted - so a reinstall over a running copy fails on
+# the first file it tries to remove. Stopping it is not quite enough either, for two reasons.
+#
+# smIDE supervises itself: a parent process starts the IDE as a child and starts it again if
+# the child ends any way other than being closed. Killing the child alone is therefore the
+# one thing guaranteed not to work - the parent takes it as a crash and brings it back, with
+# the runtime loaded again by the time the delete gets there. So everything is stopped, and
+# then checked for, and anything that came back is stopped again.
+#
+# And Windows releases a process's files when it has finished tearing it down, which is some
+# time after Stop-Process has returned. So the delete is retried rather than attempted once.
+
+function Get-SmIdeProcesses($appDir) {
+    # By where it is running from, not by what it is called. The thing that held jvm.dll open
+    # and stopped a reinstall is whatever has the install directory's runtime loaded - the
+    # launcher, the child it supervises, or a runtime binary somebody started directly - and
+    # only those. Another install of smIDE elsewhere is not ours to kill.
+    return @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $path = $null
+        try { $path = $_.Path } catch { }
+        $path -and $path.StartsWith($appDir, [StringComparison]::OrdinalIgnoreCase)
+    })
+}
+
+function Stop-SmIde($appDir) {
+    $said = $false
+    for ($attempt = 0; $attempt -lt 12; $attempt++) {
+        $running = Get-SmIdeProcesses $appDir
+        if ($running.Count -eq 0) { return $true }
+        if (-not $said) {
+            Write-Host "  smIDE is running; closing it"
+            $said = $true
+        }
+        $running | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 250
+    }
+    return (Get-SmIdeProcesses $appDir).Count -eq 0
+}
+
+function Remove-Tree($path, $appDir) {
+    for ($attempt = 1; $attempt -le 12; $attempt++) {
+        try {
+            Remove-Item -Recurse -Force $path -ErrorAction Stop
+            return
+        } catch {
+            if (-not (Test-Path $path)) { return }
+            if ($attempt -eq 12) {
+                Write-Bad "Could not remove $path"
+                Write-Host "  $($_.Exception.Message)"
+                $left = Get-SmIdeProcesses $appDir
+                if ($left.Count -gt 0) {
+                    Write-Host "  Still running from there: $(($left | ForEach-Object { "$($_.ProcessName) ($($_.Id))" }) -join ', ')."
+                } else {
+                    Write-Host "  Nothing of smIDE is running, so something else is holding a file"
+                    Write-Host "  open there - a terminal sitting in that folder, an antivirus scan,"
+                    Write-Host "  or Explorer showing it."
+                }
+                Stop-With "Close it and run this again."
+            }
+            Start-Sleep -Milliseconds 400
+        }
+    }
+}
+
 # ------------------------------------------------------------------ uninstall
 
 if ($Uninstall) {
     Write-Step "Removing smIDE"
+    if (-not (Stop-SmIde $AppDir)) {
+        Stop-With "smIDE is running and will not stop. Close it and run this again."
+    }
     foreach ($path in @($AppDir,
                         (Join-Path $ShimDir "smide.cmd"),
                         (Join-Path ([Environment]::GetFolderPath('Programs')) "smIDE.lnk"))) {
-        if (Test-Path $path) { Remove-Item -Recurse -Force $path; Write-Ok "removed $path" }
+        if (Test-Path $path) { Remove-Tree $path $AppDir; Write-Ok "removed $path" }
     }
     # Only if the directory is now empty: it is a shared bin directory, and something
     # else may well be living in it.
@@ -399,10 +469,10 @@ Write-Ok "Built $size of self-contained application."
 
 Write-Step "Installing into $AppDir"
 New-Item -ItemType Directory -Force -Path $Prefix | Out-Null
-# A running copy holds its own exe open, which is the ordinary way a reinstall fails.
-Get-Process smIDE -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Milliseconds 500
-if (Test-Path $AppDir) { Remove-Item -Recurse -Force $AppDir }
+if (-not (Stop-SmIde $AppDir)) {
+    Stop-With "smIDE is running and will not stop. Close it and run this again."
+}
+if (Test-Path $AppDir) { Remove-Tree $AppDir $AppDir }
 Copy-Item -Recurse $image $AppDir
 
 $launcher = Join-Path $AppDir "smIDE.exe"

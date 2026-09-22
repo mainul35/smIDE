@@ -243,10 +243,42 @@ run_step_soft() {
     return "$status"
 }
 
+# ------------------------------------------------------- getting it to let go
+
+# smIDE supervises itself: a parent process starts the IDE as a child and starts it
+# again if the child ends any way other than being closed. So killing the child alone
+# is the one thing guaranteed not to work - the parent takes it as a crash and brings
+# it back, into a directory that is at that moment half replaced. Everything under the
+# install directory is stopped, and then checked for, and anything that came back is
+# stopped again.
+#
+# Unix will happily unlink the files of a running program, so this is not the hard
+# failure it is on Windows - it is worse, in its way: the install appears to work and
+# leaves a restarted IDE running from files that no longer exist.
+stop_smide() {
+    pgrep -f "$APP_DIR" >/dev/null 2>&1 || return 0
+    echo "  smIDE is running; closing it"
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        pids="$(pgrep -f "$APP_DIR" || true)"
+        [ -n "$pids" ] || return 0
+        # shellcheck disable=SC2086
+        kill $pids 2>/dev/null || true
+        sleep 0.25
+    done
+    pids="$(pgrep -f "$APP_DIR" || true)"
+    [ -n "$pids" ] || return 0
+    # shellcheck disable=SC2086
+    kill -9 $pids 2>/dev/null || true
+    sleep 0.5
+    pgrep -f "$APP_DIR" >/dev/null 2>&1 && return 1
+    return 0
+}
+
 # ------------------------------------------------------------------ uninstall
 
 if $uninstall; then
     step "Removing smIDE"
+    stop_smide || fail "smIDE is running and will not stop. Close it and run this again."
     for path in "$APP_DIR" "$BIN_DIR/smide" "$DESKTOP_DIR/smide.desktop"; do
         if [ -e "$path" ]; then
             rm -rf "$path"
@@ -486,6 +518,7 @@ green "Built $(du -sh "$image" | cut -f1) of self-contained application."
 
 step "Installing into $APP_DIR"
 mkdir -p "$OPT_DIR"
+stop_smide || fail "smIDE is running and will not stop. Close it and run this again."
 rm -rf "$APP_DIR"
 run_step "Copying the application" cp -R "$image" "$APP_DIR"
 
