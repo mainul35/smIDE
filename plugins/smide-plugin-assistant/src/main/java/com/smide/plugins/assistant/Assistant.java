@@ -93,7 +93,9 @@ public final class Assistant {
                     });
                 });
                 if (!turn.cancelled) {
-                    ide.window().runLater(() -> onDone.accept(whole));
+                    // Every tab gets the reply with the model's own machinery taken out of it.
+                    String said = Replies.cleaned(whole);
+                    ide.window().runLater(() -> onDone.accept(said));
                 }
             } catch (Abandoned e) {
                 // Asked for by the panel; there is nobody left to tell.

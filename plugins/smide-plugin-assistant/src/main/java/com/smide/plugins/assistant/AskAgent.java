@@ -281,10 +281,10 @@ public final class AskAgent {
                     streamed.append(token);
                     // A tool call is not for reading: it is shown as the step it turns into.
                     if (callIn(streamed.toString()) == null) {
-                        listener.streaming(streamed.toString());
+                        listener.streaming(Replies.cleaned(streamed.toString()));
                     }
                 },
-                whole -> done.complete(whole),
+                whole -> done.complete(Replies.cleaned(whole)),
                 error -> done.completeExceptionally(new IllegalStateException(error)));
         try {
             return done.join();
@@ -299,7 +299,8 @@ public final class AskAgent {
         if (reply == null) {
             return null;
         }
-        Matcher matcher = CALL.matcher(reply);
+        String text = Replies.cleaned(reply);
+        Matcher matcher = CALL.matcher(text);
         String last = null;
         while (matcher.find()) {
             String body = matcher.group(1);
@@ -307,8 +308,68 @@ public final class AskAgent {
                 last = body;
             }
         }
-        return last;
+        return last != null ? last : unfenced(text);
     }
+
+    /**
+     * A call the model wrote without the fence it was asked for.
+     *
+     * <p>Models put a tool call where their training told them to: in a fence, on a line of its
+     * own, after {@code to=smide}, or in the middle of a sentence explaining what it is about to
+     * do. The fence is what the prompt asks for and what the hosted models give, but a local model
+     * that writes {@code Let's replace the file. to=smide {"tool": "replace_in_file", ...}} means
+     * exactly the same thing - and reading that as an answer ends the turn in the middle of the
+     * job, which is what it looked like from the outside: the work stopping half done.
+     *
+     * <p>Only a complete object naming a tool this IDE has counts, so a model writing about tool
+     * calls is still writing rather than calling.
+     */
+    private static String unfenced(String text) {
+        String found = null;
+        for (int i = text.indexOf('{'); i >= 0; i = text.indexOf('{', i + 1)) {
+            String object = objectAt(text, i);
+            if (object == null || !object.contains("\"tool\"")) {
+                continue;
+            }
+            try {
+                JsonObject call = JsonParser.parseString(object).getAsJsonObject();
+                if (TOOLS.contains(string(call, "tool"))) {
+                    found = object;
+                    i += object.length() - 1;
+                }
+            } catch (RuntimeException e) {
+                // Not JSON after all; the next brace may be.
+            }
+        }
+        return found;
+    }
+
+    /** The whole JSON object starting at this brace, or null if it never finishes. */
+    private static String objectAt(String text, int start) {
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = start; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (escaped) {
+                escaped = false;
+            } else if (inString && c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                inString = !inString;
+            } else if (!inString && c == '{') {
+                depth++;
+            } else if (!inString && c == '}' && --depth == 0) {
+                return text.substring(start, i + 1);
+            }
+        }
+        return null;
+    }
+
+    /** What this IDE can be asked for; anything else in a JSON object is not a call. */
+    private static final java.util.Set<String> TOOLS = java.util.Set.of(
+            "project_info", "list_files", "tree", "read_file", "find_text", "problems", "build",
+            "run", "web_search", "fetch_url", "write_file", "replace_in_file", "delete_file");
 
     /** Does what the call asks for, and says what happened. */
     private String run(String json) {

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +37,63 @@ class AskAgentTest {
     @Test
     void aFencedExampleWithNoToolInItIsJustCode() {
         assertNull(AskAgent.callIn("```json\n{\"name\": \"example\"}\n```"));
+    }
+
+    @Test
+    void aCallWithoutItsFenceIsStillACall() {
+        // What a local Harmony model sends: the routing, no fence, and the call mid-sentence.
+        String reply = "Let's replace file content with added methods. to=smide"
+                + " {\"tool\": \"replace_in_file\", \"path\": \"a/B.java\","
+                + " \"find\": \"void x()\", \"replace\": \"void y()\"}<|eot|>";
+
+        String call = AskAgent.callIn(reply);
+
+        assertNotNull(call, "a turn ends half done when this is read as an answer");
+        assertTrue(call.startsWith("{") && call.endsWith("}"), call);
+        assertTrue(call.contains("replace_in_file"), call);
+    }
+
+    @Test
+    void anObjectWithBracesInsideItIsTakenWhole() {
+        String reply = "to=smide {\"tool\": \"write_file\", \"path\": \"A.java\","
+                + " \"content\": \"class A { int x; }\"}";
+
+        String call = AskAgent.callIn(reply);
+
+        assertNotNull(call);
+        assertTrue(call.endsWith("}\"}"), call);
+        assertTrue(call.contains("class A { int x; }"), call);
+    }
+
+    @Test
+    void writingAboutAToolIsNotCallingOne() {
+        assertNull(AskAgent.callIn("The IDE takes {\"tool\": \"not_a_real_tool\"} and ignores it."));
+        assertNull(AskAgent.callIn("It sends a JSON object with a \"tool\" in it."));
+        assertNull(AskAgent.callIn("An unfinished one: {\"tool\": \"build\""));
+    }
+
+    @Test
+    void theControlTokensOfTheModelAreNotForTheReader() {
+        assertEquals("The build fails.", Replies.cleaned("The build fails.<|eot|>"));
+        assertEquals("The build fails.",
+                Replies.cleaned("<|start|>assistant<|message|>The build fails.<|im_end|>"));
+        assertEquals("", Replies.cleaned("<|eot|>"));
+        assertNull(Replies.cleaned(null));
+    }
+
+    @Test
+    void whenTheModelSaysWhichPartIsTheAnswerThatIsTheAnswer() {
+        String harmony = "<|channel|>analysis<|message|>They want the cause, not the fix. Look at"
+                + " the field first.<|end|><|channel|>final<|message|>`total` is never declared.<|eot|>";
+
+        assertEquals("`total` is never declared.", Replies.cleaned(harmony));
+    }
+
+    @Test
+    void asentenceAboutGoingToSomewhereIsLeftAlone() {
+        String said = "Set spring.datasource.url to=jdbc and it connects.";
+
+        assertEquals(said, Replies.cleaned(said));
     }
 
     @Test
