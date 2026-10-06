@@ -416,6 +416,14 @@ public final class MainWindow {
     }
 
     private void refreshRunChooser() {
+        /* Shut before it is rebuilt. Choosing a configuration changes the selection, which brings
+           us back here to redraw the chooser - and clearing the items takes away the very item
+           that was clicked, before the toolkit has finished with it. The menu it was in is then
+           left on screen with nothing to close it, which is what a reader sees: picked a
+           configuration, and the list stayed up. */
+        if (runChooser.isShowing()) {
+            runChooser.hide();
+        }
         runChooser.getItems().clear();
         Optional<RunConfiguration> selected = execution.selectedConfiguration();
         Label label = new Label(selected.map(RunConfiguration::name).orElse("No run configuration"));
