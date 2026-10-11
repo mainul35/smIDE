@@ -98,7 +98,8 @@ final class AskPanel extends BorderPane {
         setCenter(transcript);
 
         input.setPromptText("Ask about this project - why it will not build, where something is done,"
-                + " what to change. Enter sends, Ctrl+Enter starts a line, ``` opens a code block.");
+                + " what to change. Enter sends, Ctrl+Enter starts a line, ``` opens a code block,"
+                + " Ctrl+V pastes a screenshot straight in.");
         input.setPrefRowCount(3);
         input.setWrapText(true);
         input.getStyleClass().add("assistant-question");
@@ -124,7 +125,8 @@ final class AskPanel extends BorderPane {
         Button attach = new Button("📎");
         attach.setTooltip(com.smide.api.ui.Tooltips.of(
                 "Attach a picture to the next question - a screenshot of what is wrong is often"
-                        + " the shortest way to say it. The model has to be one that reads"
+                        + " the shortest way to say it. Ctrl+V in the box does the same with"
+                        + " whatever is on the clipboard. The model has to be one that reads"
                         + " pictures."));
         attach.setOnAction(e -> attachScreenshot());
         attached.getStyleClass().add("assistant-attachment");
@@ -263,13 +265,58 @@ final class AskPanel extends BorderPane {
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(
                 "Pictures", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp"));
         java.io.File file = chooser.showOpenDialog(ide.window().stage());
-        if (file == null) {
-            return;
+        if (file != null) {
+            attach(file.getName(), () -> Attachment.of(file.toPath()));
         }
+    }
+
+    /**
+     * Attaches what is on the clipboard, when what is on the clipboard is a picture.
+     *
+     * <p>Which is how a screenshot is taken: Win+Shift+S, drag a box, and it is on the clipboard
+     * and nowhere else. Asking somebody to save it to a file first and then find that file in a
+     * chooser is three steps to do what one key does everywhere else.
+     *
+     * <p>The pixels are taken here, on the window's thread, because the clipboard belongs to it;
+     * the scaling, the PNG and the base64 all happen off it. True when a picture was found, so
+     * the keystroke is not also pasted as text.
+     */
+    private boolean pasteImage() {
+        javafx.scene.input.Clipboard clipboard = javafx.scene.input.Clipboard.getSystemClipboard();
+        if (clipboard.hasImage()) {
+            javafx.scene.image.Image image = clipboard.getImage();
+            if (image == null || image.getWidth() < 1 || image.getHeight() < 1) {
+                return false;
+            }
+            int width = (int) image.getWidth();
+            int height = (int) image.getHeight();
+            int[] pixels = new int[width * height];
+            image.getPixelReader().getPixels(0, 0, width, height,
+                    javafx.scene.image.PixelFormat.getIntArgbInstance(), pixels, 0, width);
+            attach("pasted picture", () -> Attachment.of(pixels, width, height, "pasted picture"));
+            return true;
+        }
+        /* A file copied in Explorer or Finder is on the clipboard as a file rather than as
+           pixels, and somebody who copied a screenshot file means the same thing by it. */
+        if (clipboard.hasFiles()) {
+            for (java.io.File file : clipboard.getFiles()) {
+                String name = file.getName().toLowerCase(Locale.ROOT);
+                if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")
+                        || name.endsWith(".gif") || name.endsWith(".bmp")) {
+                    attach(file.getName(), () -> Attachment.of(file.toPath()));
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Reads a picture off the window's thread and shows what came of it. */
+    private void attach(String name, java.util.function.Supplier<Attachment> reading) {
         AskConversation conversation = current;
-        status("Reading " + file.getName() + "...");
+        status("Reading " + name + "...");
         ide.window().runInBackground(() -> {
-            Attachment picture = Attachment.of(file.toPath());
+            Attachment picture = reading.get();
             ide.window().runLater(() -> {
                 conversation.attached = picture.isReady() ? picture : null;
                 if (conversation == current) {
@@ -348,6 +395,12 @@ final class AskPanel extends BorderPane {
      * question, and a box that swallows Tab is a box the keyboard cannot get out of.
      */
     private void onKeyInInput(javafx.scene.input.KeyEvent e) {
+        if (e.getCode() == javafx.scene.input.KeyCode.V && (e.isControlDown() || e.isMetaDown())
+                && pasteImage()) {
+            // A picture was on the clipboard and has been attached; nothing to type.
+            e.consume();
+            return;
+        }
         if (e.getCode() == javafx.scene.input.KeyCode.UP || e.getCode() == javafx.scene.input.KeyCode.DOWN) {
             if (recall(e.getCode() == javafx.scene.input.KeyCode.UP)) {
                 e.consume();

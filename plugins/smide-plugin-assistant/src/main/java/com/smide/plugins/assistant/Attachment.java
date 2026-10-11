@@ -47,6 +47,26 @@ record Attachment(String name, String base64, int width, int height, int bytes, 
     }
 
     /**
+     * A picture that was never a file: what was on the clipboard.
+     *
+     * <p>The pixels are read off the clipboard where the clipboard lives, on the window's thread,
+     * and everything after that - the scaling, the PNG, the base64 - happens here, where it can
+     * take as long as it takes.
+     */
+    static Attachment of(int[] argb, int width, int height, String name) {
+        try {
+            if (argb == null || width < 1 || height < 1 || argb.length < width * height) {
+                return failed(name, "the clipboard had a picture that could not be read");
+            }
+            BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            image.setRGB(0, 0, width, height, argb, 0, width);
+            return encoded(image, name);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            return failed(name, "it could not be read: " + e);
+        }
+    }
+
+    /**
      * Reads a picture and makes it ready to send. Blocks: callers are off the window's thread.
      */
     static Attachment of(Path file) {
@@ -63,7 +83,16 @@ record Attachment(String name, String base64, int width, int height, int bytes, 
             if (read == null) {
                 return failed(name, "that is not a picture this IDE can read");
             }
-            BufferedImage image = scaled(read);
+            return encoded(read, name);
+        } catch (IOException | RuntimeException | OutOfMemoryError e) {
+            return failed(name, "it could not be read: " + e);
+        }
+    }
+
+    /** Scaled, written as a PNG and encoded: the last half of both ways in. */
+    private static Attachment encoded(BufferedImage source, String name) {
+        try {
+            BufferedImage image = scaled(source);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             if (!ImageIO.write(image, "png", out)) {
                 return failed(name, "that picture could not be turned into a PNG");
@@ -72,7 +101,7 @@ record Attachment(String name, String base64, int width, int height, int bytes, 
             return new Attachment(name, Base64.getEncoder().encodeToString(png),
                     image.getWidth(), image.getHeight(), png.length, null);
         } catch (IOException | RuntimeException | OutOfMemoryError e) {
-            return failed(name, "it could not be read: " + e);
+            return failed(name, "it could not be turned into a PNG: " + e);
         }
     }
 

@@ -106,4 +106,30 @@ class AttachmentTest {
         assertFalse(attached.isReady());
         assertTrue(attached.problem().contains("no such file"), attached.problem());
     }
+
+    @Test
+    void pixelsOffTheClipboardMakeTheSamePngAsAFileWould() {
+        int width = 60;
+        int height = 40;
+        int[] pixels = new int[width * height];
+        for (int i = 0; i < pixels.length; i++) {
+            pixels[i] = i % 7 == 0 ? 0xFFFF8800 : 0xFF203040;
+        }
+
+        Attachment attached = Attachment.of(pixels, width, height, "pasted picture");
+
+        assertTrue(attached.isReady(), attached.problem());
+        assertEquals(width, attached.width());
+        assertEquals(height, attached.height());
+        byte[] decoded = Base64.getDecoder().decode(attached.base64());
+        assertEquals("PNG", new String(decoded, 1, 3, StandardCharsets.US_ASCII));
+    }
+
+    @Test
+    void aClipboardThatPromisedPixelsAndHadNoneSaysSo() {
+        assertFalse(Attachment.of(null, 10, 10, "pasted picture").isReady());
+        assertFalse(Attachment.of(new int[4], 100, 100, "pasted picture").isReady(),
+                "fewer pixels than the size claims");
+        assertFalse(Attachment.of(new int[4], 0, 0, "pasted picture").isReady());
+    }
 }
