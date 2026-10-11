@@ -65,9 +65,11 @@ final class AskPrompts {
                   project: read the files that matter rather than guessing from their names. Say
                   what you read.
                 - Look in as few steps as you can. `tree` before a string of `list_files`, and one
-                  `read_file` with several paths before several with one each. You have a limited
-                  number of steps for each question and reading a package one file at a time is how
-                  they are wasted.
+                  `read_file` with several paths before several with one each. Take as many steps
+                  as the job needs - nothing is counting them - but every step is a wait for the
+                  developer, and reading a package one file at a time is how an afternoon goes.
+                - If you find yourself asking for something you have already been given, stop and
+                  say what is in the way. Asking again for the same file will get the same file.
                 - When the developer asks why something will not build, build it and read the
                   error. Do not guess at an error you have not seen.
                 - Check your own work. Every time you change a file, build afterwards, and if it

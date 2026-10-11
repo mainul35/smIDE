@@ -27,17 +27,32 @@ import java.util.regex.Pattern;
 public final class AskAgent {
 
     /**
-     * Enough turns to read a few files, build, and fix something; not enough to run all day.
+     * No ceiling. A job takes the steps it takes.
      *
-     * <p>Both of these are settings - {@code assistant.ask.maxSteps} and
-     * {@code assistant.ask.windowChars} - because what is enough depends on the model. A local
-     * one with a small window needs the conversation kept short; a hosted one with a large window
-     * can be let run. The defaults suit the middle.
+     * <p>There was one - sixty steps - and it was wrong in the way every fixed number is wrong:
+     * it stopped work that was going perfectly well, half way through, because somebody had
+     * guessed how long the job would be before knowing what the job was. What ends a turn is the
+     * model answering, the developer pressing Stop, or the work going round in circles, and none
+     * of those is a number.
+     *
+     * <p>{@code assistant.ask.maxSteps} and {@code assistant.ask.minutes} are still settings, for
+     * anybody who wants a ceiling - a metered endpoint, an unattended machine - and zero, the
+     * default, means there is none.
      */
-    private static final int DEFAULT_MAX_STEPS = 60;
-    /** And how long one question may run, whatever it is doing. */
-    private static final int DEFAULT_MINUTES = 15;
+    private static final int DEFAULT_MAX_STEPS = 0;
+    /** And how long one question may run. Zero: as long as it is getting somewhere. */
+    private static final int DEFAULT_MINUTES = 0;
     private static final int DEFAULT_WINDOW_CHARS = 110_000;
+
+    /**
+     * How many steps in a row may do nothing new before the work is called stuck.
+     *
+     * <p>This is what replaces the ceiling. A model that is working asks for something it has not
+     * asked for before; a model that is stuck asks for the same three things in turn, for ever,
+     * and no number of extra steps will get it out. Counting the steps that found nothing new is
+     * the difference between "this is taking a while" and "this is not going anywhere".
+     */
+    private static final int STUCK_AFTER = 10;
 
     /** A fenced block asking for a tool: ```smide { "tool": ... } ``` */
     private static final Pattern CALL = Pattern.compile(
@@ -128,15 +143,17 @@ public final class AskAgent {
         }
     }
 
+    /** The ceiling somebody asked for, or zero: there is none. */
     private int maxSteps() {
-        return Math.max(4, Math.min(100,
-                assistant.ide().settings().getInt("assistant.ask.maxSteps", DEFAULT_MAX_STEPS)));
+        int set = assistant.ide().settings().getInt("assistant.ask.maxSteps", DEFAULT_MAX_STEPS);
+        // Zero passes through: clamping it to a minimum is how "no ceiling" became a ceiling of four.
+        return set <= 0 ? 0 : Math.max(4, Math.min(1000, set));
     }
 
     /** How long one question may take before the answer is asked for. */
     private int minutes() {
-        return Math.max(1, Math.min(120,
-                assistant.ide().settings().getInt("assistant.ask.minutes", DEFAULT_MINUTES)));
+        int set = assistant.ide().settings().getInt("assistant.ask.minutes", DEFAULT_MINUTES);
+        return set <= 0 ? 0 : Math.max(1, Math.min(600, set));
     }
 
     private int windowChars() {
@@ -155,17 +172,19 @@ public final class AskAgent {
         askedToTest = false;
         history.add(new ChatProvider.Message("user", question));
         int steps = maxSteps();
-        long until = System.currentTimeMillis() + minutes() * 60_000L;
+        long until = minutes() <= 0 ? 0 : System.currentTimeMillis() + minutes() * 60_000L;
+        stuck = 0;
         try {
             for (int step = 0; !stopped; step++) {
-                /* The work is finished when the model answers, not when a counter says so. The
-                   limits are here to stop a runaway, and a runaway is a thing that has stopped
-                   getting anywhere - so the model is warned as they approach, told outright when
-                   they are reached, and asked for its answer rather than left to trail off. The
-                   developer should never have to say "carry on" to a thing that was in the middle
-                   of doing what they asked. */
-                boolean lastChance = step >= steps || System.currentTimeMillis() > until;
-                if (step == steps - WARN_BEFORE && !lastChance) {
+                /* The work is finished when the model answers, not when a counter says so. What
+                   stops a turn that is not finishing is the work going round in circles, and a
+                   ceiling only if somebody set one. Either way the model is asked for what it
+                   has rather than left to trail off: nobody should have to say "carry on" to a
+                   thing that was in the middle of doing what they asked. */
+                boolean out = steps > 0 && step >= steps
+                        || until > 0 && System.currentTimeMillis() > until;
+                boolean lastChance = out || stuck >= STUCK_AFTER;
+                if (steps > 0 && step == steps - WARN_BEFORE && !lastChance) {
                     history.add(new ChatProvider.Message("user",
                             "You have " + WARN_BEFORE + " steps left before you must answer."
                                     + " Stop exploring and do the part that matters."));
@@ -185,10 +204,14 @@ public final class AskAgent {
                         continue;
                     }
                     history.add(new ChatProvider.Message("assistant", reply));
-                    listener.answered(lastChance ? reply + tookTooLong(steps) : reply);
+                    listener.answered(lastChance ? reply + stoppedBecause(out, step) : reply);
                     return;
                 }
                 history.add(new ChatProvider.Message("assistant", reply));
+                /* Whether this step found anything the turn did not already have. Asking for
+                   something new is what working looks like; asking again for what it has been
+                   given twice already is what being stuck looks like. */
+                stuck = done.containsKey(call) ? stuck + 1 : 0;
                 if (done.getOrDefault(call, 0) >= 2) {
                     /* Twice is a coincidence, three times is a loop. It happens when a tool keeps
                        failing for a reason the model cannot act on, and it spends the remaining
@@ -295,11 +318,26 @@ public final class AskAgent {
         return speak();
     }
 
-    private String tookTooLong(int steps) {
-        return "\n\n---\n\n*I stopped here after " + steps + " steps"
+    /**
+     * The note under an answer that was asked for rather than offered.
+     *
+     * <p>Two different things, and they want different words. A ceiling was reached: somebody set
+     * one, and the message should say where it is set. The work went round in circles: no ceiling
+     * was involved, nothing is misconfigured, and telling the developer to raise a limit would
+     * send them to fix the wrong thing.
+     */
+    private String stoppedBecause(boolean ceiling, int steps) {
+        if (ceiling) {
+            return "\n\n---\n\n*I stopped here after " + steps + " steps"
+                    + (lastStep == null ? "" : ", the last being " + lastStep)
+                    + ". Ask me to go on and I will pick this up; `assistant.ask.maxSteps` and"
+                    + " `assistant.ask.minutes` in settings.json set that ceiling, and zero"
+                    + " means there is none.*";
+        }
+        return "\n\n---\n\n*I stopped because I was going round in circles: the last "
+                + STUCK_AFTER + " steps asked for things I had already been given"
                 + (lastStep == null ? "" : ", the last being " + lastStep)
-                + ". Ask me to go on and I will pick this up; `assistant.ask.maxSteps` and"
-                + " `assistant.ask.minutes` in settings.json set how far I get in one go.*";
+                + ". Tell me what to try instead and I will pick this up.*";
     }
 
     /** One exchange with the model, blocking until it has finished speaking. */
@@ -555,8 +593,10 @@ public final class AskAgent {
         }
         return null;
     }
-    /** The last step taken, for the message when the steps run out. */
+    /** The last step taken, for the message when the turn is asked to wrap up. */
     private volatile String lastStep;
+    /** How many steps in a row have asked for nothing new; see STUCK_AFTER. */
+    private int stuck;
 
     /** A change the developer says yes or no to, unless they have already said to get on with it. */
     private String write(AskTools.Change change) {

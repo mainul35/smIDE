@@ -271,8 +271,8 @@ marked *project*; where a key exists in both, the project's wins.
 | `assistant.model` | string | `""` | Which model on it |
 | `assistant.reviewScope` | string | `project` | Whether a review may read related files (`project`) or only the open one (`file`) |
 | `assistant.practiceLanguage` | string | any | The language the Practice tab asks about |
-| `assistant.ask.maxSteps` | int | `60` | How many tools one question in Ask may use before it must answer with what it has |
-| `assistant.ask.minutes` | int | `15` | And how long it may take, whatever it is doing |
+| `assistant.ask.maxSteps` | int | `0` | A ceiling on how many tools one question in Ask may use. **0, the default, means none** - a job takes the steps it needs, and what stops a turn is the answer arriving, Stop being pressed, or the work going round in circles. Set a number for a metered endpoint or an unattended machine |
+| `assistant.ask.minutes` | int | `0` | The same as a clock. 0 means no limit |
 | `assistant.ask.windowChars` | int | `110000` | How much of the conversation is kept when talking to the model. Raise it for a model with a large context, lower it for a small local one |
 
 The assistant's addresses, API keys and host allowlist are **not** here: they are in
