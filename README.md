@@ -273,6 +273,8 @@ marked *project*; where a key exists in both, the project's wins.
 | `assistant.practiceLanguage` | string | any | The language the Practice tab asks about |
 | `assistant.ask.maxSteps` | int | `0` | A ceiling on how many tools one question in Ask may use. **0, the default, means none** - a job takes the steps it needs, and what stops a turn is the answer arriving, Stop being pressed, or the work going round in circles. Set a number for a metered endpoint or an unattended machine |
 | `assistant.ask.minutes` | int | `0` | The same as a clock. 0 means no limit |
+| `assistant.router` | bool | `true` | Pick the model for each question rather than always using the one above. The endpoint is asked what it offers; a question with a picture in it is only ever given to a model that reads pictures, and where there is a choice a small model on the same endpoint is asked which one suits the job |
+| `assistant.router.model` | string | *(empty)* | Which model does that choosing. Empty: the smallest one the endpoint offers, since it is one short question |
 | `assistant.ask.windowChars` | int | `110000` | How much of the conversation is kept when talking to the model. Raise it for a model with a large context, lower it for a small local one |
 
 The assistant's addresses, API keys and host allowlist are **not** here: they are in

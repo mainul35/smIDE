@@ -84,6 +84,7 @@ public final class AskAgent {
     private final AskWeb web;
     private final Listener listener;
     private final List<ChatProvider.Message> history = new ArrayList<>();
+    private final ModelRouter router;
     private volatile Assistant.Turn turn;
     private volatile boolean stopped;
     private volatile boolean autonomous;
@@ -93,6 +94,7 @@ public final class AskAgent {
         this.tools = tools;
         this.web = web;
         this.listener = listener;
+        this.router = new ModelRouter(assistant);
     }
 
     /**
@@ -202,6 +204,16 @@ public final class AskAgent {
         askedToBuild = false;
         askedToTest = false;
         forgetPictures();
+        /* Which model answers this one, decided once for the turn rather than for every step:
+           the job does not change half way through, and a question with a picture in it needs a
+           model that reads pictures whatever the settings say. */
+        routedModel = null;
+        boolean hasPicture = images != null && !images.isEmpty();
+        ModelRouter.Routed routed = router.routeFor(question, hasPicture);
+        if (routed.changed()) {
+            routedModel = routed.model();
+            listener.doing("Asking " + routed.model() + " - " + routed.why());
+        }
         history.add(images == null || images.isEmpty()
                 ? new ChatProvider.Message("user", question)
                 : new ChatProvider.Message("user", question, images));
@@ -381,7 +393,7 @@ public final class AskAgent {
         messages.addAll(history);
         CompletableFuture<String> done = new CompletableFuture<>();
         StringBuilder streamed = new StringBuilder();
-        turn = assistant.ask(messages,
+        turn = assistant.ask(messages, routedModel,
                 token -> {
                     streamed.append(token);
                     // A tool call is not for reading: it is shown as the step it turns into.
@@ -627,6 +639,8 @@ public final class AskAgent {
         }
         return null;
     }
+    /** The model this turn was routed to, or null for whatever the settings say. */
+    private volatile String routedModel;
     /** The last step taken, for the message when the turn is asked to wrap up. */
     private volatile String lastStep;
     /** How many steps in a row have asked for nothing new; see STUCK_AFTER. */

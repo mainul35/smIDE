@@ -73,12 +73,24 @@ public final class Assistant {
      */
     public Turn ask(List<ChatProvider.Message> messages, Consumer<String> onToken,
                     Consumer<String> onDone, Consumer<String> onError) {
+        return ask(messages, null, onToken, onDone, onError);
+    }
+
+    /**
+     * The same, on a named model rather than the one in the settings.
+     *
+     * <p>For a turn that has been routed: an endpoint fronting a dozen models has one that reads
+     * pictures and one that writes code, and which of them answers is a decision about the job
+     * rather than a setting. Null means the setting, as before.
+     */
+    public Turn ask(List<ChatProvider.Message> messages, String model, Consumer<String> onToken,
+                    Consumer<String> onDone, Consumer<String> onError) {
         Turn turn = new Turn();
         if (!config.ready()) {
             ide.window().runLater(() -> onError.accept(config.whyNotReady()));
             return turn;
         }
-        AiConfig.Endpoint endpoint = config.endpoint();
+        AiConfig.Endpoint endpoint = on(config.endpoint(), model);
         ide.window().runInBackground(() -> {
             turn.worker = Thread.currentThread();
             try {
@@ -111,6 +123,42 @@ public final class Assistant {
             }
         });
         return turn;
+    }
+
+    /** The same endpoint, with a different model on it. */
+    private static AiConfig.Endpoint on(AiConfig.Endpoint endpoint, String model) {
+        return model == null || model.isBlank() || model.equals(endpoint.model())
+                ? endpoint
+                : new AiConfig.Endpoint(endpoint.name(), endpoint.baseUrl(), model, endpoint.apiKey());
+    }
+
+    /**
+     * One question, one answer, no streaming. Blocks for at most {@code seconds}.
+     *
+     * <p>For the asking that is not the work: which model should do this job. It is a sentence
+     * long and nobody is watching it arrive, so it has none of the machinery of a turn.
+     */
+    public String askOnce(AiConfig.Endpoint endpoint, String model, String question, int seconds) {
+        java.util.concurrent.CompletableFuture<String> answer = new java.util.concurrent.CompletableFuture<>();
+        Thread worker = new Thread(() -> {
+            try {
+                answer.complete(provider.stream(on(endpoint, model),
+                        List.of(new ChatProvider.Message("user", question)), fragment -> { }));
+            } catch (Exception e) {
+                answer.complete(null);
+            }
+        }, "smide-model-choice");
+        worker.setDaemon(true);
+        worker.start();
+        try {
+            return answer.get(seconds, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (Exception e) {
+            worker.interrupt();
+            return null;
+        }
     }
 
     /** The model names the endpoint offers. Blocks; callers are already off the FX thread. */
