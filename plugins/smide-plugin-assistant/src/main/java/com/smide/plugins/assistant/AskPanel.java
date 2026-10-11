@@ -10,7 +10,6 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
@@ -117,10 +116,12 @@ final class AskPanel extends BorderPane {
         copy.setTooltip(com.smide.api.ui.Tooltips.of(
                 "Copies what you have selected, or the whole conversation when nothing is."
                         + " Dragging over the answer selects it; Ctrl+C copies that too."));
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox buttons = new HBox(6, send, stop, clear, copy, spacer, letItFix);
+        javafx.scene.layout.FlowPane buttons = new javafx.scene.layout.FlowPane(6, 6,
+                send, stop, clear, copy, letItFix);
         buttons.setAlignment(Pos.CENTER_LEFT);
+        buttons.setRowValignment(javafx.geometry.VPos.CENTER);
+        keepReadable(send, stop, clear, copy);
+        letItFix.setWrapText(true);
 
         status.getStyleClass().add("muted-small");
         VBox bottom = new VBox(6, approval, input, buttons, status);
@@ -136,6 +137,22 @@ final class AskPanel extends BorderPane {
             }
         });
         followTheWorkspace();
+    }
+
+    /**
+     * Buttons that keep their words.
+     *
+     * <p>The assistant lives in a panel the reader can drag as narrow as they like, and a row of
+     * buttons in a narrow panel is the one part of it that still has to be readable: these are
+     * how a question is sent and how it is stopped. Left in a row that shrinks, every one of them
+     * was squeezed down to "..." - four identical buttons, none saying what it did, at panel
+     * widths people actually use. Told not to go below the width of their own text, they stay
+     * legible and the row wraps onto a second line instead.
+     */
+    private static void keepReadable(javafx.scene.control.Control... controls) {
+        for (javafx.scene.control.Control control : controls) {
+            control.setMinWidth(Region.USE_PREF_SIZE);
+        }
     }
 
     /** The project every question is about: whichever workspace is in front. */

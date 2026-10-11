@@ -115,7 +115,8 @@ public final class Assistant {
 
     /** The model names the endpoint offers. Blocks; callers are already off the FX thread. */
     public List<String> models(AiConfig.Endpoint endpoint) {
-        return provider.listModels(endpoint);
+        List<String> offered = provider.listModels(endpoint);
+        return offered.isEmpty() ? Ollama.models(endpoint, config.ai()) : offered;
     }
 
     /** Proves the host and key work, sending no code at all. Blocks. */

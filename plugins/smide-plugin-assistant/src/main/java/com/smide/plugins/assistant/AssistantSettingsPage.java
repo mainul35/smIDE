@@ -94,6 +94,61 @@ final class AssistantSettingsPage implements SettingsPage {
         result.getStyleClass().add("settings-note");
         result.setWrapText(true);
 
+        /**
+         * What each provider said it offers, so the list is asked for once and not on every
+         * press of the arrow. Cleared for a provider when its address or key is saved, because
+         * that is the moment the answer could be different.
+         */
+        java.util.Map<String, List<String>> offered = new java.util.HashMap<>();
+
+        /* Asks the endpoint what models it has and puts them in the dropdown.
+           The list used to hold exactly one name - the one already saved - so opening it showed
+           the setting back to you and nothing else, and the only way to see what the endpoint
+           actually offers was to know that the button beside it existed. Now the arrow is
+           enough; the button is still there to ask again. */
+        java.util.function.Consumer<Boolean> askForModels = loud -> {
+            String name = provider.getValue() == null ? "" : provider.getValue();
+            AiConfig.Endpoint endpoint = ai.endpoint(name);
+            if (!loud && offered.containsKey(name)) {
+                return;
+            }
+            if (loud) {
+                result.setText("Asking " + endpoint.host() + "...");
+            }
+            ide.window().runInBackground(() -> {
+                List<String> names = assistant.models(endpoint);
+                ide.window().runLater(() -> {
+                    if (!name.equals(provider.getValue() == null ? "" : provider.getValue())) {
+                        // The reader moved on to another provider while this was in the air.
+                        return;
+                    }
+                    offered.put(name, names);
+                    if (names.isEmpty()) {
+                        if (loud) {
+                            result.setText("No model list came back. Check the address, the key,"
+                                    + " and that the host is allowed.");
+                        }
+                        return;
+                    }
+                    /* Whatever is set stays in the list even when the endpoint did not mention
+                       it: a dropdown that quietly drops the model somebody is using is a
+                       setting lost on the next press of OK. */
+                    String chosen = model.getValue();
+                    List<String> all = new java.util.ArrayList<>(names);
+                    if (chosen != null && !chosen.isBlank() && !all.contains(chosen)) {
+                        all.add(0, chosen);
+                    }
+                    model.getItems().setAll(all);
+                    model.setValue(chosen == null || chosen.isBlank() ? names.get(0) : chosen);
+                    if (loud) {
+                        result.setText(names.size() + " models offered by " + endpoint.host() + ".");
+                    }
+                });
+            });
+        };
+        // The arrow asks, the first time it is pressed for a provider.
+        model.setOnShowing(e -> askForModels.accept(false));
+
         Runnable load = () -> {
             String name = provider.getValue();
             AiConfig.Endpoint endpoint = ai.endpoint(name == null ? "" : name);
@@ -182,25 +237,7 @@ final class AssistantSettingsPage implements SettingsPage {
         Button fetchModels = new Button("List models");
         fetchModels.setTooltip(new javafx.scene.control.Tooltip(
                 "Asks the endpoint what it offers. Sends no code."));
-        fetchModels.setOnAction(e -> {
-            String name = provider.getValue();
-            AiConfig.Endpoint endpoint = ai.endpoint(name == null ? "" : name);
-            result.setText("Asking " + endpoint.host() + "...");
-            ide.window().runInBackground(() -> {
-                List<String> names = assistant.models(endpoint);
-                ide.window().runLater(() -> {
-                    if (names.isEmpty()) {
-                        result.setText("No model list came back. Check the address, the key,"
-                                + " and that the host is allowed.");
-                        return;
-                    }
-                    String chosen = model.getValue();
-                    model.getItems().setAll(names);
-                    model.setValue(names.contains(chosen) ? chosen : names.get(0));
-                    result.setText(names.size() + " models offered by " + endpoint.host() + ".");
-                });
-            });
-        });
+        fetchModels.setOnAction(e -> askForModels.accept(true));
 
         Button test = new Button("Test connection");
         test.setOnAction(e -> {
