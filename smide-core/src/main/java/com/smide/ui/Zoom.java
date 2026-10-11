@@ -74,6 +74,8 @@ public final class Zoom {
     }
 
     private final DoubleProperty factor = new SimpleDoubleProperty(DEFAULT);
+    /** The size that was chosen in Settings, as opposed to one reached with the keyboard. */
+    private double baseline = DEFAULT;
     private final Scale scale = new Scale(1, 1, 0, 0);
     private final Pane holder = new Pane();
     private Region content;
@@ -314,7 +316,26 @@ public final class Zoom {
     }
 
     public void reset() {
-        set(DEFAULT);
+        set(baseline);
+    }
+
+    /**
+     * The size the reader chose, which is where this starts and where Ctrl+0 returns to.
+     *
+     * <p>Moves the window to it as well, unless they have zoomed away from it with the keyboard
+     * since - in which case what is on screen is the answer to something they asked for more
+     * recently than this.
+     */
+    public void setBaseline(double value) {
+        double was = baseline;
+        baseline = Math.max(MIN, Math.min(MAX, value));
+        if (Math.abs(factor.get() - was) < 0.001) {
+            set(baseline);
+        }
+    }
+
+    public double baseline() {
+        return baseline;
     }
 
     /** Clamped, and rounded so repeated steps do not drift to 1.2000000000000002. */

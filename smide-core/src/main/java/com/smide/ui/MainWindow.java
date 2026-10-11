@@ -160,6 +160,7 @@ public final class MainWindow {
         // Menus, dialogs and completion lists are windows of their own; they follow.
         zoom.styleWith(ide.theme()::style);
         zoom.followEverything(stage);
+        followInterfaceSize();
 
         // Safe mode is said where it cannot be missed: no plugins means half the IDE is not there.
         stage.setTitle(com.smide.Supervisor.safeMode() ? "smIDE - safe mode" : "smIDE");
@@ -288,6 +289,34 @@ public final class MainWindow {
     private void announceZoom() {
         ide.statusBar().message("Zoom " + zoom.percent() + "   (Ctrl+0 for "
                 + Zoom.percent(Zoom.DEFAULT) + ")");
+    }
+
+    /**
+     * Interface size, from the settings and from then on.
+     *
+     * <p>There were two of these and they never met. Ctrl+plus scaled the window there and then;
+     * the Interface size setting set a property the JavaFX toolkit reads once, before it starts,
+     * and only on Linux - so on Windows choosing a size did nothing at all, and everywhere else
+     * it did nothing until the next start. Both of them are this one zoom now: the setting says
+     * where it starts and where Ctrl+0 goes back to, and changing it is seen at once.
+     *
+     * <p>Ctrl+plus and Ctrl+minus still do not write anything down. A zoom beyond the chosen size
+     * is a reaction to the moment - a screen share, a projector, tired eyes - and finding the IDE
+     * at 200% a week later with no memory of having asked for it is worse than pressing the key
+     * again.
+     */
+    private void followInterfaceSize() {
+        applyInterfaceSize();
+        ide.settings().addListener(key -> {
+            if (UiScale.KEY.equals(key)) {
+                javafx.application.Platform.runLater(this::applyInterfaceSize);
+            }
+        });
+    }
+
+    private void applyInterfaceSize() {
+        double factor = UiScale.factorOf(ide.settings().get(UiScale.KEY, "Auto"), Zoom.DEFAULT);
+        zoom.setBaseline(factor);
     }
 
     /** The window's zoom, for anything that needs to know how large things are drawn. */

@@ -54,10 +54,11 @@ public final class UiScale {
         if (explicit != null) {
              return normalise(explicit);
         }
-        String saved = fromSettings();
-        if (saved != null) {
-            return normalise(saved);
-        }
+        /* The Interface size setting is deliberately not read here any more. It is applied to the
+           window as it runs - at once, on every platform - and applying it to the toolkit as well
+           would scale everything twice over on the one platform where this does anything. What is
+           left here is the desktop's own scaling, which is a different question: how large a
+           window should be next to every other window on that screen. */
         return fromGtk();
     }
 
@@ -108,6 +109,22 @@ public final class UiScale {
             return null;
         }
         return combined > 1.05 ? trim(combined) : null;
+    }
+
+    /**
+     * What the Interface size setting means as a number, for the window to scale itself by.
+     *
+     * <p>"125%" is 1.25 and "Auto" - or anything that is not a size at all - is whatever the
+     * caller says the default is. The same spellings the settings page offers, read in one place
+     * so the page and the window cannot disagree about what "150%" means.
+     */
+    public static double factorOf(String value, double fallback) {
+        String normalised = normalise(value);
+        if (normalised == null) {
+            return fallback;
+        }
+        double factor = number(normalised, 0);
+        return factor > 0 ? factor : fallback;
     }
 
     /** JavaFX takes a number or a percentage; a number is the less ambiguous of the two. */

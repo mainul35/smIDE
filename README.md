@@ -228,7 +228,7 @@ marked *project*; where a key exists in both, the project's wins.
 | Key | Type | Default | What it does |
 |---|---|---|---|
 | `appearance.dark` | boolean | `false` | The dark theme |
-| `ui.scale` | string | `Auto` | Interface scale on Linux: `Auto`, `100%`, `125%`, `150%`, `175%`, `200%`. Read before the toolkit starts, so it needs a restart |
+| `ui.scale` | string | `Auto` | How large the whole interface is drawn: `Auto`, `100%`, `125%`, `150%`, `175%`, `200%`. Applied as soon as it changes, on every platform, and the size Ctrl+0 returns to. `Auto` is smIDE's own default of 120%, on top of whatever scaling the desktop already does. Ctrl+plus and Ctrl+minus change the window without changing this |
 | `session.restore` | boolean | `true` | Reopen the last session's workspaces and files |
 | `explorer.autoscroll` | boolean | `true` | Select the file you are editing in the Project tree |
 

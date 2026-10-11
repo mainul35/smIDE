@@ -212,9 +212,11 @@ public final class SettingsDialog {
                         editor.staged().set(com.smide.ui.UiScale.KEY, b == null ? "Auto" : b));
                 HBox scaleRow = new HBox(8, new Label("Interface size"), scale);
                 scaleRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-                Label scaleNote = new Label("How large the whole interface is drawn. Applies when"
-                        + " smIDE next starts, and only on Linux - Windows and macOS take this"
-                        + " from the system. Auto follows the desktop's own setting.");
+                Label scaleNote = new Label("How large the whole interface is drawn. Applies as"
+                        + " soon as you press Apply, and is where Ctrl+0 goes back to. Auto is"
+                        + " smIDE's own default of " + com.smide.ui.Zoom.percent(
+                                com.smide.ui.Zoom.DEFAULT) + ", on top of whatever scaling your"
+                        + " desktop already does.");
                 scaleNote.getStyleClass().add("settings-note");
                 scaleNote.setWrapText(true);
 
