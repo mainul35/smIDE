@@ -41,6 +41,18 @@ public final class ProblemsToolWindow implements ToolWindowFactory {
         tree.setRoot(root);
         tree.setShowRoot(false);
         tree.setCellFactory(v -> new ProblemCell());
+        /* An error in this list is something to paste somewhere else - into a search, a bug
+           report, a question for the assistant - and it was the one thing that could not leave
+           the window: no menu on the right button, and Ctrl+C did nothing. */
+        tree.getSelectionModel().setSelectionMode(javafx.scene.control.SelectionMode.MULTIPLE);
+        tree.setContextMenu(menu());
+        tree.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() == javafx.scene.input.KeyCode.C
+                    && (e.isControlDown() || e.isMetaDown())) {
+                copySelected();
+                e.consume();
+            }
+        });
         tree.setOnMouseClicked(e -> {
             if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2) {
                 TreeItem<Object> item = tree.getSelectionModel().getSelectedItem();
@@ -53,6 +65,92 @@ public final class ProblemsToolWindow implements ToolWindowFactory {
         pane.getChildren().addAll(empty, tree);
         problems.addAnyChangeListener(this::scheduleRefresh);
         refresh();
+    }
+
+    /**
+     * The right button: copy what is selected, copy the lot, or go to it.
+     *
+     * <p>Built once and kept, with what it offers decided as it opens - a menu whose Copy is
+     * greyed out when nothing is selected says more than one that copies nothing.
+     */
+    private javafx.scene.control.ContextMenu menu() {
+        javafx.scene.control.MenuItem copy = new javafx.scene.control.MenuItem("Copy");
+        copy.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("Shortcut+C"));
+        copy.setOnAction(e -> copySelected());
+
+        javafx.scene.control.MenuItem all = new javafx.scene.control.MenuItem("Copy all problems");
+        all.setOnAction(e -> put(everything()));
+
+        javafx.scene.control.MenuItem open = new javafx.scene.control.MenuItem("Go to it");
+        open.setOnAction(e -> {
+            TreeItem<Object> item = tree.getSelectionModel().getSelectedItem();
+            if (item != null && item.getValue() instanceof Diagnostic d) {
+                ide.editors().open(d.file(), d.startLine(), d.startColumn());
+            } else if (item != null && item.getValue() instanceof Path p) {
+                ide.editors().open(p);
+            }
+        });
+
+        javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu(
+                copy, all, new javafx.scene.control.SeparatorMenuItem(), open);
+        menu.setOnShowing(e -> {
+            boolean something = !tree.getSelectionModel().getSelectedItems().isEmpty();
+            copy.setDisable(!something);
+            open.setDisable(!something);
+            all.setDisable(root.getChildren().isEmpty());
+        });
+        return menu;
+    }
+
+    /** What is selected, as text, one problem per line. */
+    private void copySelected() {
+        StringBuilder out = new StringBuilder();
+        for (TreeItem<Object> item : tree.getSelectionModel().getSelectedItems()) {
+            if (item != null) {
+                out.append(textOf(item.getValue())).append('\n');
+            }
+        }
+        put(out.toString());
+    }
+
+    /** Every problem on screen, under the file each belongs to. */
+    private String everything() {
+        StringBuilder out = new StringBuilder();
+        for (TreeItem<Object> file : root.getChildren()) {
+            out.append(textOf(file.getValue())).append('\n');
+            for (TreeItem<Object> problem : file.getChildren()) {
+                out.append("  ").append(textOf(problem.getValue())).append('\n');
+            }
+        }
+        return out.toString();
+    }
+
+    /**
+     * One row as a line of text.
+     *
+     * <p>Written the way a compiler writes it - path, line, column, then what is wrong - because
+     * that is the form every other tool reads, and because the first thing anybody does with a
+     * copied error is paste it into a search.
+     */
+    static String textOf(Object value) {
+        if (value instanceof Diagnostic d) {
+            return d.file() + ":" + (d.startLine() + 1) + ":" + (d.startColumn() + 1)
+                    + "  " + d.severity().name().toLowerCase(Locale.ROOT) + ": " + d.message()
+                    + (d.source() == null || d.source().isBlank() ? "" : "  [" + d.source() + "]");
+        }
+        if (value instanceof Path p) {
+            return p.toString();
+        }
+        return String.valueOf(value);
+    }
+
+    private void put(String text) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+        content.putString(text.strip());
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
     }
 
     private void scheduleRefresh() {
