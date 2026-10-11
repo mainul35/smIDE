@@ -938,7 +938,41 @@
 .file-tree .tree-cell.vcs-ignored { -fx-text-fill: -smide-vcs-ignored; }
 /* Errors win over version control: a file that does not compile is the more urgent fact. */
 .file-tree .tree-cell.has-errors { -fx-text-fill: -smide-danger; }
-.file-tree .tree-cell.has-errors:selected { -fx-text-fill: -smide-row-selected-text; -fx-underline: true; }
+
+/*
+ * A selected row gives up its own colour for one that can be read on the band it is
+ * sitting on, and which band that is depends on whether the tree has the focus.
+ *
+ * These rules come after the colouring above on purpose: they are no more specific than
+ * it is, and in a tie the last one wins. Without them a modified file stayed teal and a
+ * file with errors stayed white - teal on the pale band is low contrast, and white on it
+ * is nothing at all, which is what the tree looked like the moment it lost focus.
+ */
+.file-tree .tree-cell:selected,
+.file-tree .tree-cell:selected .label,
+.file-tree .tree-cell.vcs-modified:selected,
+.file-tree .tree-cell.vcs-added:selected,
+.file-tree .tree-cell.vcs-conflict:selected,
+.file-tree .tree-cell.vcs-ignored:selected {
+    -fx-text-fill: -smide-text;
+    -fx-opacity: 1;
+}
+
+.file-tree:focused .tree-cell:selected,
+.file-tree:focused .tree-cell:selected .label,
+.file-tree:focused .tree-cell.vcs-modified:selected,
+.file-tree:focused .tree-cell.vcs-added:selected,
+.file-tree:focused .tree-cell.vcs-conflict:selected,
+.file-tree:focused .tree-cell.vcs-ignored:selected {
+    -fx-text-fill: -smide-row-selected-text;
+}
+
+/* The underline stays either way: it is what says "this one does not compile". */
+.file-tree .tree-cell.has-errors:selected { -fx-text-fill: -smide-text; -fx-underline: true; }
+.file-tree:focused .tree-cell.has-errors:selected {
+    -fx-text-fill: -smide-row-selected-text;
+    -fx-underline: true;
+}
 .tab.tab-errors .tab-label { -fx-text-fill: -smide-danger; }
 .code-area .diag-warning { -fx-underline: true; }
 .code-area .diag-info { -fx-underline: true; -fx-opacity: 0.9; }
@@ -1589,6 +1623,29 @@
 }
 
 /* What a change would do to a file, shown before it is made. */
+/* The picture waiting to go with the next question, and the way to change your mind
+   about it. Quiet: it is a note about what is already decided, not a thing to press. */
+.assistant-attachment {
+    -fx-font-size: 11px;
+    -fx-text-fill: -smide-text-muted;
+    -fx-background-color: -smide-surface-alt;
+    -fx-background-radius: 3px;
+    -fx-padding: 2 8 2 8;
+}
+
+.assistant-attachment-remove {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -smide-text-muted;
+    -fx-font-size: 11px;
+    -fx-padding: 0 4 0 4;
+    -fx-cursor: hand;
+}
+
+.assistant-attachment-remove:hover {
+    -fx-text-fill: -smide-danger;
+}
+
 .assistant-change-preview {
     -fx-font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", monospace;
     -fx-font-size: 12px;

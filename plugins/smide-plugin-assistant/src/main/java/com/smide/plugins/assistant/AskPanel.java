@@ -12,8 +12,10 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -56,6 +58,9 @@ final class AskPanel extends BorderPane {
     private final Waiting waiting = new Waiting(status);
     private final Label where = new Label();
     private final VBox approval = new VBox(6);
+    /** What picture is going with the next question, and the way to change your mind. */
+    private final Label attached = new Label();
+    private final HBox attachedRow = new HBox(6);
 
     /**
      * One conversation for each project, and the one on screen.
@@ -116,15 +121,34 @@ final class AskPanel extends BorderPane {
         copy.setTooltip(com.smide.api.ui.Tooltips.of(
                 "Copies what you have selected, or the whole conversation when nothing is."
                         + " Dragging over the answer selects it; Ctrl+C copies that too."));
+        Button attach = new Button("📎");
+        attach.setTooltip(com.smide.api.ui.Tooltips.of(
+                "Attach a picture to the next question - a screenshot of what is wrong is often"
+                        + " the shortest way to say it. The model has to be one that reads"
+                        + " pictures."));
+        attach.setOnAction(e -> attachScreenshot());
+        attached.getStyleClass().add("assistant-attachment");
+        Button unattach = new Button("x");
+        unattach.getStyleClass().add("assistant-attachment-remove");
+        unattach.setTooltip(com.smide.api.ui.Tooltips.of("Send the question without it"));
+        unattach.setOnAction(e -> {
+            current.attached = null;
+            showAttachment();
+        });
+        attachedRow.getChildren().setAll(attached, unattach);
+        attachedRow.getStyleClass().add("assistant-attachment-row");
+        attachedRow.setAlignment(Pos.CENTER_LEFT);
+        attachedRow.setVisible(false);
+        attachedRow.setManaged(false);
         javafx.scene.layout.FlowPane buttons = new javafx.scene.layout.FlowPane(6, 6,
-                send, stop, clear, copy, letItFix);
+                send, stop, clear, copy, attach, letItFix);
         buttons.setAlignment(Pos.CENTER_LEFT);
         buttons.setRowValignment(javafx.geometry.VPos.CENTER);
-        keepReadable(send, stop, clear, copy);
+        keepReadable(send, stop, clear, copy, attach);
         letItFix.setWrapText(true);
 
         status.getStyleClass().add("muted-small");
-        VBox bottom = new VBox(6, approval, input, buttons, status);
+        VBox bottom = new VBox(6, approval, attachedRow, input, buttons, status);
         bottom.setPadding(new Insets(6, 10, 10, 10));
         setBottom(bottom);
 
@@ -226,6 +250,46 @@ final class AskPanel extends BorderPane {
 
     // --------------------------------------------------------------- asking
 
+    /**
+     * Picks a picture to go with the next question.
+     *
+     * <p>Read and re-encoded off the window's thread: a screenshot is a few megabytes, and the
+     * reading, the scaling and the base64 of it are all slow enough to be felt if they happen
+     * where the window is drawn.
+     */
+    private void attachScreenshot() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Attach a picture to the question");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(
+                "Pictures", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp"));
+        java.io.File file = chooser.showOpenDialog(ide.window().stage());
+        if (file == null) {
+            return;
+        }
+        AskConversation conversation = current;
+        status("Reading " + file.getName() + "...");
+        ide.window().runInBackground(() -> {
+            Attachment picture = Attachment.of(file.toPath());
+            ide.window().runLater(() -> {
+                conversation.attached = picture.isReady() ? picture : null;
+                if (conversation == current) {
+                    showAttachment();
+                    status(picture.isReady()
+                            ? "Attached " + picture.describe() + ". It goes with your next question."
+                            : "Could not attach " + picture.describe() + ".");
+                }
+            });
+        });
+    }
+
+    /** Shows what is attached, or takes the row away when nothing is. */
+    private void showAttachment() {
+        Attachment picture = current.attached;
+        attached.setText(picture == null ? "" : "📎  " + picture.describe());
+        attachedRow.setVisible(picture != null);
+        attachedRow.setManaged(picture != null);
+    }
+
     private void ask() {
         String question = input.getText() == null ? "" : input.getText().strip();
         if (question.isEmpty() || root == null) {
@@ -255,10 +319,21 @@ final class AskPanel extends BorderPane {
         conversation.questions.add(question);
         recalled = -1;
         conversation.said.append("\n\n### You asked\n\n").append(question).append("\n\n");
+        /* The picture goes with this question and no other: it was attached to say what this one
+           is about. The transcript says it went, because a conversation that mentions a window
+           nobody can see later reads as nonsense. */
+        Attachment picture = conversation.attached;
+        List<String> images = picture != null && picture.isReady()
+                ? List.of(picture.base64()) : List.of();
+        if (!images.isEmpty()) {
+            conversation.said.append("*with ").append(picture.describe()).append(" attached*\n\n");
+        }
+        conversation.attached = null;
+        showAttachment();
         redraw();
         working(true);
         waiting.start(fixing ? "Working on it" : "Thinking");
-        ide.window().runInBackground(() -> agent.ask(question));
+        ide.window().runInBackground(() -> agent.ask(question, images));
     }
 
     /**

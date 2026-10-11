@@ -115,6 +115,25 @@ public final class AskAgent {
         refused.clear();
     }
 
+    /**
+     * Takes the pictures out of what has been said before.
+     *
+     * <p>A picture stays for the turn it came with - the agent reads files and builds things in
+     * between, and the screenshot is usually the thing being worked on - and goes once that turn
+     * is over. Every request carries the whole conversation, so a picture left in it is uploaded
+     * again with every question for the rest of the afternoon: the one that was 300 KB the first
+     * time is 300 KB the twentieth time too, for a model that has already described it.
+     */
+    private void forgetPictures() {
+        for (int i = 0; i < history.size(); i++) {
+            ChatProvider.Message said = history.get(i);
+            if (said.images() != null && !said.images().isEmpty()) {
+                history.set(i, new ChatProvider.Message(said.role(),
+                        said.content() + "\n\n(a picture was attached to this question)"));
+            }
+        }
+    }
+
     /** What the model has been told so far, for the conversation to keep between sessions. */
     List<ChatProvider.Message> history() {
         return List.copyOf(history);
@@ -163,6 +182,18 @@ public final class AskAgent {
 
     /** Asks, and works until there is an answer. Runs on the caller's thread: not the window's. */
     public void ask(String question) {
+        ask(question, List.of());
+    }
+
+    /**
+     * Asks, with pictures.
+     *
+     * <p>They go on the question itself and nowhere else: a screenshot was attached to say what
+     * this question is about, and every turn after it is about what the tools found. It stays in
+     * the conversation the model sees for as long as the turn lasts, because the thing in the
+     * picture is usually the thing being worked on.
+     */
+    public void ask(String question, List<String> images) {
         stopped = false;
         done.clear();
         changedSomething = false;
@@ -170,7 +201,10 @@ public final class AskAgent {
         tested = false;
         askedToBuild = false;
         askedToTest = false;
-        history.add(new ChatProvider.Message("user", question));
+        forgetPictures();
+        history.add(images == null || images.isEmpty()
+                ? new ChatProvider.Message("user", question)
+                : new ChatProvider.Message("user", question, images));
         int steps = maxSteps();
         long until = minutes() <= 0 ? 0 : System.currentTimeMillis() + minutes() * 60_000L;
         stuck = 0;

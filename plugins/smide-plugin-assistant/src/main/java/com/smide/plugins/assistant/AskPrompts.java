@@ -14,6 +14,30 @@ final class AskPrompts {
     private AskPrompts() {
     }
 
+    /**
+     * What the model is allowed to do to the project, said in terms of what actually happens.
+     *
+     * <p>This used to read "Do not change a file unless the developer asks you to fix it", and
+     * models read it as a cage: they announced that "tools are blocked", described the edit they
+     * would have made, and stopped - so the card that would have asked the developer never
+     * appeared, and the developer was never asked anything. They were not blocked. Every change
+     * goes through a card showing exactly what would be written, and nothing is written until
+     * they press the button; saying so plainly is both true and the thing that makes it work.
+     */
+    static String permission(boolean autonomous) {
+        if (autonomous) {
+            return "The developer has asked you to carry the fix out, so make the changes, then"
+                    + " build and test them and say what happened.";
+        }
+        return "You can still change files when that is what the question calls for: write_file,"
+                + " replace_in_file and delete_file each stop and show the developer exactly what"
+                + " would change, and nothing is written unless they accept it. Propose the change"
+                + " through the tool rather than printing it and asking them to type it in - and"
+                + " never say you are unable to change files, because you are not. What you must"
+                + " not do is go further than the question: one person's \"why does this fail\" is"
+                + " not permission to rewrite the rest of the project.";
+    }
+
     static String system(AskTools tools, AskWeb web, boolean autonomous) {
         return """
                 You are the assistant inside smIDE, a desktop IDE, answering questions about the
@@ -101,11 +125,7 @@ final class AskPrompts {
                 Building it runs: %s
                 Testing it runs: %s
                 """.formatted(
-                        autonomous
-                                ? "The developer has asked you to carry the fix out, so make the changes,"
-                                        + " then build and test them and say what happened."
-                                : "Then stop. Do not change a file unless the developer asks you to"
-                                        + " fix it; answering is not a licence to edit.",
+                        permission(autonomous),
                         web.canSearch()
                                 ? "Search the web when the answer depends on something outside this"
                                         + " project - a library's behaviour, a version, an error nobody"

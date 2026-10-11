@@ -68,6 +68,14 @@ final class AskConversation {
     final List<String> questions = new ArrayList<>();
     /** A question typed but not sent, so switching away and back does not lose it. */
     String draft = "";
+    /**
+     * A picture chosen for the next question, and not yet sent with one.
+     *
+     * <p>Never written to disk. What is kept of a conversation is what was said; a megabyte of
+     * base64 per screenshot would make the file unreadable and take an afternoon's work with it
+     * when the time came to trim the transcript.
+     */
+    transient Attachment attached;
     /** What the model is saying this moment; never saved, because it is not said yet. */
     String streaming = "";
     /** The agent, made when the first question is asked and kept for the rest of them. */
