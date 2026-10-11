@@ -773,6 +773,11 @@ final class AskPanel extends BorderPane {
                     case CONFIG -> "Set up the ";
                 } + change.relativeTo(root));
         what.getStyleClass().add("assistant-file");
+        /* Wrapped, not cut off. This line is a command to be run or a path to be written, and
+           both are long: a label that ends in "..." asks somebody to agree to something it has
+           stopped showing them. It is the one line on this card that must be read in full. */
+        what.setWrapText(true);
+        what.setMaxWidth(Double.MAX_VALUE);
 
         /* Whichever of the two sides this change has. A new file has what would go in it, a
            changed one has the lines that differ, and a file about to be removed has only what is
@@ -787,7 +792,10 @@ final class AskPanel extends BorderPane {
         TextArea preview = new TextArea(shown);
         preview.setEditable(false);
         preview.setPrefRowCount(Math.min(14, Math.max(3, (int) shown.lines().count() + 1)));
-        preview.setWrapText(false);
+        /* A command and a list of settings wrap; a file's lines do not. Code is read down the
+           left edge and a diff is read by its + and - columns, so wrapping those would be worse
+           than scrolling them. A command line has no columns to keep and is read end to end. */
+        preview.setWrapText(command || change.kind() == AskTools.Change.Kind.CONFIG);
         preview.getStyleClass().add("assistant-change-preview");
 
         Button apply = new Button(switch (change.kind()) {
