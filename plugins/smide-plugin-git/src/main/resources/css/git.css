@@ -38,6 +38,14 @@
     -fx-font-size: 12.5px;
 }
 
+/* Why a commit did not happen, under the box it was typed in and above the button
+   that was pressed - which is where the eyes already are. */
+.git-commit-problem {
+    -fx-text-fill: -smide-danger;
+    -fx-font-size: 11px;
+    -fx-padding: 0 2 0 2;
+}
+
 .git-status-letter {
     -fx-font-family: "Consolas", "Cascadia Mono", monospace;
     -fx-font-weight: bold;

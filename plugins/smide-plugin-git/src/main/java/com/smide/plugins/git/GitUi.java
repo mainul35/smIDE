@@ -62,6 +62,40 @@ public final class GitUi {
         write(title, work, null);
     }
 
+    /**
+     * The same, with somewhere better than a corner to put the bad news.
+     *
+     * <p>A balloon in the corner is right for something that happened elsewhere, and wrong for
+     * the answer to a button that was just pressed: eyes are on the button, and "nothing to
+     * commit, stage something first" arriving six inches away reads as nothing happening at all.
+     * When a caller says where to put it, it goes there and not into a notification.
+     */
+    public void write(String title, Runnable work, Runnable onDone, Consumer<String> onProblem) {
+        ide.window().runInBackground(() -> {
+            try {
+                work.run();
+                ide.window().runLater(() -> {
+                    ide.statusBar().message("Git: " + title);
+                    git.notifyChanged();
+                    if (onProblem != null) {
+                        onProblem.accept(null);
+                    }
+                    if (onDone != null) {
+                        onDone.run();
+                    }
+                });
+            } catch (RuntimeException e) {
+                // A GitException already says it in words; anything else has to say what it is.
+                String said = e instanceof GitException ? e.getMessage() : String.valueOf(e);
+                if (onProblem == null) {
+                    ide.window().runLater(() -> ide.notifications().error("Git: " + title, said));
+                } else {
+                    ide.window().runLater(() -> onProblem.accept(said));
+                }
+            }
+        });
+    }
+
     public void write(String title, Runnable work, Runnable onDone) {
         ide.window().runInBackground(() -> {
             try {

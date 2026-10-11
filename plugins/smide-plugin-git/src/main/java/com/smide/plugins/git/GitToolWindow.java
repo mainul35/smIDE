@@ -59,6 +59,8 @@ public final class GitToolWindow implements ToolWindowFactory {
     private final TreeItem<Object> changesRoot = new TreeItem<>();
     private final TextArea message = new TextArea();
     private final CheckBox amend = new CheckBox("Amend");
+    /** Why the last Commit did not happen, shown beside the button rather than in a corner. */
+    private final Label commitProblem = new Label();
     private final Label branchLabel = new Label();
     private final DiffView changesDiff;
     private final StackPane changesPane = new StackPane();
@@ -128,7 +130,16 @@ public final class GitToolWindow implements ToolWindowFactory {
         HBox buttons = new HBox(6, amend, new Region(), commit, commitPush);
         HBox.setHgrow(buttons.getChildren().get(1), Priority.ALWAYS);
         buttons.setAlignment(Pos.CENTER_LEFT);
-        VBox commitBox = new VBox(6, message, buttons);
+        /* Beside the button that caused it. A commit that cannot happen - nothing staged, no
+           message, a hook that said no - is the answer to something just pressed, and an answer
+           in the far corner of the screen is one nobody connects to the press. */
+        commitProblem.getStyleClass().add("git-commit-problem");
+        commitProblem.setWrapText(true);
+        commitProblem.setVisible(false);
+        commitProblem.setManaged(false);
+        // Typing is somebody dealing with it; the complaint goes when they start.
+        message.textProperty().addListener((o, was, now) -> say(null));
+        VBox commitBox = new VBox(6, message, commitProblem, buttons);
         commitBox.setPadding(new Insets(6));
 
         // A split rather than a BorderPane bottom: the tool window is short, and a
@@ -258,18 +269,32 @@ public final class GitToolWindow implements ToolWindowFactory {
     private void commit(boolean push) {
         String text = message.getText();
         if (text == null || text.isBlank()) {
-            ide.statusBar().message("Enter a commit message first");
+            say("Type a commit message first.");
             message.requestFocus();
             return;
         }
-        ui.activeRoot().ifPresent(root -> ui.write("committed", () -> ui.git().commit(root, text, amend.isSelected()),
+        if (ui.activeRoot().isEmpty()) {
+            say("This project is not in a git repository.");
+            return;
+        }
+        ui.activeRoot().ifPresent(root -> ui.write("committed",
+                () -> ui.git().commit(root, text, amend.isSelected()),
                 () -> {
                     message.clear();
                     amend.setSelected(false);
                     if (push) {
                         GitCommands.push(ide, root);
                     }
-                }));
+                },
+                this::say));
+    }
+
+    /** Says why a commit did not happen, where the person who pressed Commit is looking. */
+    private void say(String problem) {
+        boolean something = problem != null && !problem.isBlank();
+        commitProblem.setText(something ? problem : "");
+        commitProblem.setVisible(something);
+        commitProblem.setManaged(something);
     }
 
     /** Focus the commit message, for the Commit action. */
