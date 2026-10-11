@@ -487,7 +487,8 @@ public final class AskAgent {
     private static final java.util.Set<String> TOOLS = java.util.Set.of(
             "project_info", "list_files", "tree", "read_file", "find_text", "problems", "build",
             "test", "run", "run_configs", "set_run_config", "web_search", "fetch_url",
-            "write_file", "replace_in_file", "delete_file");
+            "write_file", "replace_in_file", "delete_file",
+            "git", "git_status", "git_log", "git_diff", "git_branches");
 
     /** Does what the call asks for, and says what happened. */
     private String run(String json) {
@@ -526,6 +527,30 @@ public final class AskAgent {
             }
             case "problems" -> {
                 return step("Reading the problems", tools::problems);
+            }
+            case "git_status" -> {
+                return step("Reading what git says", tools::gitStatus);
+            }
+            case "git_log" -> {
+                int count = call.has("count") && call.get("count").isJsonPrimitive()
+                        ? call.get("count").getAsInt() : 10;
+                return step("Reading the last commits", () -> tools.gitLog(count));
+            }
+            case "git_diff" -> {
+                boolean staged = call.has("staged") && call.get("staged").isJsonPrimitive()
+                        && call.get("staged").getAsBoolean();
+                return step("Reading what has changed", () -> tools.gitDiff(path, staged));
+            }
+            case "git_branches" -> {
+                return step("Reading the branches", tools::gitBranches);
+            }
+            case "git" -> {
+                List<String> arguments = strings(call, "arguments");
+                if (arguments.isEmpty()) {
+                    return "A git command needs arguments, as a list of words:"
+                            + " {\"tool\": \"git\", \"arguments\": [\"checkout\", \"-b\", \"develop\"]}";
+                }
+                return git(arguments);
             }
             case "run_configs" -> {
                 return step("Reading how this project is run", tools::runConfigurations);
@@ -677,6 +702,53 @@ public final class AskAgent {
         tested = false;
         listener.did(what, outcome);
         return outcome;
+    }
+
+    /**
+     * A git command that changes something, once the developer has agreed to it.
+     *
+     * <p>Reading from git - the status, a log, a diff - happens like any other reading. Changing
+     * it does not: a commit joins the project's history and a push leaves the machine, and
+     * neither is something to discover afterwards.
+     *
+     * <p>A push always asks, even when the developer has said to get on with the task. "Let it
+     * change files for this task" is about this project on this disk; sending that work to a
+     * server other people pull from is a different thing to agree to, and the one action here
+     * that nobody can quietly undo.
+     */
+    private String git(List<String> arguments) {
+        String what = String.join(" ", arguments);
+        boolean pushing = !arguments.isEmpty() && arguments.get(0).equalsIgnoreCase("push");
+        boolean changes = pushing || CHANGES_GIT.contains(arguments.get(0).toLowerCase(java.util.Locale.ROOT));
+        if (changes && !(autonomous && !pushing) && !allowed("git " + what, pushing)) {
+            return pushing
+                    ? "The developer did not agree to push. Nothing has left this machine."
+                    : "The developer did not agree to run that.";
+        }
+        if (pushing) {
+            pushed = true;
+        }
+        return step("Running git " + what, () -> tools.git(arguments, "git " + what));
+    }
+
+    /** Git commands that change something, as opposed to asking it a question. */
+    private static final java.util.Set<String> CHANGES_GIT = java.util.Set.of(
+            "add", "commit", "push", "pull", "fetch", "merge", "rebase", "checkout", "switch",
+            "branch", "reset", "revert", "restore", "stash", "tag", "cherry-pick", "clean", "rm", "mv");
+
+    /** Whether a push has happened this turn, so the answer can say so. */
+    private volatile boolean pushed;
+
+    /** Puts a command in front of the developer and waits. */
+    private boolean allowed(String command, boolean pushing) {
+        AskTools.Change asking = new AskTools.Change(AskTools.Change.Kind.COMMAND,
+                tools.root(), null, pushing ? command + "\n\n(this sends work off this machine)"
+                        : command);
+        try {
+            return listener.approve(asking).join();
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /**

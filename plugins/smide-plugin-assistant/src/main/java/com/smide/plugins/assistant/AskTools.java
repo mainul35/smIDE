@@ -591,6 +591,102 @@ public final class AskTools {
         return onWindow(() -> write(change), "Could not write " + relative(change.file()));
     }
 
+    // ------------------------------------------------------------------ version control
+
+    /** How much of a diff or a log is worth sending; past this it is the shape, not the detail. */
+    private static final int GIT_CHARS = 20_000;
+    private static final long GIT_SECONDS = 30;
+
+    /** Whether this project is in a git repository at all. */
+    public boolean isRepository() {
+        return !capture(List.of("git", "rev-parse", "--is-inside-work-tree")).startsWith("git ");
+    }
+
+    /**
+     * What git says about the project right now: the branch, and what has changed.
+     *
+     * <p>Porcelain, which is git's own word for the format meant to be read by something other
+     * than a person, and which says the same thing in the same way whatever version is installed.
+     */
+    public String gitStatus() {
+        String branch = capture(List.of("git", "rev-parse", "--abbrev-ref", "HEAD")).strip();
+        String status = capture(List.of("git", "status", "--porcelain=v1", "--branch"));
+        String remotes = capture(List.of("git", "remote", "-v"));
+        return "On branch: " + branch + "\n\nChanges (git status --porcelain):\n"
+                + (status.isBlank() ? "(nothing changed)\n" : status)
+                + "\nRemotes:\n" + (remotes.isBlank() ? "(none)\n" : remotes)
+                + "\nThe letters: M changed, A added, D removed, ?? not tracked. The first column"
+                + " is the index, the second the working tree.";
+    }
+
+    /** What the last few commits were, for a message that reads like the ones around it. */
+    public String gitLog(int count) {
+        return capture(List.of("git", "log", "--oneline", "--decorate", "-n",
+                String.valueOf(Math.max(1, Math.min(50, count <= 0 ? 10 : count)))));
+    }
+
+    /** What would be committed, or what has changed in one file. */
+    public String gitDiff(String relative, boolean staged) {
+        List<String> command = new ArrayList<>(List.of("git", "diff"));
+        if (staged) {
+            command.add("--staged");
+        }
+        if (relative != null && !relative.isBlank()) {
+            command.add("--");
+            command.add(relative);
+        }
+        String diff = capture(command);
+        return diff.isBlank() ? "(no differences)" : diff;
+    }
+
+    /** The branches there are, and which one is current. */
+    public String gitBranches() {
+        return capture(List.of("git", "branch", "--all", "--verbose"));
+    }
+
+    /**
+     * Runs a git command in the console, where the developer can see what it did.
+     *
+     * <p>Anything that changes the repository goes through here rather than through {@link
+     * #capture}: committing and pushing are things to be able to point at afterwards, and a
+     * console tab is how every other command in this IDE accounts for itself.
+     */
+    public String git(List<String> arguments, String title) {
+        List<String> command = new ArrayList<>(List.of("git"));
+        command.addAll(arguments);
+        return run(command, root, title);
+    }
+
+    /**
+     * Runs a command and brings back what it said, without a console tab.
+     *
+     * <p>For the asking rather than the doing. A status, a log and a diff are read by the model
+     * and then thrown away; a tab for each would bury the ones that matter - the build, the run -
+     * under a pile of questions nobody asked to see.
+     */
+    private String capture(List<String> command) {
+        try {
+            ProcessBuilder builder = new ProcessBuilder(
+                    com.smide.api.execution.Executables.runnable(command))
+                    .directory(root.toFile())
+                    .redirectErrorStream(true);
+            Process process = builder.start();
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (!process.waitFor(GIT_SECONDS, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return String.join(" ", command) + " did not finish in " + GIT_SECONDS + " seconds.";
+            }
+            return output.length() > GIT_CHARS
+                    ? output.substring(0, GIT_CHARS) + "\n... the rest is left out ..."
+                    : output;
+        } catch (IOException e) {
+            return command.get(0) + " could not be run here: " + e.getMessage();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "Interrupted.";
+        }
+    }
+
     // ------------------------------------------------------- how the project is run
 
     /** Where a run configuration's settings are written for the card to show. */
