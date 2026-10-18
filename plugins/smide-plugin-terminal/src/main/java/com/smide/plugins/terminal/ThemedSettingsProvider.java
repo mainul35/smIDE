@@ -42,6 +42,7 @@ final class ThemedSettingsProvider extends DefaultSettingsProvider {
     private volatile TerminalColor background;
     private volatile TextStyle selection;
     private volatile float fontSize;
+    private volatile TerminalPalette palette = TerminalPalette.LIGHT;
 
     ThemedSettingsProvider(Ide ide) {
         this.ide = ide;
@@ -55,6 +56,27 @@ final class ThemedSettingsProvider extends DefaultSettingsProvider {
         TerminalColor selectionBackground = color("selection", 0xd5, 0xe5, 0xf2);
         selection = new TextStyle(foreground, selectionBackground);
         fontSize = Math.max(6, ide.settings().getInt(FONT_SIZE_KEY, DEFAULT_FONT_SIZE));
+        palette = TerminalPalette.forTheme(isDark());
+    }
+
+    private boolean isDark() {
+        try {
+            return ide.theme().isDark();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * The sixteen colours, chosen for the background they are drawn on.
+     *
+     * <p>Left to itself JediTerm paints with xterm's palette, which was chosen for a black
+     * terminal: on smIDE's light background its yellow - git's commit hashes, npm's warnings -
+     * was a word written in highlighter.
+     */
+    @Override
+    public com.jediterm.terminal.emulator.ColorPalette getTerminalColorPalette() {
+        return palette;
     }
 
     /** The current default text style, for pushing into an already-running terminal. */
