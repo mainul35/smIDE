@@ -93,7 +93,10 @@ a row per step, branches side by side, loops bowed out to the left, conditional 
 from the calls themselves, as they are typed. Clicking a node goes to the function it runs. A
 node nothing leads to is drawn dashed and said so in the file, along with an edge to a node that
 is not there, a name added twice, a graph with no way in, and interrupting with no checkpointer.
-`langgraph.json` is checked where it is written: a graph pointing at a file that has been
+A graph written across a Jupyter notebook's cells is drawn as well: the code cells are joined in
+the order they run, the prose left out, and clicking a node goes to the cell it was written in -
+a notebook has no editor of its own here, so the problems above are underlined in `.py` files
+only. `langgraph.json` is checked where it is written: a graph pointing at a file that has been
 renamed, an attribute that is no longer there, a dependency folder that does not exist. The dev
 server, `build` and `up` are run configurations; so is invoking one graph, which runs it in the
 project's own interpreter, prints what each node writes, and stops at breakpoints in the nodes.

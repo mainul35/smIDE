@@ -29,7 +29,7 @@ class GraphLayoutTest {
     void aStraightGraphIsOneBoxPerRow() {
         GraphLayout.Placed placed = place(STRAIGHT);
         assertEquals(List.of("0:0 START", "1:0 plan", "2:0 act", "3:0 END"),
-                GraphToolWindow.labels(placed));
+                placed.labels());
         assertEquals(4, placed.rows());
         assertEquals(1, placed.lanes());
         assertFalse(placed.unknownTargets());
@@ -119,7 +119,7 @@ class GraphLayoutTest {
         String python = STRAIGHT.replace("builder.add_edge(\"act\", END)", "builder.add_edge(\"act\", \"gone\")");
         GraphLayout.Placed placed = place(python);
         assertTrue(placed.links().stream().noneMatch(link -> link.to().equals("gone")));
-        assertEquals(List.of("0:0 START", "1:0 plan", "2:0 act"), GraphToolWindow.labels(placed));
+        assertEquals(List.of("0:0 START", "1:0 plan", "2:0 act"), placed.labels());
     }
 
     @Test
@@ -142,7 +142,7 @@ class GraphLayoutTest {
                 """;
         GraphChecks.Graph graph = GraphChecks.graphsIn(python).get(0);
         assertEquals("plan_step", graph.functions.get("plan"));
-        int at = GraphToolWindow.definition(python, "plan_step");
+        int at = Offsets.definition(python, "plan_step");
         assertEquals("plan_step", python.substring(at, at + "plan_step".length()));
     }
 
@@ -158,13 +158,13 @@ class GraphLayoutTest {
                 builder.add_edge("plan", END)
                 """;
         assertEquals("plan", GraphChecks.graphsIn(python).get(0).functions.get("plan"));
-        assertTrue(GraphToolWindow.definition(python, "plan") >= 0);
+        assertTrue(Offsets.definition(python, "plan") >= 0);
     }
 
     @Test
     void whatIsNotAFunctionInThisFile() {
-        assertEquals(-1, GraphToolWindow.definition(STRAIGHT, "plan"));
-        assertEquals(-1, GraphToolWindow.definition(STRAIGHT, null));
-        assertEquals(-1, GraphToolWindow.definition("def planning():\n    pass\n", "plan"));
+        assertEquals(-1, Offsets.definition(STRAIGHT, "plan"));
+        assertEquals(-1, Offsets.definition(STRAIGHT, null));
+        assertEquals(-1, Offsets.definition("def planning():\n    pass\n", "plan"));
     }
 }

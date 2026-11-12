@@ -72,6 +72,8 @@ public final class GraphToolWindow implements ToolWindowFactory {
     /** The editor being watched, and the listener watching it, so it can be let go of. */
     private TextEditor watching;
     private Consumer<String> watcher;
+    /** The cells of the notebook being looked at, or null when it is a plain Python file. */
+    private Notebook.Code notebook;
     private List<GraphChecks.Graph> current = List.of();
     private ToolWindowContext context;
 
@@ -144,7 +146,8 @@ public final class GraphToolWindow implements ToolWindowFactory {
         watching = null;
         watcher = null;
         TextEditor text = editor == null ? null : editor.asText().orElse(null);
-        if (text == null || !com.smide.api.util.ProjectFiles.hasExtension(editor.path(), "py")) {
+        if (text == null || !(com.smide.api.util.ProjectFiles.hasExtension(editor.path(), "py")
+                || Notebook.isNotebook(editor.path()))) {
             // Keep the last graph up: looking at a test file should not empty the window.
             return;
         }
@@ -155,7 +158,11 @@ public final class GraphToolWindow implements ToolWindowFactory {
     }
 
     /** Re-reads the graphs of a file, keeping the one being looked at selected if it is still there. */
-    private void read(String python) {
+    private void read(String contents) {
+        // A notebook is read as the Python in its code cells; anything else is Python already.
+        notebook = watching != null && Notebook.isNotebook(watching.path())
+                ? Notebook.code(contents) : null;
+        String python = notebook == null ? contents : notebook.text();
         List<GraphChecks.Graph> found = GraphChecks.graphsIn(python);
         current = found;
         List<String> names = found.stream().map(graph -> graph.variable).toList();
@@ -210,10 +217,17 @@ public final class GraphToolWindow implements ToolWindowFactory {
         if (context != null) {
             context.setTitle("Graph (" + nodes + ")");
         }
+        List<String> notes = new ArrayList<>();
+        if (notebook != null) {
+            notes.add("Read from this notebook's code cells, joined in the order they run."
+                    + " Problems in a graph are only underlined in a .py file - a notebook has no editor"
+                    + " to underline them in.");
+        }
         if (placed.unknownTargets()) {
-            note.setText("Some edges are decided while the graph runs, and are not drawn:"
+            notes.add("Some edges are decided while the graph runs, and are not drawn:"
                     + " a router with no mapping, or a name that comes from a variable.");
         }
+        note.setText(String.join(" ", notes));
     }
 
     /** Where a box sits: rows down the window, its row's boxes centred across it. */
@@ -249,9 +263,7 @@ public final class GraphToolWindow implements ToolWindowFactory {
         group.setPrefSize(BOX_WIDTH, BOX_HEIGHT);
 
         if (box.kind() == GraphLayout.Kind.NODE) {
-            Tooltip tip = new Tooltip(box.reachable()
-                    ? box.name() + " - click to go to it"
-                    : box.name() + " - nothing leads to it");
+            Tooltip tip = new Tooltip(box.name() + " - " + (box.reachable() ? where(box) : "nothing leads to it"));
             tip.setShowDelay(Duration.millis(300));
             Tooltip.install(group, tip);
             group.setCursor(javafx.scene.Cursor.HAND);
@@ -331,44 +343,57 @@ public final class GraphToolWindow implements ToolWindowFactory {
 
     // ------------------------------------------------------------- going to the code
 
+    /** What clicking a node will do, as the tooltip says it. */
+    private String where(GraphLayout.Box box) {
+        if (notebook == null) {
+            return "click to go to it";
+        }
+        return cellOf(box).map(cell -> "written in cell " + (cell.index() + 1) + " - click to go to it")
+                .orElse("written in a cell this file no longer points at");
+    }
+
+    /** The cell a node was written in, when the file being looked at is a notebook. */
+    private Optional<Notebook.Cell> cellOf(GraphLayout.Box box) {
+        if (notebook == null || box.offset() < 0) {
+            return Optional.empty();
+        }
+        return notebook.cellAt(python(box)).filter(cell -> cell.at() >= 0);
+    }
+
+    /** Where this node is in the Python that was read, which for a notebook is the joined cells. */
+    private int python(GraphLayout.Box box) {
+        String code = notebook == null ? watching == null ? "" : watching.text() : notebook.text();
+        int definition = Offsets.definition(code,
+                chosen().map(graph -> graph.functions.get(box.name())).orElse(null));
+        return definition >= 0 ? definition : box.offset();
+    }
+
     /**
      * Opens the node's own function where the file names one, and the call that adds it
      * otherwise - the function is what a reader clicking a node is looking for.
+     *
+     * <p>In a notebook, the offsets are into the joined code cells and mean nothing in the file
+     * on screen, which is the notebook's JSON. What can be pointed at honestly is the cell, so
+     * that is what the caret goes to: the line the cell's source begins on.
      */
     private void goTo(GraphLayout.Box box) {
         TextEditor editor = watching;
         if (editor == null) {
             return;
         }
-        Path file = editor.path();
-        String text = editor.text();
-        int offset = definition(text, chosen().map(graph -> graph.functions.get(box.name())).orElse(null));
-        if (offset < 0) {
-            offset = box.offset();
-        }
+        int offset = python(box);
         if (offset < 0) {
             return;
         }
-        int[] where = Offsets.lineColumn(text, offset);
-        ide.editors().open(file, where[0], where[1]);
+        if (notebook != null) {
+            Notebook.Cell cell = cellOf(box).orElse(null);
+            if (cell == null) {
+                return;
+            }
+            offset = cell.at();
+        }
+        int[] at = Offsets.lineColumn(editor.text(), offset);
+        ide.editors().open(editor.path(), at[0], at[1]);
     }
 
-    /** Where a function is defined in this file, or -1. */
-    static int definition(String text, String function) {
-        if (function == null || function.isBlank()) {
-            return -1;
-        }
-        Matcher found = Pattern.compile("(?m)^\\s*(?:async\\s+)?def\\s+(" + Pattern.quote(function) + ")\\s*\\(")
-                .matcher(text);
-        return found.find() ? found.start(1) : -1;
-    }
-
-    /** The boxes as they would be drawn, for anything that wants to know without a window. */
-    static List<String> labels(GraphLayout.Placed placed) {
-        List<String> out = new ArrayList<>();
-        for (GraphLayout.Box box : placed.boxes()) {
-            out.add(box.row() + ":" + box.lane() + " " + box.label());
-        }
-        return out;
-    }
 }

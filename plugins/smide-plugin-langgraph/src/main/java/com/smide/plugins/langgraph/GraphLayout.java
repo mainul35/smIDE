@@ -63,6 +63,11 @@ final class GraphLayout {
         int width(int row) {
             return (int) boxes.stream().filter(b -> b.row() == row).count();
         }
+
+        /** The boxes as {@code row:lane label}, for saying what a drawing would look like. */
+        List<String> labels() {
+            return boxes.stream().map(box -> box.row() + ":" + box.lane() + " " + box.label()).toList();
+        }
     }
 
     private GraphLayout() {
