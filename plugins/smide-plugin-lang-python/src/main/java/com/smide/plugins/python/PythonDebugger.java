@@ -29,7 +29,18 @@ import java.util.concurrent.TimeUnit;
  * from a copy in smIDE's tools folder, one for each Python version - so debugging never
  * installs anything into the reader's own environments.
  */
-final class PythonDebugger implements Debugger {
+public final class PythonDebugger implements Debugger {
+
+    /** Run configuration kinds of other plugins that start Python the way this debugger expects. */
+    private static final java.util.Set<String> ALSO = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * Debugs configurations of this kind too: they start the interpreter through
+     * {@link #command}, waiting for this debugger, as a Python script does.
+     */
+    public static void alsoDebug(String runTypeId) {
+        ALSO.add(runTypeId);
+    }
 
     @Override
     public String id() {
@@ -38,7 +49,8 @@ final class PythonDebugger implements Debugger {
 
     @Override
     public boolean supports(RunConfiguration configuration) {
-        return PythonRunType.ID.equals(configuration.type().id());
+        String type = configuration.type().id();
+        return PythonRunType.ID.equals(type) || ALSO.contains(type);
     }
 
     @Override
@@ -56,7 +68,7 @@ final class PythonDebugger implements Debugger {
      *
      * @param run the interpreter and what it would run, as {@code [python, -u, script, args...]}
      */
-    static CommandRunType.Command command(Ide ide, CommandRunType.Config configuration, Path interpreter,
+    public static CommandRunType.Command command(Ide ide, CommandRunType.Config configuration, Path interpreter,
                                           List<String> run, Path directory, Map<String, String> environment)
             throws CannotRunException {
         Map<String, String> env = new java.util.LinkedHashMap<>(environment);

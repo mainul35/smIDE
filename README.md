@@ -136,6 +136,7 @@ On Windows, `run.ps1` does both steps.
 | `smide-plugin-terminal` | Terminal tool window |
 | `smide-plugin-lang-kotlin` | Kotlin, kotlin-language-server, kotlinc scripts and files outside Gradle/Maven |
 | `smide-plugin-lang-python` | Python, pyright, projects (pyproject/requirements/Pipfile), scripts/modules/pytest |
+| `smide-plugin-langgraph` | LangGraph: langgraph.json checked as it is written, the dev server and a graph invoked from the run list, unreachable nodes and unknown edges before compiling |
 | `smide-plugin-lang-web` | JavaScript, TypeScript, HTML, CSS, JSON, package.json projects and npm scripts |
 | `smide-plugin-lang-config` | YAML, XML, TOML, properties, INI, dotenv, ignore files |
 | `smide-plugin-lang-shell` | Shell, PowerShell, batch, and running scripts of each |

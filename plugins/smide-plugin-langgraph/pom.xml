@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.smide</groupId>
+        <artifactId>smide-plugins</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>smide-plugin-langgraph</artifactId>
+    <name>smIDE LangGraph Plugin</name>
+    <description>LangGraph: langgraph.json, the dev server, invoking a graph, and what is wrong with a graph before it is compiled.</description>
+
+    <dependencies>
+        <!-- Built on the Python plugin: its interpreter, its virtual environments and debugpy.
+             Provided, because that plugin is there at runtime (depends=com.smide.lang.python). -->
+        <dependency>
+            <groupId>com.smide</groupId>
+            <artifactId>smide-plugin-lang-python</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>
