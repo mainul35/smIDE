@@ -74,8 +74,12 @@ public final class GraphChecks {
     record Node(String name, int start, int end) {
     }
 
-    /** One edge, and where the name of the end that can be wrong is written. */
-    record Edge(String from, String to, int start, int end) {
+    /**
+     * One edge, and where the name of the end that can be wrong is written.
+     *
+     * @param conditional whether a function decides at run time whether this edge is taken
+     */
+    record Edge(String from, String to, int start, int end, boolean conditional) {
     }
 
     /** A graph built in a file: the variable it is built on, and what was added to it. */
@@ -84,6 +88,10 @@ public final class GraphChecks {
         final int at;
         final List<Node> nodes = new ArrayList<>();
         final List<Edge> edges = new ArrayList<>();
+        /** The function each node runs, where the call names one, for going to it from the picture. */
+        final Map<String, String> functions = new LinkedHashMap<>();
+        /** Names written as the source of an edge, which must be nodes even where the edge is not known. */
+        final List<Node> sources = new ArrayList<>();
         /** Nodes something leads away from, even where where it leads cannot be read. */
         final Set<String> leadsAway = new LinkedHashSet<>();
         /** Whether some edge's target could not be read - a mapping built at runtime, a list. */
@@ -94,6 +102,20 @@ public final class GraphChecks {
         Graph(String variable, int at) {
             this.variable = variable;
             this.at = at;
+        }
+
+        /**
+         * Each edge once: what the picture draws.
+         *
+         * <p>An edge is held twice over, once per end, so that a wrong name can be reported
+         * wherever it is written. A drawing wants the edge itself.
+         */
+        List<Edge> drawn() {
+            Map<String, Edge> once = new LinkedHashMap<>();
+            for (Edge edge : edges) {
+                once.putIfAbsent(edge.from() + '\u0000' + edge.to(), edge);
+            }
+            return List.copyOf(once.values());
         }
     }
 
@@ -125,15 +147,15 @@ public final class GraphChecks {
                 case "add_edge" -> addEdge(text, args, graph);
                 case "add_conditional_edges" -> addConditional(text, args, graph, 0);
                 case "set_entry_point" -> endpoint(text, args, 0).ifPresent(
-                        to -> graph.edges.add(new Edge(START, to.name(), to.start(), to.end())));
+                        to -> graph.edges.add(new Edge(START, to.name(), to.start(), to.end(), false)));
                 case "set_finish_point" -> endpoint(text, args, 0).ifPresent(from -> {
-                    graph.edges.add(new Edge(from.name(), END, from.start(), from.end()));
+                    graph.edges.add(new Edge(from.name(), END, from.start(), from.end(), false));
                     graph.leadsAway.add(from.name());
                 });
                 case "set_conditional_entry_point" -> {
                     // No source: the mapping's targets are reached from START.
                     for (Node to : mapped(text, args, 1)) {
-                        graph.edges.add(new Edge(START, to.name(), to.start(), to.end()));
+                        graph.edges.add(new Edge(START, to.name(), to.start(), to.end(), true));
                     }
                 }
                 case "compile" -> {
@@ -158,6 +180,11 @@ public final class GraphChecks {
         Optional<Node> quoted = literalIn(text, first);
         if (quoted.isPresent()) {
             graph.nodes.add(quoted.get());
+            // add_node("plan", plan_step): the picture can lead to plan_step itself.
+            if (args.size() > 1) {
+                identifierIn(text, args.get(1)).ifPresent(function -> graph.functions.put(quoted.get().name(),
+                        function.name().substring(function.name().lastIndexOf('.') + 1)));
+            }
             return;
         }
         // add_node(my_node): the node is named after the function, module prefix dropped.
@@ -166,6 +193,7 @@ public final class GraphChecks {
             String simple = full.substring(full.lastIndexOf('.') + 1);
             int at = written.end() - simple.length();
             graph.nodes.add(new Node(simple, at, written.end()));
+            graph.functions.put(simple, simple);
         });
     }
 
@@ -181,8 +209,8 @@ public final class GraphChecks {
             return;
         }
         // Once reported on the target, which is the end usually wrong, and once on the source.
-        graph.edges.add(new Edge(from.get().name(), to.get().name(), to.get().start(), to.get().end()));
-        graph.edges.add(new Edge(from.get().name(), to.get().name(), from.get().start(), from.get().end()));
+        graph.edges.add(new Edge(from.get().name(), to.get().name(), to.get().start(), to.get().end(), false));
+        graph.edges.add(new Edge(from.get().name(), to.get().name(), from.get().start(), from.get().end(), false));
     }
 
     private static void addConditional(String text, List<int[]> args, Graph graph, int source) {
@@ -197,10 +225,10 @@ public final class GraphChecks {
             graph.unknownTargets = true;
         }
         for (Node to : targets) {
-            graph.edges.add(new Edge(from.get().name(), to.name(), to.start(), to.end()));
+            graph.edges.add(new Edge(from.get().name(), to.name(), to.start(), to.end(), true));
         }
         // The source itself is worth checking even when the mapping cannot be read.
-        graph.edges.add(new Edge(from.get().name(), from.get().name(), from.get().start(), from.get().end()));
+        graph.sources.add(from.get());
     }
 
     /** The quoted name written as an argument, where a quoted name is all there is. */
@@ -291,13 +319,20 @@ public final class GraphChecks {
         if (names.isEmpty()) {
             return;
         }
+        List<int[]> written = new ArrayList<>();
         for (Edge edge : graph.edges) {
-            String written = text.substring(edge.start(), edge.end());
-            String name = written.equals("START") || written.equals("END") ? null : written;
-            if (name == null || names.contains(name) || name.equals(START) || name.equals(END)) {
+            written.add(new int[] {edge.start(), edge.end()});
+        }
+        for (Node source : graph.sources) {
+            written.add(new int[] {source.start(), source.end()});
+        }
+        for (int[] span : written) {
+            String name = text.substring(span[0], span[1]);
+            if (name.equals("START") || name.equals("END") || names.contains(name)
+                    || name.equals(START) || name.equals(END)) {
                 continue;
             }
-            out.add(at(file, text, edge.start(), edge.end(), Diagnostic.Severity.ERROR,
+            out.add(at(file, text, span[0], span[1], Diagnostic.Severity.ERROR,
                     "This graph has no node called " + name + ". Its nodes are "
                             + String.join(", ", names) + ".", Diagnostic.UNRESOLVED));
         }
@@ -429,8 +464,8 @@ public final class GraphChecks {
 
     private static Diagnostic at(Path file, String text, int start, int end, Diagnostic.Severity severity,
                                  String message, String code) {
-        int[] from = Text.lineColumn(text, start);
-        int[] until = Text.lineColumn(text, Math.max(end, start + 1));
+        int[] from = Offsets.lineColumn(text, start);
+        int[] until = Offsets.lineColumn(text, Math.max(end, start + 1));
         return new Diagnostic(file, from[0], from[1], until[0], until[1], severity, message, SOURCE, code);
     }
 }

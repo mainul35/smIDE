@@ -208,8 +208,8 @@ public final class LangGraphJson {
 
     static Diagnostic at(Path file, String text, int start, int end, Diagnostic.Severity severity,
                          String message, String code) {
-        int[] from = Text.lineColumn(text, start);
-        int[] to = Text.lineColumn(text, Math.max(end, start + 1));
+        int[] from = Offsets.lineColumn(text, start);
+        int[] to = Offsets.lineColumn(text, Math.max(end, start + 1));
         return new Diagnostic(file, from[0], from[1], to[0], to[1], severity, message, SOURCE, code);
     }
 }

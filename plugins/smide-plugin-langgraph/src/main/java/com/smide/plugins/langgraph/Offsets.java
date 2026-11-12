@@ -1,9 +1,9 @@
 package com.smide.plugins.langgraph;
 
 /** Where an offset in a file is, as a line and a column. */
-final class Text {
+final class Offsets {
 
-    private Text() {
+    private Offsets() {
     }
 
     /** The zero-based line and column of an offset. */

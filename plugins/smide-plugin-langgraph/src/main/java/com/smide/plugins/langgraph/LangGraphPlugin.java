@@ -22,6 +22,8 @@ public final class LangGraphPlugin implements Plugin {
         PythonDebugger.alsoDebug(LangGraphRunType.ID);
         context.registerSettingsPage(
                 new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/LangGraph", cli));
+        // The graph beside the file that builds it, drawn from the calls as they are typed.
+        context.registerToolWindow(new GraphToolWindow(context.ide()));
 
         // langgraph.json: a graph pointing at a file that is not there, a dependency that is not.
         ManifestChecks.watch(context.ide(), LangGraphJson.SOURCE, LangGraphJson::isConfig, LangGraphJson::problemsIn);

@@ -88,6 +88,16 @@ and answers up, and they are still there after the IDE has been closed and opene
 choose (anything OpenAI-compatible, including a local Ollama), and the host allowlist means code
 cannot be sent anywhere you have not agreed to.
 
+**LangGraph.** A Graph tool window draws the graph the open file builds - START at the top,
+a row per step, branches side by side, loops bowed out to the left, conditional edges dashed -
+from the calls themselves, as they are typed. Clicking a node goes to the function it runs. A
+node nothing leads to is drawn dashed and said so in the file, along with an edge to a node that
+is not there, a name added twice, a graph with no way in, and interrupting with no checkpointer.
+`langgraph.json` is checked where it is written: a graph pointing at a file that has been
+renamed, an attribute that is no longer there, a dependency folder that does not exist. The dev
+server, `build` and `up` are run configurations; so is invoking one graph, which runs it in the
+project's own interpreter, prints what each node writes, and stops at breakpoints in the nodes.
+
 **Markdown.** MDViewer embedded as a plugin: raw, split and preview modes with its own
 renderer, stylesheet, PlantUML, Mermaid and charts.
 
@@ -136,7 +146,7 @@ On Windows, `run.ps1` does both steps.
 | `smide-plugin-terminal` | Terminal tool window |
 | `smide-plugin-lang-kotlin` | Kotlin, kotlin-language-server, kotlinc scripts and files outside Gradle/Maven |
 | `smide-plugin-lang-python` | Python, pyright, projects (pyproject/requirements/Pipfile), scripts/modules/pytest |
-| `smide-plugin-langgraph` | LangGraph: langgraph.json checked as it is written, the dev server and a graph invoked from the run list, unreachable nodes and unknown edges before compiling |
+| `smide-plugin-langgraph` | LangGraph: the Graph tool window, langgraph.json and graph checks as they are typed, the dev server and invoking a graph |
 | `smide-plugin-lang-web` | JavaScript, TypeScript, HTML, CSS, JSON, package.json projects and npm scripts |
 | `smide-plugin-lang-config` | YAML, XML, TOML, properties, INI, dotenv, ignore files |
 | `smide-plugin-lang-shell` | Shell, PowerShell, batch, and running scripts of each |
