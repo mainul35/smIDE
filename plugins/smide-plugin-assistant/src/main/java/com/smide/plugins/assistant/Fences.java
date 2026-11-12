@@ -37,7 +37,24 @@ final class Fences {
             Map.entry("properties", "properties"), Map.entry("dockerfile", "Dockerfile"),
             Map.entry("docker", "Dockerfile"), Map.entry("groovy", "gradle"),
             Map.entry("text", "md"), Map.entry("markdown", "md"), Map.entry("md", "md"),
-            Map.entry("theory", "md"));
+            Map.entry("theory", "md"),
+            // The rest of what a model writes after a fence. A word that is a language's
+            // own id - powershell, batch, cmake, ini, toml - is found without being here;
+            // these are the ones where the word and the extension are different, and
+            // every one of them was coming out as plain grey text.
+            Map.entry("plaintext", "md"), Map.entry("txt", "md"),
+            Map.entry("ps1", "ps1"), Map.entry("pwsh", "ps1"),
+            Map.entry("bat", "bat"), Map.entry("cmd", "bat"), Map.entry("batchfile", "bat"),
+            Map.entry("fish", "sh"), Map.entry("ksh", "sh"), Map.entry("shell-session", "sh"),
+            Map.entry("mjs", "js"), Map.entry("cjs", "js"), Map.entry("node", "js"),
+            Map.entry("kts", "kts"), Map.entry("sass", "sass"), Map.entry("less", "less"),
+            Map.entry("vue", "vue"), Map.entry("svelte", "svelte"),
+            Map.entry("jsonc", "jsonc"), Map.entry("json5", "json5"),
+            Map.entry("svg", "svg"), Map.entry("pom", "pom"), Map.entry("gradle", "gradle"),
+            Map.entry("cc", "cpp"), Map.entry("cxx", "cpp"), Map.entry("hpp", "cpp"),
+            Map.entry("h", "c"), Map.entry("objc", "c"),
+            Map.entry("py3", "py"), Map.entry("python3", "py"), Map.entry("env", "env"),
+            Map.entry("golang-mod", "go.mod"), Map.entry("gomod", "go.mod"));
 
     private Fences() {
     }

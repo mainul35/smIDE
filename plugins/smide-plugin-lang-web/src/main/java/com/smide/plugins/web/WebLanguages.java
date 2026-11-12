@@ -1,5 +1,6 @@
 package com.smide.plugins.web;
 
+import com.smide.api.lang.EmbeddedHighlighter;
 import com.smide.api.lang.GenericLexer;
 import com.smide.api.lang.Highlighter;
 import com.smide.api.lang.LanguageServerLauncher;
@@ -7,6 +8,7 @@ import com.smide.api.lang.LanguageSupport;
 import com.smide.api.lang.RegexHighlighter;
 import com.smide.api.lang.TokenType;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -63,18 +65,24 @@ final class WebLanguages {
         }
     }
 
+    /**
+     * JavaScript's colouring, named because HTML wants it too: what sits between
+     * {@code <script>} and {@code </script>} is this language and not markup.
+     */
+    static final Highlighter JAVASCRIPT = GenericLexer.builder()
+            .keywords(JS_KEYWORDS)
+            .types("Array", "Object", "String", "Number", "Boolean", "Symbol", "BigInt", "Promise", "Map",
+                    "Set", "WeakMap", "WeakSet", "Date", "RegExp", "Error", "JSON", "Math", "console",
+                    "document", "window", "globalThis", "process", "require", "module", "exports")
+            .constants("true", "false", "null", "undefined", "NaN", "Infinity")
+            .lineComment("//").blockComment("/*", "*/").docComment("/**")
+            .rawString("`", "`")
+            .identifierDollar(true).typeByCase(true)
+            .build();
+
     static final class JavaScript extends ScriptLanguage {
         JavaScript(LanguageServerLauncher launcher) {
-            super(GenericLexer.builder()
-                    .keywords(JS_KEYWORDS)
-                    .types("Array", "Object", "String", "Number", "Boolean", "Symbol", "BigInt", "Promise", "Map",
-                            "Set", "WeakMap", "WeakSet", "Date", "RegExp", "Error", "JSON", "Math", "console",
-                            "document", "window", "globalThis", "process", "require", "module", "exports")
-                    .constants("true", "false", "null", "undefined", "NaN", "Infinity")
-                    .lineComment("//").blockComment("/*", "*/").docComment("/**")
-                    .rawString("`", "`")
-                    .identifierDollar(true).typeByCase(true)
-                    .build(), launcher);
+            super(JAVASCRIPT, launcher);
         }
 
         @Override
@@ -135,16 +143,28 @@ final class WebLanguages {
     }
 
     static final class Html implements LanguageSupport {
-        private static final Highlighter HIGHLIGHTER = new RegexHighlighter()
+        /** The markup itself. The script and style bodies never reach it. */
+        private static final Highlighter MARKUP = new RegexHighlighter()
                 .rule("(?s)<!--.*?(-->|\\z)", TokenType.COMMENT)
-                .rule("(?s)<script\\b[^>]*>.*?(</script>|\\z)", TokenType.CODE)
-                .rule("(?s)<style\\b[^>]*>.*?(</style>|\\z)", TokenType.CODE)
                 .rule("<!DOCTYPE[^>]*>", TokenType.PREPROCESSOR)
                 .rule("</?[A-Za-z][\\w:-]*", TokenType.TAG)
                 .rule("[A-Za-z_:][\\w:.-]*(?=\\s*=)", TokenType.ATTRIBUTE)
                 .rule("\"[^\"]*\"|'[^']*'", TokenType.STRING)
                 .rule("&[a-zA-Z#0-9]+;", TokenType.ESCAPE)
                 .rule("/?>", TokenType.TAG);
+
+        /**
+         * Markup outside, JavaScript and CSS inside.
+         *
+         * <p>The tags themselves stay HTML's, because they are HTML's syntax; what they
+         * wrap is not, and painting it in one flat colour told a reader nothing they could
+         * not already see.
+         */
+        private static final Highlighter HIGHLIGHTER = new EmbeddedHighlighter(MARKUP, List.of(
+                EmbeddedHighlighter.Island.between(
+                        "<script\\b[^>]*>", "</script\\s*>", () -> JAVASCRIPT),
+                EmbeddedHighlighter.Island.between(
+                        "<style\\b[^>]*>", "</style\\s*>", () -> Css.HIGHLIGHTER)));
 
         private final LanguageServerLauncher launcher;
 
@@ -198,11 +218,16 @@ final class WebLanguages {
                 .rule("(?s)/\\*.*?(\\*/|\\z)", TokenType.COMMENT)
                 .rule("\"[^\"\\n]*\"|'[^'\\n]*'", TokenType.STRING)
                 .rule("@[a-zA-Z-]+", TokenType.KEYWORD)
+                // Colours before selectors, and only at the lengths a colour comes in:
+                // #ff0000 begins with a letter, so the rule for #id was taking it and
+                // painting it as a selector, while #4a9eff - the same colour written with
+                // a digit first - fell through to the number rule. The same thing, two
+                // colours, depending on which hex digit happened to come first.
+                .rule("#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})(?![\\w-])", TokenType.NUMBER)
                 .rule("[.#][A-Za-z_-][\\w-]*", TokenType.TAG)
                 .rule("[$@][A-Za-z_-][\\w-]*", TokenType.VARIABLE)
                 .rule("--[A-Za-z_-][\\w-]*", TokenType.VARIABLE)
                 .rule("[A-Za-z-]+(?=\\s*:)", TokenType.ATTRIBUTE)
-                .rule("#[0-9a-fA-F]{3,8}\\b", TokenType.NUMBER)
                 .rule("\\b\\d+(\\.\\d+)?(px|em|rem|%|vh|vw|s|ms|fr|pt|deg)?\\b", TokenType.NUMBER)
                 .rule("::?[a-zA-Z-]+", TokenType.FUNCTION);
 
