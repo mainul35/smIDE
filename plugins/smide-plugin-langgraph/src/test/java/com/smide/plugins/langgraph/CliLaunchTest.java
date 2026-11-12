@@ -99,4 +99,36 @@ class CliLaunchTest {
                 : List.of("true");
         assertFalse(CliLaunch.works(silent));
     }
+
+    @Test
+    void aPolicyRefusingTheFileIsToldFromTheFileNotBeingThere() {
+        // What Windows actually said when Smart App Control refused a pip launcher.
+        assertTrue(CliLaunch.refusal(new java.io.IOException(
+                "Cannot run program \"langgraph.exe\": CreateProcess error=4551,"
+                        + " An Application Control policy has blocked this file")));
+        // The older group-policy refusal.
+        assertTrue(CliLaunch.refusal(new java.io.IOException("CreateProcess error=1260, blocked")));
+        // Not there is not the same thing, and installing it would fix it.
+        assertFalse(CliLaunch.refusal(new java.io.IOException(
+                "Cannot run program \"x.exe\": CreateProcess error=2,"
+                        + " The system cannot find the file specified")));
+        assertFalse(CliLaunch.refusal(new java.io.IOException("something else entirely")));
+        assertFalse(CliLaunch.refusal(new java.io.IOException((String) null)));
+    }
+
+    @Test
+    void aRefusalIsFoundHoweverDeeplyItIsWrapped() {
+        Throwable wrapped = new RuntimeException("could not start",
+                new java.io.IOException("CreateProcess error=4551, blocked"));
+        assertTrue(CliLaunch.refusal(wrapped));
+    }
+
+    @Test
+    void somethingAskedAboutTwiceIsOnlyStartedOnce() {
+        CliLaunch.forget();
+        List<String> missing = List.of("langgraph-that-is-not-installed-anywhere", "--help");
+        assertFalse(CliLaunch.works(missing));
+        // Within the forgetting time the remembered no is used rather than starting anything.
+        assertFalse(CliLaunch.works(missing));
+    }
 }

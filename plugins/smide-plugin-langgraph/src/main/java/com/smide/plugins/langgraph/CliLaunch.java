@@ -1,6 +1,7 @@
 package com.smide.plugins.langgraph;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,6 +28,14 @@ import java.util.function.Predicate;
  * {@link #works} is the part that has to start something, and remembers what it learnt: a
  * blocked launcher stays blocked, while something that is merely not installed yet is asked
  * about again a couple of minutes later, so installing it does not need the IDE restarted.
+ *
+ * <p>That distinction is the whole of why {@link Outcome} has three values rather than being a
+ * boolean. Windows raises a notification every time it refuses a program, so asking a blocked
+ * launcher again every couple of minutes does not merely waste a process - it puts a warning on
+ * the user's screen every couple of minutes, about their own IDE, for as long as the IDE is
+ * open. A refusal is also the one answer that cannot change while the file does not: the
+ * policy is about what the file is, not about what is installed. So a refusal is remembered
+ * for as long as the file is the one that was refused, and no longer.
  */
 final class CliLaunch {
 
@@ -42,13 +51,40 @@ final class CliLaunch {
      */
     static final List<List<String>> MODULE_FORMS = List.of(List.of("-m", "langgraph_cli"));
 
-    /** How long a no is believed; a yes is believed for good. */
+    /** How long a no is believed; a yes, and a refusal, are believed for good. */
     private static final Duration FORGET = Duration.ofMinutes(2);
+
+    /**
+     * What Windows says when a policy refuses a program, as it reaches us through the exception
+     * message - 4551 is Smart App Control, 1260 the older group-policy refusal.
+     *
+     * <p>Matching on the text of a message is not something to do lightly. It is done here
+     * because the alternative is worse: Java gives a plain {@link IOException} for every failure
+     * to start, so without the code in the message a refusal cannot be told from a file that is
+     * not there, and the two want opposite answers - one is permanent, the other is exactly what
+     * installing the thing would fix. If a future Java carries the code some better way, this
+     * should use it instead.
+     */
+    private static final List<String> REFUSED_CODES = List.of("error=4551", "error=1260");
 
     private static final Map<String, Attempt> TRIED = new ConcurrentHashMap<>();
 
-    /** What was learnt about one command, and when. */
-    private record Attempt(boolean works, long at) {
+    /** How a command answered when it was tried. */
+    enum Outcome {
+        /** It ran, exited well, and said something: this is the CLI. */
+        ANSWERED,
+        /** Windows would not start it at all. Permanent, while the file is unchanged. */
+        REFUSED,
+        /** It started and did not answer, or is not installed yet. Worth asking again later. */
+        SILENT
+    }
+
+    /**
+     * What was learnt about one command, when, and what the program looked like at the time.
+     *
+     * @param stamp identifies the file that was tried, so that reinstalling it is noticed
+     */
+    private record Attempt(Outcome outcome, long at, String stamp) {
     }
 
     private CliLaunch() {
@@ -94,20 +130,48 @@ final class CliLaunch {
      * exception. A module that is not installed starts the interpreter and ends with a non-zero
      * exit and a traceback. A module that is installed but is not the command group exits 0 and
      * prints nothing. All three are a no - the last one is why saying something is part of the
-     * question and not just exiting 0.
+     * question and not just exiting 0. Only the first is remembered for good, because only the
+     * first cannot be put right by installing something.
      */
     static boolean works(List<String> command) {
         String key = String.join(" ", command);
+        String stamp = stampOf(command);
         Attempt known = TRIED.get(key);
-        if (known != null && (known.works() || System.nanoTime() - known.at() < FORGET.toNanos())) {
-            return known.works();
+        if (known != null && known.stamp().equals(stamp) && believable(known)) {
+            return known.outcome() == Outcome.ANSWERED;
         }
-        boolean answered = ask(command);
-        TRIED.put(key, new Attempt(answered, System.nanoTime()));
-        return answered;
+        Outcome outcome = ask(command);
+        TRIED.put(key, new Attempt(outcome, System.nanoTime(), stamp));
+        return outcome == Outcome.ANSWERED;
     }
 
-    private static boolean ask(List<String> command) {
+    /** Whether what was learnt still stands: a yes and a refusal do, a silence expires. */
+    private static boolean believable(Attempt known) {
+        return known.outcome() != Outcome.SILENT
+                || System.nanoTime() - known.at() < FORGET.toNanos();
+    }
+
+    /**
+     * What the program a command runs looks like now: its size and when it changed.
+     *
+     * <p>This is what lets a refusal be remembered for good without that becoming a lie. The
+     * file that was refused will go on being refused; a file installed over it is a different
+     * file and deserves to be asked about. An unreadable path stamps as empty, which simply
+     * means the answer is kept the way it always was.
+     */
+    private static String stampOf(List<String> command) {
+        if (command.isEmpty()) {
+            return "";
+        }
+        try {
+            Path program = Path.of(command.get(0));
+            return Files.size(program) + "@" + Files.getLastModifiedTime(program).toMillis();
+        } catch (IOException | RuntimeException e) {
+            return "";
+        }
+    }
+
+    private static Outcome ask(List<String> command) {
         Process process = null;
         try {
             process = new ProcessBuilder(command).redirectErrorStream(true).start();
@@ -115,20 +179,33 @@ final class CliLaunch {
             String said = new String(process.getInputStream().readAllBytes(),
                     java.nio.charset.StandardCharsets.UTF_8);
             if (!process.waitFor(20, TimeUnit.SECONDS)) {
-                return false;
+                return Outcome.SILENT;
             }
-            return process.exitValue() == 0 && !said.isBlank();
-        } catch (IOException | RuntimeException e) {
-            // Could not be started: not there, or not allowed to run.
-            return false;
+            return process.exitValue() == 0 && !said.isBlank() ? Outcome.ANSWERED : Outcome.SILENT;
+        } catch (IOException e) {
+            // Could not be started: refused by a policy, or simply not there.
+            return refusal(e) ? Outcome.REFUSED : Outcome.SILENT;
+        } catch (RuntimeException e) {
+            return Outcome.SILENT;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return false;
+            return Outcome.SILENT;
         } finally {
             if (process != null && process.isAlive()) {
                 process.destroyForcibly();
             }
         }
+    }
+
+    /** Whether a failure to start was a policy refusing the file rather than anything else. */
+    static boolean refusal(Throwable failure) {
+        for (Throwable at = failure; at != null; at = at.getCause()) {
+            String said = at.getMessage();
+            if (said != null && REFUSED_CODES.stream().anyMatch(said::contains)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Forgets what was learnt, so the next question starts something again. */
