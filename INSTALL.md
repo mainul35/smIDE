@@ -54,6 +54,38 @@ Language servers are not installed by either script. smIDE offers each one when 
 open a file of that language, which is the only point at which anything knows which of the
 fourteen you want.
 
+### When Windows will not start it
+
+On Windows 11 with **Smart App Control** on, starting smIDE does nothing at all: no
+window, no error, nothing in any log. Smart App Control runs only programs signed by a
+publisher it already trusts, and the small `smIDE.exe` that `jpackage` generates is signed
+by nobody — it was generated on your own machine a minute earlier.
+
+What it does not refuse is the Java runtime in the very same folder. That arrives from the
+Eclipse Foundation already signed and keeps its signature through `jlink`, and smIDE is
+Java classes that a runtime loads — so starting it through `runtime\bin\javaw.exe` runs
+exactly the same application, the same window, from the same jars. `install.ps1` checks
+for Smart App Control, and when it is enforcing it points both the `smide` command and the
+Start-menu entry at that launcher instead, with the options from `app\smIDE.cfg`. It says
+so while it installs. The detour is the whole of the difference.
+
+So there is usually nothing for you to do but use `smide` or the Start menu rather than
+`smIDE.exe`. If you would rather not have the detour at all:
+
+- **Sign the build.** A signed launcher is accepted like any other program. With a
+  code-signing certificate, `signtool sign /fd SHA256 /tr <timestamp-url> /td SHA256
+  smIDE.exe` over the installed launcher is enough. Azure Trusted Signing is the cheapest
+  way to a certificate Windows trusts without first earning a reputation. smIDE's build
+  signs nothing, because there is nothing in this repository to sign with.
+- **Turn Smart App Control off** — Windows Security → App & browser control → Smart App
+  Control. It is **one-way: it cannot be turned back on without reinstalling Windows.**
+  Giving up a real protection permanently to save a launcher argument is a poor trade.
+
+Two things this is not. It is not Defender finding something in smIDE: it finds nothing,
+and no scan reports anything. And it is not the "Windows protected your PC" SmartScreen
+dialog, which has a **More info → Run anyway** and remembers the answer — Smart App
+Control gives you no dialog to answer.
+
 ### Without building at all
 
 The `release` workflow builds the same package on Linux, Windows and macOS and attaches
@@ -375,6 +407,18 @@ Section 2: GitHub's Maven registry authenticates reads, so this is a missing or 
 `github-mdviewer` server in `~/.m2/settings.xml`. A 401 means the token is absent, expired
 or has no `read:packages`; a "not found" with credentials present usually means the id in
 `settings.xml` does not match the id in the repository declaration.
+
+**Nothing whatever happens when you start it on Windows**
+Smart App Control refusing an unsigned launcher; the end of section 0 has the detail. This
+answers whether it is on:
+
+```powershell
+(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy').VerifiedAndReputablePolicyState
+```
+
+1 is enforcing, 2 is evaluating, 0 or missing is off. Re-run `.\install.ps1`: it then
+installs a `smide` command and a Start-menu entry that start the IDE through the signed
+Java runtime, which Windows does not object to.
 
 **The window opens but the Java editor has no completion**
 The JDT server is not installed yet. Open a `.java` file and take the Install button, or

@@ -106,7 +106,8 @@ and push through the system `git` so your credentials apply; the branch on the s
 That builds smIDE and installs it as an application with a Java runtime of its own: the
 installed copy needs no JDK, no Maven and no network to start. Building it needs JDK 21,
 Maven 3.8 and Git. [INSTALL.md](INSTALL.md) has the rest - which language servers arrive
-by themselves, which need a toolchain first, and how to configure the assistant.
+by themselves, which need a toolchain first, how to configure the assistant, and what to
+do when Windows' Smart App Control refuses to run a launcher nobody signed.
 
 ## Running it from source
 

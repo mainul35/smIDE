@@ -194,6 +194,47 @@ function Invoke-Step {
     exit ($(if ($null -eq $code) { 1 } else { $code }))
 }
 
+# --------------------------------------------- what Windows lets you run at all
+
+<#
+.SYNOPSIS
+Whether Smart App Control is enforcing, which decides how smIDE has to be started.
+
+.DESCRIPTION
+Smart App Control is a Windows 11 feature that refuses to run anything that is not
+signed by a publisher it already trusts. smIDE built on this machine is signed by
+nobody, so the small smIDE.exe that jpackage generates is blocked outright - the
+window never appears and there is nothing in any log to say why.
+
+What it does not block is the Java runtime inside the very same folder: that one
+arrives signed by the Eclipse Foundation and keeps its signature through jlink. The
+IDE is Java classes that the runtime loads, so starting it through the signed
+launcher runs exactly the same application and Smart App Control has no objection.
+
+0 off, 1 enforcing, 2 evaluating. Anything unreadable is treated as off, because
+guessing "on" would send everybody down a path they do not need.
+#>
+function Get-SmartAppControl {
+    try {
+        $policy = Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy" -ErrorAction Stop
+        $state = $policy.VerifiedAndReputablePolicyState
+        return $(if ($null -eq $state) { 0 } else { [int]$state })
+    } catch {
+        return 0
+    }
+}
+
+<#
+.SYNOPSIS
+The java-options jpackage wrote, so the alternative launcher starts the same IDE.
+#>
+function Get-AppJavaOptions($appDir) {
+    $cfg = Join-Path $appDir "app\smIDE.cfg"
+    if (-not (Test-Path $cfg)) { return @() }
+    return @(Get-Content $cfg | Where-Object { $_ -like 'java-options=*' } |
+        ForEach-Object { $_ -replace '^java-options=', '' })
+}
+
 # ------------------------------------------------------- getting it to let go
 
 # A running smIDE holds its own Java runtime open - jvm.dll is loaded into the process, and
@@ -479,18 +520,47 @@ $launcher = Join-Path $AppDir "smIDE.exe"
 if (-not (Test-Path $launcher)) { Stop-With "No smIDE.exe inside $AppDir" }
 Write-Ok $launcher
 
+# How it is started: the generated launcher, or - when Windows will not run that - the
+# signed Java runtime sitting next to it, which starts exactly the same application.
+$guarded = (Get-SmartAppControl) -eq 1
+$runtimeLauncher = Join-Path $AppDir "runtime\bin\javaw.exe"
+$startArguments = ""
+if ($guarded -and (Test-Path $runtimeLauncher)) {
+    $options = Get-AppJavaOptions $AppDir
+    $startArguments = ($options -join ' ') + " -cp ""$AppDir\app\*"" com.smide.Launcher"
+    Write-Host ""
+    Write-Bad "Smart App Control is on, and it will not run smIDE.exe."
+    Write-Host "  It refuses anything without a signature from a publisher it knows, and this"
+    Write-Host "  copy was built here rather than signed by anybody. The Java runtime beside it"
+    Write-Host "  is signed by the Eclipse Foundation, so smIDE is started through that instead:"
+    Write-Host "  the same application, the same window, a launcher Windows will accept."
+    Write-Host "  To be rid of the detour, sign the build - see INSTALL.md - or turn Smart App"
+    Write-Host "  Control off, which cannot be undone without reinstalling Windows."
+}
+
 if (-not $NoShortcut) {
     New-Item -ItemType Directory -Force -Path $ShimDir | Out-Null
     # A .cmd rather than a symlink: symlinks need elevation or developer mode on Windows.
     Set-Content -Path (Join-Path $ShimDir "smide.cmd") -Encoding ASCII -Value @(
         '@echo off',
-        "start """" ""$launcher"" %*"
+        $(if ($startArguments) {
+            "start """" ""$runtimeLauncher"" $startArguments %*"
+        } else {
+            "start """" ""$launcher"" %*"
+        })
     )
     Write-Ok (Join-Path $ShimDir "smide.cmd")
 
     $startMenu = [Environment]::GetFolderPath('Programs')
     $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $startMenu "smIDE.lnk"))
-    $shortcut.TargetPath = $launcher
+    if ($startArguments) {
+        $shortcut.TargetPath = $runtimeLauncher
+        $shortcut.Arguments = $startArguments
+        # Still smIDE's own icon: what starts it is nobody's business but the shortcut's.
+        $shortcut.IconLocation = $launcher
+    } else {
+        $shortcut.TargetPath = $launcher
+    }
     $shortcut.WorkingDirectory = $AppDir
     $shortcut.Description = "A JetBrains-style IDE with MDViewer's feel"
     $shortcut.Save()
@@ -511,8 +581,15 @@ if (-not $NoShortcut) {
 # --------------------------------------------------------------------- done
 
 Write-Step "Done"
+# Where to start it from: naming smIDE.exe to somebody whose Windows will not run it is
+# worse than saying nothing, so under Smart App Control the two that work are the two named.
+$howToStart = $(if ($startArguments) {
+    "smide                 (or the Start menu)"
+} else {
+    "smide                 (or the Start menu, or $launcher)"
+})
 Write-Host @"
-Run it:            smide                 (or the Start menu, or $launcher)
+Run it:            $howToStart
 Open a project:    smide C:\path\to\project
 Remove it:         .\install.ps1 -Uninstall
 
