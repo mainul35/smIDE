@@ -93,6 +93,17 @@ public final class CodeEditor implements TextEditor {
     private boolean highlighted;
     /** The text the last painting was asked for, so the same text is not painted twice. */
     private String paintedText;
+    /** The bracket beside the caret and its partner, or null when the caret is beside none. */
+    private Brackets.Match brackets;
+    /**
+     * The document as one string, for the bracket search.
+     *
+     * <p>Asking the area for its text builds that string out of the paragraphs, which on a
+     * long file is real work to do on every press of an arrow key. It is built once per
+     * edit instead and read as often as the caret moves.
+     */
+    private String textForBrackets = "";
+    private boolean textChanged = true;
 
     public CodeEditor(Workspace workspace, Path path, LanguageSupport language) {
         this(workspace, path, language, null);
@@ -141,7 +152,13 @@ public final class CodeEditor implements TextEditor {
                     String text = area.getText();
                     textListeners.forEach(l -> l.accept(text));
                 });
+        // Every edit, not every pause in typing: the text behind the bracket boxes has to
+        // be the text on screen, or they point one character to the side of the truth.
+        area.multiPlainChanges().subscribe(ignore -> textChanged = true);
         area.caretPositionProperty().addListener((obs, was, now) -> {
+            if (refreshBrackets()) {
+                applyStyles();
+            }
             caretListeners.forEach(Runnable::run);
         });
         area.getUndoManager().atMarkedPositionProperty().addListener((obs, was, now) -> modified.set(!now));
@@ -255,6 +272,9 @@ public final class CodeEditor implements TextEditor {
             Platform.runLater(() -> {
                 if (generation == highlightGeneration && !disposed) {
                     tokens = finalResult;
+                    // The colouring is what says which brackets are inside a string, so
+                    // the boxes are worked out again once it has arrived.
+                    refreshBrackets();
                     applyStyles();
                     highlighted = true;
                     hideLoading();
@@ -353,6 +373,13 @@ public final class CodeEditor implements TextEditor {
                         ? "diag-unresolved"
                         : "diag-" + d.severity().name().toLowerCase(Locale.ROOT);
                 overlays.add(new EditorStyles.Overlay(start, end, style));
+            }
+        }
+        if (brackets != null) {
+            String style = brackets.found() ? "bracket-match" : "bracket-unmatched";
+            box(overlays, brackets.at(), length, style);
+            if (brackets.found()) {
+                box(overlays, brackets.partner(), length, style);
             }
         }
         if (link != null && link[1] <= length && link[1] > link[0]) {
@@ -829,6 +856,58 @@ public final class CodeEditor implements TextEditor {
         }
         gutter.setChanges(changes, hunks);
         gutter.refresh();
+    }
+
+    /** One character of overlay, if it is still inside the text. */
+    private static void box(List<EditorStyles.Overlay> overlays, int at, int length, String style) {
+        if (at >= 0 && at < length) {
+            overlays.add(new EditorStyles.Overlay(at, at + 1, style));
+        }
+    }
+
+    /**
+     * Works out which brackets to box, and says whether that has changed.
+     *
+     * <p>Called on every caret move, so it answers "nothing, same as before" cheaply: the
+     * caret is beside a bracket rarely, and when it is not there is nothing to repaint.
+     */
+    private boolean refreshBrackets() {
+        if (textChanged) {
+            textForBrackets = area.getText();
+            textChanged = false;
+        }
+        Brackets.Match was = brackets;
+        brackets = Brackets.beside(textForBrackets, area.getCaretPosition(),
+                language.bracketPairs(), this::quotedOrCommented).orElse(null);
+        return !java.util.Objects.equals(was, brackets);
+    }
+
+    /**
+     * Whether a position is inside a string or a comment, where a bracket is a character
+     * rather than a bracket.
+     *
+     * <p>Read off the colouring, which has already decided this; a binary search, because
+     * it is asked once per character of the scan.
+     */
+    private boolean quotedOrCommented(int at) {
+        List<Token> safe = tokens;
+        int low = 0;
+        int high = safe.size() - 1;
+        while (low <= high) {
+            int middle = (low + high) >>> 1;
+            Token token = safe.get(middle);
+            if (at < token.start()) {
+                high = middle - 1;
+            } else if (at >= token.end()) {
+                low = middle + 1;
+            } else {
+                return switch (token.type()) {
+                    case STRING, COMMENT, DOC_COMMENT, REGEX -> true;
+                    default -> false;
+                };
+            }
+        }
+        return false;
     }
 
     /** The change a line belongs to, for whatever wants to show it. */

@@ -959,6 +959,25 @@
 .code-area .diag-error { -fx-underline: true; -fx-fill: -smide-danger; }
 /* A name that leads nowhere - a dependency not in the local repository - is red, as IntelliJ draws it. */
 .code-area .diag-unresolved { -fx-fill: -smide-danger; }
+/* The bracket beside the caret and the one it pairs with, boxed at both ends.
+
+   A box rather than a colour, because the character is one glyph wide and a recoloured
+   bracket in a line full of brackets is not something the eye finds. RichTextFX draws a
+   border round a run of text with -rtfx-border-stroke-*; plain -fx-border-* does nothing
+   here, because what is being styled is a piece of text and not a region. */
+.code-area .bracket-match {
+    -rtfx-border-stroke-color: -smide-accent;
+    -rtfx-border-stroke-width: 1;
+    -rtfx-background-color: -smide-accent-soft;
+}
+
+/* A bracket with no partner: the box says where the trouble starts. */
+.code-area .bracket-unmatched {
+    -rtfx-border-stroke-color: -smide-danger;
+    -rtfx-border-stroke-width: 1;
+    -fx-fill: -smide-danger;
+}
+
 /* Under Ctrl, what Ctrl+click would follow: the colour of a link, and underlined like one. */
 .code-area .ctrl-link { -fx-fill: -smide-accent; -fx-underline: true; }
 
