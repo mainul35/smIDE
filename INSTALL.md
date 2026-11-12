@@ -350,11 +350,26 @@ remembered). Every location can also be set under **Settings → Languages** (Do
 | Kotlin | kotlinc, only outside Gradle and Maven | `kotlinc -script` for `.kts`, compile and run for `.kt` with a `main` |
 | Shell | bash on Windows (Git for Windows); PowerShell elsewhere | `run script` for `.sh`, `.ps1`, `.bat` near the top |
 | Docker | docker | `docker compose up`, `docker build` |
+| LangGraph | the `langgraph` CLI, only for a project with a `langgraph.json` — not asked when the CLI can be run as a module | `langgraph dev`, and `invoke NAME` for every graph `langgraph.json` names |
 
 Go configurations run from the module root (the nearest `go.mod`), or name a folder's files
 when there is no module. Python uses the project's `.venv`, `venv` or `env` interpreter when
 there is one. Windows's own `python.exe` alias, which only opens the Microsoft Store, is never
 taken for an interpreter.
+
+LangGraph's CLI is installed per project, so install it into the project's environment:
+
+```
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install "langgraph-cli[inmem]"
+```
+
+Through `python -m pip` rather than `pip`, because on Windows the pip launcher is an unsigned
+executable and Smart App Control blocks it — the same policy, and the same message, as
+["When Windows will not start it"](#when-windows-will-not-start-it) above. For the same reason
+the `langgraph` launcher that pip installs may refuse to start; where it does, smIDE runs the
+CLI as a module of the project's interpreter instead, which is signed, and says nothing about
+it. Invoking a graph never needs the CLI at all: it runs in the interpreter.
 
 ---
 

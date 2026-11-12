@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -75,7 +76,8 @@ public final class LangGraphRunType extends CommandRunType {
 
     @Override
     protected String note() {
-        return "dev, build and up are the langgraph CLI. invoke runs the graph in the project's own"
+        return "dev, build and up are the langgraph CLI - its launcher, or, where that will not start,"
+                + " the project's interpreter running it as a module. invoke runs the graph in the project's own"
                 + " interpreter and prints what each node writes - that is the one that can be debugged,"
                 + " with breakpoints in the nodes.";
     }
@@ -92,10 +94,10 @@ public final class LangGraphRunType extends CommandRunType {
             throw new IllegalStateException("Only an invoke configuration can be debugged: dev, build and up"
                     + " are the CLI's own processes. Debug the graph itself with an invoke configuration.");
         }
-        Path command = cli.forProject(ide, root).orElseThrow(() -> new IllegalStateException(
-                "The langgraph CLI was not found. Install it with: " + LangGraphToolchain.INSTALL
-                        + ", or set its folder in Settings > Languages > LangGraph."));
-        List<String> argv = new ArrayList<>(List.of(command.toString(), kind));
+        List<String> start = cli.commandFor(ide, root, interpreterIfAny(c, root))
+                .orElseThrow(() -> new IllegalStateException(cannotStart(root)));
+        List<String> argv = new ArrayList<>(start);
+        argv.add(kind);
         String port = c.get("port", "");
         String tag = c.get("tag", "");
         switch (kind) {
@@ -161,6 +163,30 @@ public final class LangGraphRunType extends CommandRunType {
                     + ". It names " + String.join(", ", graphs.keySet()) + ".");
         }
         return spec;
+    }
+
+    /** The interpreter to fall back to for the CLI, where there is one; its absence is not fatal here. */
+    private Optional<Path> interpreterIfAny(Config c, Path root) {
+        try {
+            return Optional.of(interpreter(c, root));
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Why nothing could be started, and what to do about it - which depends on what is there:
+     * a launcher that exists and will not run is a different problem from one that is missing.
+     */
+    private String cannotStart(Path root) {
+        if (cli.forProject(ide, root).isPresent()) {
+            return "The langgraph launcher is there but will not start, and the CLI could not be run"
+                    + " as a module either. On Windows, Smart App Control blocks unsigned launchers;"
+                    + " installing the CLI into this project's environment gives the interpreter a"
+                    + " module to run instead: " + LangGraphToolchain.INSTALL;
+        }
+        return "The langgraph CLI was not found. Install it with: " + LangGraphToolchain.INSTALL
+                + ", or set its folder in Settings > Languages > LangGraph.";
     }
 
     private Path interpreter(Config c, Path root) {
