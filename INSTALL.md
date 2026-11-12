@@ -277,6 +277,23 @@ Nothing outside these two places is written. To reset smIDE completely, delete
 `~/.smide` — you will be asked about API keys and passwords again, and the language
 servers will be downloaded again.
 
+### Somewhere other than `~/.smide`
+
+Two system properties move it, which is what a second copy of smIDE wants so that it does
+not share a session, settings and logs with the first:
+
+```bash
+java -Dsmide.home=/path/to/somewhere -cp ... com.smide.Launcher
+```
+
+`-Dsmide.home` **is** that directory, named outright — nothing is appended to it, and
+everything in the list above lands inside it: settings, the session, logs, freeze and
+crash reports, downloaded language servers. `-Dsmide.userHome` stands in for your home
+directory instead, so `.smide` is still added to the end of it. Neither is normally set.
+
+The installed copy puts its options in `app\smIDE.cfg` (Windows) or `lib/app/smIDE.cfg`;
+add a `java-options=` line there to make it permanent.
+
 ---
 
 ## 6. Language support

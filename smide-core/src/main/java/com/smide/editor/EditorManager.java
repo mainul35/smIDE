@@ -45,8 +45,7 @@ public final class EditorManager implements Editors {
             "Makefile", ".sln", "composer.json", "Gemfile", "mix.exs", "build.sbt");
 
     /** Where the IDE writes the read-only sources it pulls out of library jars. */
-    private static final Path LIBRARY_SOURCES = Path.of(
-            System.getProperty("smide.userHome", System.getProperty("user.home")), ".smide", "libraries");
+    private static final Path LIBRARY_SOURCES = com.smide.SmIdeHome.resolve("libraries");
 
     private final WorkspaceManager workspaces;
     private final ExtensionRegistry registry;

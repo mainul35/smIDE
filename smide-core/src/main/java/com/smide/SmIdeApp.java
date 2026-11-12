@@ -32,7 +32,7 @@ public class SmIdeApp extends Application {
     }
 
     private static Path homeDir() {
-        return Path.of(System.getProperty("smide.userHome", System.getProperty("user.home")), ".smide");
+        return SmIdeHome.dir();
     }
 
     /**
@@ -48,8 +48,7 @@ public class SmIdeApp extends Application {
         System.err.println("smIDE could not start.");
         t.printStackTrace();
         try {
-            Path logs = Path.of(System.getProperty("smide.userHome", System.getProperty("user.home")),
-                    ".smide", "logs");
+            Path logs = SmIdeHome.resolve("logs");
             Files.createDirectories(logs);
             Path file = logs.resolve("startup-failure.log");
             try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(file))) {

@@ -70,7 +70,7 @@ public final class UiScale {
      * toolkit starts. The file is a flat JSON object of strings, so a line is enough.
      */
     private static String fromSettings() {
-        Path file = Path.of(System.getProperty("user.home", "."), ".smide", "settings.json");
+        Path file = com.smide.SmIdeHome.resolve("settings.json");
         if (!Files.isRegularFile(file)) {
             return null;
         }

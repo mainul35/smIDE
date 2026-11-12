@@ -122,7 +122,7 @@ public final class IdeImpl implements Ide {
 
     public IdeImpl(Stage stage, HostServices hostServices) {
         this.stage = stage;
-        this.homeDir = Path.of(System.getProperty("smide.userHome", System.getProperty("user.home")), ".smide");
+        this.homeDir = com.smide.SmIdeHome.dir();
         this.settings = new JsonSettings(homeDir.resolve("settings.json"));
         this.events = new EventBusImpl();
         this.theme = new ThemeManager(settings, events);
@@ -367,6 +367,13 @@ public final class IdeImpl implements Ide {
 
     private final javafx.scene.layout.StackPane centerHolder = new javafx.scene.layout.StackPane();
 
+    /**
+     * Where plugins are loaded from, or null for "only what is on the class path".
+     *
+     * <p>Still its own decision rather than {@code homeDir().resolve("plugins")}: a home
+     * nobody named has no plugins folder, and starting to load one would be a different
+     * set of plugins for everybody who has ever left something in {@code ~/.smide}.
+     */
     private Path pluginsDir() {
         String prop = System.getProperty("smide.plugins");
         if (prop != null) {
