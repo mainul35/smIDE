@@ -643,6 +643,37 @@
     -fx-background-insets: 0 0 0 5;
 }
 
+/* The map of the whole file's changes, down the side of the scrollbar.
+
+   The same three colours as the strip beside the code, because it is the same thing being
+   said about the same line - once where the line is, once where the file is. */
+.change-stripe {
+    -fx-background-color: -smide-paper;
+}
+
+.change-mark {
+    -fx-background-insets: 0 2 0 2;
+    -fx-background-radius: 1;
+    -fx-cursor: hand;
+}
+
+.change-mark.change-added {
+    -fx-background-color: -smide-vcs-added;
+}
+
+.change-mark.change-changed {
+    -fx-background-color: -smide-vcs-modified;
+}
+
+/* Removed lines have no height of their own, so the mark is the whole of what is left. */
+.change-mark.change-removed {
+    -fx-background-color: -smide-vcs-removed;
+}
+
+.change-mark:hover {
+    -fx-background-insets: 0 1 0 1;
+}
+
 /* What a changed line was when it was last committed, opened from the strip. */
 .change-popup {
     -fx-background-color: -smide-surface;

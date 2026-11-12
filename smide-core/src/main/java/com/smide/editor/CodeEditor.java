@@ -58,6 +58,8 @@ public final class CodeEditor implements TextEditor {
 
     private final CodeArea area = new CodeArea();
     private final VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(area);
+    /** The whole file's changes, down the side of the scrollbar: where they are, not which line. */
+    private final ChangeStripe stripe = new ChangeStripe(area);
     private final BorderPane root = new BorderPane();
     private final FindBar findBar;
     /** A strip across the top that says what is missing - "No Python found" - with what to do about it. */
@@ -118,7 +120,11 @@ public final class CodeEditor implements TextEditor {
         applyDisplaySettings();
         root.getStyleClass().add("code-editor");
         buildLoading();
-        root.setCenter(new javafx.scene.layout.StackPane(scroll, loading));
+        // The stripe sits beside the scrollbar rather than over it: the scrollbar is still
+        // the scrollbar, and a mark is still something that can be pointed at and clicked.
+        javafx.scene.layout.HBox middle = new javafx.scene.layout.HBox(scroll, stripe);
+        javafx.scene.layout.HBox.setHgrow(scroll, javafx.scene.layout.Priority.ALWAYS);
+        root.setCenter(new javafx.scene.layout.StackPane(middle, loading));
         findBar = new FindBar(this);
         root.setTop(new javafx.scene.layout.VBox(banner, findBar));
         banner.setVisible(false);
@@ -815,6 +821,9 @@ public final class CodeEditor implements TextEditor {
      */
     public void setChanges(java.util.Map<Integer, com.smide.vcs.LineChanges.Kind> changes,
                            java.util.List<com.smide.vcs.LineChanges.Hunk> hunks) {
+        // The stripe is told first and keeps its own guard, so it is drawn even where
+        // there is no gutter to draw beside the lines.
+        stripe.setChanges(hunks);
         if (gutter == null || (gutter.changes().equals(changes) && gutter.hunks().equals(hunks))) {
             return;
         }
