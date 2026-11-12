@@ -1445,6 +1445,12 @@
     -fx-font-size: 11px;
 }
 
+/* The wheel on the assistant's status line while it is waiting for a model. */
+.waiting-wheel {
+    -fx-stroke: -smide-accent;
+    -fx-fill: null;
+}
+
 .empty-hint {
     -fx-text-fill: -smide-text-muted;
     -fx-font-size: 12px;
