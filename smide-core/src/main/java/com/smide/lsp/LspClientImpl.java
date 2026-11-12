@@ -75,7 +75,10 @@ final class LspClientImpl implements LanguageClient {
 
     @Override
     public void publishDiagnostics(PublishDiagnosticsParams params) {
-        Path file = Positions.path(params.getUri());
+        // The CSS in a page is opened as a document of its own, so an answer about
+        // page.html.css is an answer about page.html - at the same line and column,
+        // because the stand-in keeps the page's own shape.
+        Path file = VirtualPaths.realOf(Positions.path(params.getUri()));
         List<Diagnostic> out = new ArrayList<>();
         for (org.eclipse.lsp4j.Diagnostic d : params.getDiagnostics()) {
             out.add(new Diagnostic(file,

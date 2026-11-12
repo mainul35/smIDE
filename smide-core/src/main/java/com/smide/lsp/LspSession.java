@@ -186,8 +186,18 @@ public final class LspSession {
         return out;
     }
 
+    /**
+     * What the IDE has configured for a section of a server's settings: nothing, so far,
+     * but said as "nothing configured" rather than as null.
+     *
+     * <p>The difference is not academic. Asked for its {@code css} settings and given
+     * null, vscode-css-language-server reports nothing about anything - a stylesheet with
+     * {@code colour: red} in it comes back clean. Given an empty object, the same server
+     * answers "Unknown property: 'colour'" at once, because null reads as "this client
+     * has turned validation off" while {@code {}} reads as "use your defaults".
+     */
     Object configurationFor(String section) {
-        return null;
+        return java.util.Map.of();
     }
 
     void log(String line) {

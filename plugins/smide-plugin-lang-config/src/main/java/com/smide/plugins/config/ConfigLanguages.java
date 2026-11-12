@@ -100,6 +100,11 @@ final class ConfigLanguages {
         }
 
         @Override
+        public boolean hasTags() {
+            return true;
+        }
+
+        @Override
         public String id() {
             return "xml";
         }

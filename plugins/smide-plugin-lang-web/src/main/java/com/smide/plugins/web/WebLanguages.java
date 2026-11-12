@@ -1,6 +1,7 @@
 package com.smide.plugins.web;
 
 import com.smide.api.lang.EmbeddedHighlighter;
+import com.smide.api.lang.EmbeddedRegion;
 import com.smide.api.lang.GenericLexer;
 import com.smide.api.lang.Highlighter;
 import com.smide.api.lang.LanguageServerLauncher;
@@ -143,6 +144,13 @@ final class WebLanguages {
     }
 
     static final class Html implements LanguageSupport {
+
+        /** Where the other two languages start and stop. */
+        private static final String SCRIPT_OPEN = "<script\\b[^>]*>";
+        private static final String SCRIPT_CLOSE = "</script\\s*>";
+        private static final String STYLE_OPEN = "<style\\b[^>]*>";
+        private static final String STYLE_CLOSE = "</style\\s*>";
+
         /** The markup itself. The script and style bodies never reach it. */
         private static final Highlighter MARKUP = new RegexHighlighter()
                 .rule("(?s)<!--.*?(-->|\\z)", TokenType.COMMENT)
@@ -162,9 +170,29 @@ final class WebLanguages {
          */
         private static final Highlighter HIGHLIGHTER = new EmbeddedHighlighter(MARKUP, List.of(
                 EmbeddedHighlighter.Island.between(
-                        "<script\\b[^>]*>", "</script\\s*>", () -> JAVASCRIPT),
+                        SCRIPT_OPEN, SCRIPT_CLOSE, () -> JAVASCRIPT),
                 EmbeddedHighlighter.Island.between(
-                        "<style\\b[^>]*>", "</style\\s*>", () -> Css.HIGHLIGHTER)));
+                        STYLE_OPEN, STYLE_CLOSE, () -> Css.HIGHLIGHTER)));
+
+        /**
+         * The same two stretches, for the servers rather than the colours.
+         *
+         * <p>Declared once and used twice: a script block is JavaScript whether the
+         * question is what colour to paint it or who should be checking it.
+         */
+        private static final List<EmbeddedRegion> REGIONS = List.of(
+                EmbeddedRegion.between("javascript", SCRIPT_OPEN, SCRIPT_CLOSE),
+                EmbeddedRegion.between("css", STYLE_OPEN, STYLE_CLOSE));
+
+        @Override
+        public List<EmbeddedRegion> embeddedRegions() {
+            return REGIONS;
+        }
+
+        @Override
+        public boolean hasTags() {
+            return true;
+        }
 
         private final LanguageServerLauncher launcher;
 

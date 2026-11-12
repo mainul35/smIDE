@@ -95,6 +95,8 @@ public final class CodeEditor implements TextEditor {
     private String paintedText;
     /** The bracket beside the caret and its partner, or null when the caret is beside none. */
     private Brackets.Match brackets;
+    /** The tag the caret is in and its other end, for markup. */
+    private Tags.Match tags;
     /**
      * The document as one string, for the bracket search.
      *
@@ -380,6 +382,13 @@ public final class CodeEditor implements TextEditor {
             box(overlays, brackets.at(), length, style);
             if (brackets.found()) {
                 box(overlays, brackets.partner(), length, style);
+            }
+        }
+        if (tags != null) {
+            String style = tags.found() ? "tag-match" : "tag-unmatched";
+            box(overlays, tags.start(), tags.end(), length, style);
+            if (tags.found()) {
+                box(overlays, tags.partnerStart(), tags.partnerEnd(), length, style);
             }
         }
         if (link != null && link[1] <= length && link[1] > link[0]) {
@@ -860,8 +869,16 @@ public final class CodeEditor implements TextEditor {
 
     /** One character of overlay, if it is still inside the text. */
     private static void box(List<EditorStyles.Overlay> overlays, int at, int length, String style) {
-        if (at >= 0 && at < length) {
-            overlays.add(new EditorStyles.Overlay(at, at + 1, style));
+        box(overlays, at, at + 1, length, style);
+    }
+
+    /** A stretch of overlay, clipped to the text. */
+    private static void box(List<EditorStyles.Overlay> overlays, int from, int to, int length,
+                            String style) {
+        int start = Math.max(0, from);
+        int end = Math.min(length, to);
+        if (end > start) {
+            overlays.add(new EditorStyles.Overlay(start, end, style));
         }
     }
 
@@ -876,10 +893,16 @@ public final class CodeEditor implements TextEditor {
             textForBrackets = area.getText();
             textChanged = false;
         }
-        Brackets.Match was = brackets;
-        brackets = Brackets.beside(textForBrackets, area.getCaretPosition(),
+        int caret = area.getCaretPosition();
+        Brackets.Match wasBracket = brackets;
+        brackets = Brackets.beside(textForBrackets, caret,
                 language.bracketPairs(), this::quotedOrCommented).orElse(null);
-        return !java.util.Objects.equals(was, brackets);
+        Tags.Match wasTag = tags;
+        tags = language.hasTags()
+                ? Tags.around(textForBrackets, caret, this::quotedOrCommented).orElse(null)
+                : null;
+        return !java.util.Objects.equals(wasBracket, brackets)
+                || !java.util.Objects.equals(wasTag, tags);
     }
 
     /**

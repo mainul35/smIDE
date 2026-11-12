@@ -57,8 +57,30 @@ public interface LanguageSupport {
         return "{([";
     }
 
+    /**
+     * Whether {@code <tag>...</tag>} is this language's own syntax.
+     *
+     * <p>True for markup, false for everything else - including languages that have
+     * angle brackets for something else entirely, where pairing {@code <} with
+     * {@code >} would be pairing a less-than with a greater-than.
+     */
+    default boolean hasTags() {
+        return false;
+    }
+
     default String lspLanguageId() {
         return id();
+    }
+
+    /**
+     * The stretches of a file of this language that are written in another one.
+     *
+     * <p>Empty for almost every language. HTML is the one that is not: its script and
+     * style blocks are JavaScript and CSS, and saying so here is what lets them be
+     * coloured and checked as what they are.
+     */
+    default java.util.List<EmbeddedRegion> embeddedRegions() {
+        return java.util.List.of();
     }
 
     default Optional<LanguageServerLauncher> languageServer() {

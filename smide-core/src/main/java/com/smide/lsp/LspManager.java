@@ -29,6 +29,8 @@ public final class LspManager {
     private final Ide ide;
     private final Map<String, LspSession> sessions = new HashMap<>();
     private final Map<Editor, EditorLspBinding> bindings = new HashMap<>();
+    /** The other languages inside a file, for files that have any: HTML and its script. */
+    private final Map<Editor, VirtualDocuments> embedded = new HashMap<>();
     private final Set<String> offered = new HashSet<>();
     private final Set<String> installing = new HashSet<>();
     private final List<Consumer<LspSession>> sessionListeners = new ArrayList<>();
@@ -67,6 +69,9 @@ public final class LspManager {
             return;
         }
         LanguageSupport language = code.language();
+        // Done first and on its own: a page's script and style are checked whether or not
+        // the server for the page itself is installed.
+        bindEmbedded(code);
         Optional<LanguageServerLauncher> launcher = language.languageServer();
         if (launcher.isEmpty()) {
             return;
@@ -112,6 +117,7 @@ public final class LspManager {
                         b.serverReady();
                     }
                 }
+                List.copyOf(embedded.values()).forEach(VirtualDocuments::serverReady);
             }
         });
         sessionListeners.forEach(l -> l.accept(session));
@@ -124,6 +130,45 @@ public final class LspManager {
         if (binding != null) {
             binding.detach();
         }
+        VirtualDocuments documents = embedded.remove(editor);
+        if (documents != null) {
+            documents.detach();
+        }
+    }
+
+    /** Starts checking the other languages inside this file, if there are any. */
+    private void bindEmbedded(CodeEditor editor) {
+        if (embedded.containsKey(editor)) {
+            return;
+        }
+        VirtualDocuments.forEditor(ide, this, editor).ifPresent(documents -> {
+            embedded.put(editor, documents);
+            documents.attach();
+        });
+    }
+
+    /**
+     * The session for a language inside another one, started if it is not running.
+     *
+     * <p>Empty when that language has no server or its server is not installed, and
+     * nothing is offered either way: see {@link VirtualDocuments}.
+     */
+    Optional<LspSession> sessionForEmbedded(LanguageSupport language, Workspace workspace) {
+        Optional<LanguageServerLauncher> launcher = language.languageServer();
+        if (launcher.isEmpty() || workspace == null || !launcher.get().isInstalled(ide)) {
+            return Optional.empty();
+        }
+        LanguageServerLauncher l = launcher.get();
+        String key = key(l, workspace);
+        LspSession session = sessions.get(key);
+        if (session == null || session.state() == LspSession.State.FAILED
+                || session.state() == LspSession.State.STOPPED) {
+            if (session != null && session.state() == LspSession.State.FAILED) {
+                return Optional.empty();
+            }
+            session = startSession(l, workspace, key);
+        }
+        return Optional.of(session);
     }
 
     private void workspaceClosed(Workspace workspace) {

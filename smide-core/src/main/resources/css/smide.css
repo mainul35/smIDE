@@ -971,6 +971,22 @@
     -rtfx-background-color: -smide-accent-soft;
 }
 
+/* The two ends of a tag, marked the same way as a pair of brackets, because it is the
+   same question: what does this close? The name rather than the whole tag - a box around
+   <div class="panel" data-id="17"> is a box around the line. */
+.code-area .tag-match {
+    -rtfx-border-stroke-color: -smide-accent;
+    -rtfx-border-stroke-width: 1;
+    -rtfx-background-color: -smide-accent-soft;
+}
+
+/* A tag that is never closed. */
+.code-area .tag-unmatched {
+    -rtfx-border-stroke-color: -smide-danger;
+    -rtfx-border-stroke-width: 1;
+    -fx-fill: -smide-danger;
+}
+
 /* A bracket with no partner: the box says where the trouble starts. */
 .code-area .bracket-unmatched {
     -rtfx-border-stroke-color: -smide-danger;
