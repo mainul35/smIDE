@@ -25,6 +25,7 @@
         <module>smide-plugin-lang-groovy</module>
         <module>smide-plugin-lang-python</module>
         <module>smide-plugin-langgraph</module>
+        <module>smide-plugin-notebook</module>
         <module>smide-plugin-lang-web</module>
         <module>smide-plugin-lang-config</module>
         <module>smide-plugin-lang-shell</module>

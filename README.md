@@ -94,12 +94,34 @@ from the calls themselves, as they are typed. Clicking a node goes to the functi
 node nothing leads to is drawn dashed and said so in the file, along with an edge to a node that
 is not there, a name added twice, a graph with no way in, and interrupting with no checkpointer.
 A graph written across a Jupyter notebook's cells is drawn as well: the code cells are joined in
-the order they run, the prose left out, and clicking a node goes to the cell it was written in -
-a notebook has no editor of its own here, so the problems above are underlined in `.py` files
-only. `langgraph.json` is checked where it is written: a graph pointing at a file that has been
+the order they run, the prose left out, and clicking a node goes to the cell it was written in.
+`langgraph.json` is checked where it is written: a graph pointing at a file that has been
 renamed, an attribute that is no longer there, a dependency folder that does not exist. The dev
 server, `build` and `up` are run configurations; so is invoking one graph, which runs it in the
 project's own interpreter, prints what each node writes, and stops at breakpoints in the nodes.
+
+**Jupyter notebooks.** A `.ipynb` opens as a notebook and not as the JSON it is: a column of
+cells, prose and code told apart, each code cell a real editor with the project's Python
+colouring rather than a text box. Cells are added, deleted, moved, split at the caret, merged
+with the one below, and turned from code into markdown and back. Ctrl+Enter runs a cell against
+a kernel started from the project's own virtual environment - the one nearest the notebook, not
+whichever Python the machine happens to have - and the cell says `[*]` while it is going. What
+comes back is drawn under it: what the cell printed, the value of its last expression, the
+pictures it drew, and the traceback of whatever went wrong, with the terminal colours taken out.
+Run All stops where a cell fails, as Jupyter does. Interrupt, Restart and Restart and Clear are
+on the bar, and the kernel's state is beside them. A project whose interpreter has no
+`ipykernel` is told so, with the exact command to install it into that interpreter.
+
+Completion and the type checker see the cells above the one being typed in, which is where a
+cell's names actually come from: pyright is shown the code cells joined down to the caret, and
+its answers are mapped back to the cell and line they belong to, so a name imported three cells
+up completes and does not come back underlined.
+
+What is written back is the file that was read. Keys smIDE does not understand - another
+editor's metadata, a cell id, widget state - are kept rather than dropped, source is written as
+the list of lines every other tool writes, and a notebook saved here differs from the same
+notebook saved by Jupyter only where something actually changed. A notebook that will not parse
+is not opened as an empty one: it says what is wrong and refuses to write over it.
 
 **Markdown.** MDViewer embedded as a plugin: raw, split and preview modes with its own
 renderer, stylesheet, PlantUML, Mermaid and charts.
@@ -150,6 +172,7 @@ On Windows, `run.ps1` does both steps.
 | `smide-plugin-lang-kotlin` | Kotlin, kotlin-language-server, kotlinc scripts and files outside Gradle/Maven |
 | `smide-plugin-lang-python` | Python, pyright, projects (pyproject/requirements/Pipfile), scripts/modules/pytest |
 | `smide-plugin-langgraph` | LangGraph: the Graph tool window, langgraph.json and graph checks as they are typed, the dev server and invoking a graph |
+| `smide-plugin-notebook` | Jupyter notebooks: cells, a kernel in the project's own interpreter, output, and completion that sees the cells above |
 | `smide-plugin-lang-web` | JavaScript, TypeScript, HTML, CSS, JSON, package.json projects and npm scripts |
 | `smide-plugin-lang-config` | YAML, XML, TOML, properties, INI, dotenv, ignore files |
 | `smide-plugin-lang-shell` | Shell, PowerShell, batch, and running scripts of each |
