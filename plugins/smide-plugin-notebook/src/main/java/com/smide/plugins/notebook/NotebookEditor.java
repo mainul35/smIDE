@@ -804,7 +804,7 @@ public final class NotebookEditor implements Editor {
         views.forEach(CellView::flush);
         int last = -1;
         for (int i = 0; i < views.size(); i++) {
-            if (views.get(i).cell().kind() == CellKind.CODE) {
+            if (views.get(i).cell().kind().isChecked()) {
                 last = i;
             }
         }
@@ -835,7 +835,7 @@ public final class NotebookEditor implements Editor {
         }
         views.forEach(CellView::flush);
         List<CellView> code = views.stream()
-                .filter(view -> view.cell().kind() == CellKind.CODE).toList();
+                .filter(view -> view.cell().kind().isChecked()).toList();
         Map<CellView, String> sources = new HashMap<>();
         code.forEach(view -> sources.put(view, view.cell().source()));
         Thread worker = new Thread(() -> {
@@ -876,7 +876,7 @@ public final class NotebookEditor implements Editor {
     private void complete(boolean explicit) {
         CellView view = selected;
         if (pyright == null || notebook == null || view == null
-                || view.cell().kind() != CellKind.CODE || !pyright.isAvailable()) {
+                || !view.cell().kind().isChecked() || !pyright.isAvailable()) {
             return;
         }
         CodeArea area = view.area();

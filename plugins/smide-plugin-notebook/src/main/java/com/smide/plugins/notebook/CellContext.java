@@ -60,7 +60,7 @@ final class CellContext {
         int line = 0;
         for (int i = 0; i <= throughIndex && i < cells.size(); i++) {
             Cell cell = cells.get(i);
-            if (cell.kind() != CellKind.CODE) {
+            if (!cell.kind().isChecked()) {
                 // Prose contributes nothing, not even its length: a regular expression or a
                 // checker that looks at the start of a line must not meet a sentence.
                 continue;

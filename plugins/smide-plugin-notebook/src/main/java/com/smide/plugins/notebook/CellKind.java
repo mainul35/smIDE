@@ -50,4 +50,17 @@ public enum CellKind {
             default -> RAW;
         };
     }
+
+    /**
+     * Whether a cell of this kind is Python that gets checked.
+     *
+     * <p>Asked before anything is drawn under a word. Both checkers walk the code cells and
+     * skip the rest, so a cell that stops being code is never told that its problems have
+     * gone: nothing looks at it again, and the marks from when it was code would stay under
+     * prose forever. Syntax colouring is the same question - there is no Python in a
+     * markdown cell to colour - so one answer serves both.
+     */
+    public boolean isChecked() {
+        return this == CODE;
+    }
 }

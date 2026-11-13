@@ -195,7 +195,13 @@ final class CellView extends BorderPane {
                 area.getUndoManager().forgetHistory();
             }
             kind.getSelectionModel().select(cell.kind());
-            boolean code = cell.kind() == CellKind.CODE;
+            boolean code = cell.kind().isChecked();
+            if (!code) {
+                // The checkers only walk code cells, so nothing will ever come back to say
+                // these have gone. A cell turned into prose has to drop them itself.
+                diagnostics = List.of();
+                syntaxProblem = null;
+            }
             run.setVisible(code);
             run.setManaged(code);
             count.setVisible(code);
@@ -288,6 +294,11 @@ final class CellView extends BorderPane {
      * no width draws nothing.
      */
     List<Diagnostic> allProblems() {
+        if (!cell.kind().isChecked()) {
+            // Belt and braces: a diagnostic can arrive for a cell that has just stopped
+            // being code, because it was asked for while it still was.
+            return List.of();
+        }
         if (syntaxProblem == null) {
             return diagnostics;
         }
@@ -328,7 +339,7 @@ final class CellView extends BorderPane {
 
     private void highlight() {
         String text = area.getText();
-        List<Token> tokens = cell.kind() == CellKind.CODE && highlighter != null
+        List<Token> tokens = cell.kind().isChecked() && highlighter != null
                 ? highlighter.tokenize(text) : List.of();
         try {
             area.setStyleSpans(0, Spans.of(text.length(), tokens,
