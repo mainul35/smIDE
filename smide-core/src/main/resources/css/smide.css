@@ -1480,6 +1480,13 @@
     -fx-wrap-text: true;
 }
 
+/* The search boxes above the page tree, the keymap and the plugin list. Same shape in
+   all three, because they do the same thing and a reader should not have to notice
+   which one they are typing into. */
+.settings-search {
+    -fx-prompt-text-fill: -smide-text-muted;
+}
+
 .dialog-pane {
     -fx-background-color: -smide-paper;
 }
