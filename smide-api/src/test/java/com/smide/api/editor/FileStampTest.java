@@ -44,9 +44,13 @@ class FileStampTest {
         Path file = file("a.txt", "one");
         FileStamp stamp = FileStamp.of(file);
         // Same number of bytes: only the modified time can tell these apart.
+        Files.writeString(file, "two");
+        /* Moved on after the write, not before it. Writing sets the modified time itself,
+           so setting it first and writing second throws the new time away - and the test
+           then passes or fails on whether the two writes happened to land either side of
+           a filesystem clock tick, which on Windows they usually do not. */
         Files.setLastModifiedTime(file, java.nio.file.attribute.FileTime.fromMillis(
                 Files.getLastModifiedTime(file).toMillis() + 5_000));
-        Files.writeString(file, "two");
         assertTrue(stamp.differsFrom(file));
     }
 
