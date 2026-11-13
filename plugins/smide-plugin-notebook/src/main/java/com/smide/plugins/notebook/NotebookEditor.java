@@ -84,7 +84,7 @@ public final class NotebookEditor implements Editor {
     private final Label typesState = new Label();
     private final List<CellView> views = new ArrayList<>();
     private final ReadOnlyBooleanWrapper modified = new ReadOnlyBooleanWrapper(false);
-    private final CompletionPopup completion = new CompletionPopup();
+    private final CompletionPopup completion;
     private final PauseTransition checkDebounce = new PauseTransition(CHECK_DELAY);
     private final PauseTransition completeDebounce = new PauseTransition(COMPLETE_DELAY);
     private final Highlighter highlighter;
@@ -114,6 +114,7 @@ public final class NotebookEditor implements Editor {
         this.fontSize = ide.settings().getInt("editor.fontSize", 13);
         this.highlighter = ide.languages().byId("python")
                 .map(LanguageSupport::highlighter).orElse(Highlighter.NONE);
+        this.completion = new CompletionPopup(ide);
 
         root.getStyleClass().add("notebook-editor");
         column.getStyleClass().add("notebook-column");
@@ -128,6 +129,10 @@ public final class NotebookEditor implements Editor {
             checkSyntax();
         });
         completeDebounce.setOnFinished(event -> complete(false));
+        /* Accepting a suggestion edits the cell, and an edit asks for suggestions - so the
+           list came straight back up over the word it had just completed. The insertion is
+           what schedules that, so the cancelling has to happen after it. */
+        completion.setAfterInsert(completeDebounce::stop);
 
         load();
         root.setTop(toolbar());

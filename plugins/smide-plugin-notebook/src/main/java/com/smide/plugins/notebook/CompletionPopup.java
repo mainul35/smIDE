@@ -1,6 +1,6 @@
 package com.smide.plugins.notebook;
 
-import javafx.application.Platform;
+import com.smide.api.Ide;
 import javafx.geometry.Bounds;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -38,8 +38,18 @@ final class CompletionPopup {
     private CodeArea area;
     /** Where the word being completed starts, so accepting can replace it. */
     private int replaceFrom;
+    /** Run after an accepted item has been inserted; see {@link #setAfterInsert}. */
+    private Runnable afterInsert = () -> { };
 
-    CompletionPopup() {
+    CompletionPopup(Ide ide) {
+        /* Not focus-traversable, and this is the whole of why Enter works.
+           A Popup is a window of its own, and key events go to the focused node of the
+           focused window. A focus-traversable list inside the popup becomes that node the
+           moment the popup is shown, so Enter and the arrow keys are delivered to the
+           list - which does nothing with them - and never reach the cell's handler, where
+           this class is actually asked about them. The list is still selectable and still
+           clickable; it simply never takes the keyboard. */
+        list.setFocusTraversable(false);
         list.setCellFactory(view -> new ListCell<>() {
             @Override
             protected void updateItem(CompletionItem item, boolean empty) {
@@ -69,9 +79,30 @@ final class CompletionPopup {
                 accept();
             }
         });
+        // A Popup carries a scene of its own, so the application stylesheet and the dark
+        // class have to be put on this subtree or the list is drawn in modena's default
+        // palette rather than the one the rest of the window is using.
+        if (ide != null && ide.theme() != null) {
+            list.getStylesheets().add(ide.theme().stylesheet());
+            ide.theme().style(list);
+        }
         popup.getContent().add(list);
         popup.setAutoHide(true);
         popup.setHideOnEscape(true);
+        // Nudged back on screen rather than drawn off the bottom edge for a cell near it.
+        popup.setAutoFix(true);
+    }
+
+    /**
+     * What to do once an accepted item has been put into the cell.
+     *
+     * <p>Inserting text is an edit like any other, and the editor answers an edit by
+     * asking for suggestions again - so accepting a completion put the list straight back
+     * up over the word it had just finished. The editor cancels that here, after the
+     * insertion rather than before, because the insertion is what schedules it.
+     */
+    void setAfterInsert(Runnable afterInsert) {
+        this.afterInsert = afterInsert == null ? () -> { } : afterInsert;
     }
 
     boolean isShowing() {
@@ -101,8 +132,6 @@ final class CompletionPopup {
         }
         Bounds bounds = caret.get();
         popup.show(over, bounds.getMinX(), bounds.getMaxY() + 2);
-        // The list must not take the caret: the reader is still typing into the cell.
-        Platform.runLater(over::requestFocus);
     }
 
     void hide() {
@@ -174,5 +203,6 @@ final class CompletionPopup {
         int from = Math.max(0, Math.min(replaceFrom, caret));
         hide();
         area.replaceText(from, caret, text);
+        afterInsert.run();
     }
 }
