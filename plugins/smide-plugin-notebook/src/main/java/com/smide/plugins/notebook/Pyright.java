@@ -10,6 +10,8 @@ import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemCapabilities;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.ConfigurationItem;
+import org.eclipse.lsp4j.ConfigurationParams;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
@@ -28,6 +30,7 @@ import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
+import org.eclipse.lsp4j.WorkspaceClientCapabilities;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.launch.LSPLauncher;
 import org.eclipse.lsp4j.services.LanguageClient;
@@ -43,6 +46,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * pyright, for one notebook, shown the cells as one program.
@@ -75,6 +79,8 @@ final class Pyright {
     private final Path notebook;
     /** Called with the diagnostics for one cell, on whatever thread pyright answered on. */
     private final Consumer<CellDiagnostics> onDiagnostics;
+    /** The interpreter this notebook runs in, asked for when pyright wants its settings. */
+    private final Supplier<Optional<Path>> interpreter;
     private final ExecutorService threads = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "smide-notebook-pyright");
         thread.setDaemon(true);
@@ -93,11 +99,13 @@ final class Pyright {
     record CellDiagnostics(int cellIndex, List<com.smide.api.problems.Diagnostic> diagnostics) {
     }
 
-    Pyright(Ide ide, Workspace workspace, Path notebook, Consumer<CellDiagnostics> onDiagnostics) {
+    Pyright(Ide ide, Workspace workspace, Path notebook, Consumer<CellDiagnostics> onDiagnostics,
+            Supplier<Optional<Path>> interpreter) {
         this.ide = ide;
         this.workspace = workspace;
         this.notebook = notebook;
         this.onDiagnostics = onDiagnostics;
+        this.interpreter = interpreter;
     }
 
     /**
@@ -172,7 +180,61 @@ final class Pyright {
         text.setPublishDiagnostics(new PublishDiagnosticsCapabilities(false));
         ClientCapabilities capabilities = new ClientCapabilities();
         capabilities.setTextDocument(text);
+        /* Settings are pulled, not pushed, and this is what says so. Without it a client is
+           entitled to be asked nothing, and pyright would be left guessing at the
+           interpreter - see {@link #settings} for what that costs. */
+        WorkspaceClientCapabilities pull = new WorkspaceClientCapabilities();
+        pull.setConfiguration(true);
+        capabilities.setWorkspace(pull);
         return capabilities;
+    }
+
+    /**
+     * What to tell pyright when it asks for its settings.
+     *
+     * <p>This is the difference between a type checker that knows what the project imports
+     * and one that does not, and it is worth being plain about how it was found, because
+     * nothing about the symptom points here. pyright resolves imports against an
+     * interpreter's site-packages, and the interpreter it uses is the one in
+     * {@code python.pythonPath}. It asks the client for that value through
+     * {@code workspace/configuration} during startup. A client that does not answer gets
+     * no second chance: pyright falls back to whatever Python it can find for itself,
+     * which in a project whose packages live in a virtual environment is an interpreter
+     * with none of them.
+     *
+     * <p>What that looks like from the outside is not a broken type checker. Diagnostics
+     * arrive, syntax is checked, the status says pyright is running - everything works
+     * except that every import from the environment is unresolved, and because pyright
+     * cannot see the module, it has nothing to complete from it either. So completion
+     * appears to be broken while it is in fact answering correctly: there is genuinely
+     * nothing to offer after {@code from langgraph.graph import }. Measured against this
+     * project's own environment, answering with the interpreter turned that position from
+     * zero suggestions into {@code StateGraph}.
+     *
+     * <p>A map per section, so the mapping is tested without a pyright.
+     *
+     * @param section what pyright asked for, or null when it asked for everything
+     */
+    static java.util.Map<String, Object> settings(String section, Path interpreter) {
+        java.util.Map<String, Object> analysis = new java.util.LinkedHashMap<>();
+        analysis.put("autoSearchPaths", true);
+        analysis.put("useLibraryCodeForTypes", true);
+        // Only what is open: a notebook's context is a handful of cells, and checking the
+        // whole project would make the first keystroke wait for somebody else's files.
+        analysis.put("diagnosticMode", "openFilesOnly");
+        java.util.Map<String, Object> python = new java.util.LinkedHashMap<>();
+        if (interpreter != null) {
+            python.put("pythonPath", interpreter.toString());
+        }
+        python.put("analysis", analysis);
+        if (section == null || section.isBlank()) {
+            return java.util.Map.of("python", python);
+        }
+        return switch (section) {
+            case "python" -> python;
+            case "python.analysis" -> analysis;
+            default -> java.util.Map.of();
+        };
     }
 
     /**
@@ -357,6 +419,25 @@ final class Pyright {
 
         @Override
         public void telemetryEvent(Object object) {
+        }
+
+        /**
+         * Answers pyright's question about its settings; see {@link Pyright#settings}.
+         *
+         * <p>Overridden rather than left alone because lsp4j's default is to throw, and a
+         * server that is answered with an error has been told nothing - silently, from
+         * this side.
+         */
+        @Override
+        public CompletableFuture<List<Object>> configuration(ConfigurationParams params) {
+            Path python = interpreter == null ? null : interpreter.get().orElse(null);
+            List<ConfigurationItem> items = params == null || params.getItems() == null
+                    ? List.of() : params.getItems();
+            List<Object> answers = new java.util.ArrayList<>(items.size());
+            for (ConfigurationItem item : items) {
+                answers.add(settings(item.getSection(), python));
+            }
+            return CompletableFuture.completedFuture(answers);
         }
 
         @Override

@@ -204,7 +204,8 @@ public final class NotebookEditor implements Editor {
         // session restored at startup can open half a dozen of these behind the front tab,
         // and each one would otherwise start a pyright nobody asked for.
         if (unreadable == null && pyright == null) {
-            pyright = new Pyright(ide, workspace, path, this::applyDiagnostics);
+            pyright = new Pyright(ide, workspace, path, this::applyDiagnostics,
+                    this::interpreter);
             /* Warm it now rather than on the first edit. Starting pyright takes a second or
                two, and the first thing a reader does in a notebook is ask for completion -
                which used to be the thing that started it, so the first request was always
