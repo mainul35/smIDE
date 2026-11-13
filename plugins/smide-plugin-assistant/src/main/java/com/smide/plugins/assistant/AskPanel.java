@@ -264,7 +264,8 @@ final class AskPanel extends BorderPane {
         chooser.setTitle("Attach a picture to the question");
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(
                 "Pictures", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp"));
-        java.io.File file = chooser.showOpenDialog(ide.window().stage());
+        java.io.File file = com.smide.api.ui.Windows.whileChoosing(() ->
+                chooser.showOpenDialog(com.smide.api.ui.Windows.frontmost(ide.window().stage())));
         if (file != null) {
             attach(file.getName(), () -> Attachment.of(file.toPath()));
         }

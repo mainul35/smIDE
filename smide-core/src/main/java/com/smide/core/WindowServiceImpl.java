@@ -125,7 +125,8 @@ public final class WindowServiceImpl implements WindowService {
         if (initial != null && Files.isDirectory(initial)) {
             chooser.setInitialDirectory(initial.toFile());
         }
-        File chosen = chooser.showDialog(stage);
+        File chosen = com.smide.api.ui.Windows.whileChoosing(
+                () -> chooser.showDialog(com.smide.api.ui.Windows.frontmost(stage)));
         return Optional.ofNullable(chosen).map(File::toPath);
     }
 
@@ -136,7 +137,8 @@ public final class WindowServiceImpl implements WindowService {
         if (initial != null && Files.isDirectory(initial)) {
             chooser.setInitialDirectory(initial.toFile());
         }
-        File chosen = chooser.showOpenDialog(stage);
+        File chosen = com.smide.api.ui.Windows.whileChoosing(
+                () -> chooser.showOpenDialog(com.smide.api.ui.Windows.frontmost(stage)));
         return Optional.ofNullable(chosen).map(File::toPath);
     }
 
@@ -150,7 +152,8 @@ public final class WindowServiceImpl implements WindowService {
         if (suggestedName != null) {
             chooser.setInitialFileName(suggestedName);
         }
-        File chosen = chooser.showSaveDialog(stage);
+        File chosen = com.smide.api.ui.Windows.whileChoosing(
+                () -> chooser.showSaveDialog(com.smide.api.ui.Windows.frontmost(stage)));
         return Optional.ofNullable(chosen).map(File::toPath);
     }
 
