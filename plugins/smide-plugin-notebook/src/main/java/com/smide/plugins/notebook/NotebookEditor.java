@@ -72,6 +72,7 @@ public final class NotebookEditor implements Editor {
     private static final KeyCombination RUN_AND_NEXT = KeyCombination.keyCombination("shift+Enter");
     private static final KeyCombination COMPLETE = KeyCombination.keyCombination("shortcut+Space");
     private static final KeyCombination SPLIT = KeyCombination.keyCombination("shortcut+shift+Minus");
+    private static final KeyCombination FORMAT = KeyCombination.keyCombination("shortcut+alt+L");
 
     private final Ide ide;
     private final Workspace workspace;
@@ -79,6 +80,8 @@ public final class NotebookEditor implements Editor {
     private final VBox column = new VBox(2);
     private final ScrollPane scroll = new ScrollPane(column);
     private final Label kernelState = new Label();
+    /** What the type checker is doing, so that "nothing happens" is never unexplained. */
+    private final Label typesState = new Label();
     private final List<CellView> views = new ArrayList<>();
     private final ReadOnlyBooleanWrapper modified = new ReadOnlyBooleanWrapper(false);
     private final CompletionPopup completion = new CompletionPopup();
@@ -120,7 +123,10 @@ public final class NotebookEditor implements Editor {
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         scroll.getStyleClass().add("notebook-scroll");
 
-        checkDebounce.setOnFinished(event -> check());
+        checkDebounce.setOnFinished(event -> {
+            check();
+            checkSyntax();
+        });
         completeDebounce.setOnFinished(event -> complete(false));
 
         load();
@@ -199,6 +205,12 @@ public final class NotebookEditor implements Editor {
         // and each one would otherwise start a pyright nobody asked for.
         if (unreadable == null && pyright == null) {
             pyright = new Pyright(ide, workspace, path, this::applyDiagnostics);
+            /* Warm it now rather than on the first edit. Starting pyright takes a second or
+               two, and the first thing a reader does in a notebook is ask for completion -
+               which used to be the thing that started it, so the first request was always
+               the one that got nothing back. */
+            check();
+            showTypesState();
             check();
         }
     }
@@ -337,13 +349,18 @@ public final class NotebookEditor implements Editor {
                         this::restartAndClear),
                 button("+ Cell", "Add a code cell at the end",
                         () -> new CellListener().addBelow(views.isEmpty()
-                                ? null : views.get(views.size() - 1))));
+                                ? null : views.get(views.size() - 1))),
+                button("Format", "Tidy every code cell with ruff (Ctrl+Alt+L)", this::formatAll));
         Region gap = new Region();
         HBox.setHgrow(gap, Priority.ALWAYS);
         kernelState.getStyleClass().add("notebook-kernel-state");
         kernelState.setFont(Font.font(fontFamily, fontSize - 1));
-        bar.getChildren().addAll(gap, kernelState);
+        typesState.getStyleClass().add("notebook-kernel-state");
+        typesState.setFont(Font.font(fontFamily, fontSize - 1));
+        typesState.setPadding(new Insets(0, 12, 0, 0));
+        bar.getChildren().addAll(gap, typesState, kernelState);
         showKernelState("no kernel yet");
+        showTypesState();
         bar.setDisable(unreadable != null);
         return bar;
     }
@@ -358,6 +375,130 @@ public final class NotebookEditor implements Editor {
 
     private void showKernelState(String what) {
         kernelState.setText("Kernel: " + what);
+    }
+
+    /**
+     * Says what the type checker is doing, in the toolbar beside the kernel.
+     *
+     * <p>Because the alternative is silence. Completion that is unavailable used to look
+     * exactly like completion that was broken, or a keystroke that never arrived: nothing
+     * happened and nothing said why. A reader who can see "Types: off - pyright is not
+     * installed" knows what to do; a reader who sees nothing files a bug, or gives up.
+     */
+    private void showTypesState() {
+        typesState.setText("Types: " + typesStateText());
+    }
+
+    private String typesStateText() {
+        if (unreadable != null) {
+            return "off - this file is not a notebook";
+        }
+        if (Pyright.launcher(ide).isEmpty()) {
+            return "off - pyright is not installed (open a .py file to be offered it)";
+        }
+        if (pyright == null) {
+            return "starting";
+        }
+        return pyright.isAvailable() ? "pyright" : "off - pyright would not start";
+    }
+
+    // ------------------------------------------------------------- formatting
+
+    /**
+     * Tidies every code cell with ruff, installing it the first time if it is not there.
+     *
+     * <p>Installing without being asked is a deliberate choice and a narrow one: into this
+     * project's own environment, one pinned package, only when the user has asked for
+     * formatting and there is nothing to format with. The alternative - a dialog explaining
+     * that formatting needs a tool, with a command to copy - is a worse answer to somebody
+     * who has just pressed Format.
+     *
+     * <p>Cell by cell rather than all at once, because a notebook's cells are fragments: one
+     * that is not whole Python on its own is skipped and the rest are still tidied, which is
+     * not possible if they are formatted as one document.
+     */
+    private void formatAll() {
+        if (notebook == null || unreadable != null) {
+            return;
+        }
+        Optional<Path> interpreter = interpreter();
+        if (interpreter.isEmpty()) {
+            ide.notifications().warn("Nothing to format with",
+                    "This project has no Python interpreter, so there is no ruff to run.");
+            return;
+        }
+        views.forEach(CellView::flush);
+        List<CellView> code = views.stream()
+                .filter(view -> view.cell().kind() == CellKind.CODE).toList();
+        if (code.isEmpty()) {
+            return;
+        }
+        Thread worker = new Thread(() -> formatOffThread(interpreter.get(), code),
+                "smide-notebook-format");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void formatOffThread(Path interpreter, List<CellView> code) {
+        List<String> formatted = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        boolean installed = false;
+        for (CellView view : code) {
+            int index = views.indexOf(view);
+            String before = view.cell().source();
+            Formatter.Formatted answer = Formatter.format(interpreter, before,
+                    Formatter.nameFor(path, index));
+            if (!answer.worked() && !installed
+                    && answer.problem().orElse("").contains("not installed")) {
+                Platform.runLater(() -> showKernelState("installing ruff"));
+                Optional<String> wrong = Formatter.install(interpreter);
+                installed = true;
+                if (wrong.isPresent()) {
+                    Platform.runLater(() -> ide.notifications().error("Could not install ruff",
+                            "Formatting needs ruff in this project's environment: " + wrong.get()));
+                    return;
+                }
+                answer = Formatter.format(interpreter, before, Formatter.nameFor(path, index));
+            }
+            if (answer.worked()) {
+                String after = answer.text().orElse(before);
+                if (!after.equals(before)) {
+                    formatted.add(String.valueOf(index + 1));
+                    Platform.runLater(() -> {
+                        if (!disposed) {
+                            view.setText(after);
+                        }
+                    });
+                }
+            } else {
+                skipped.add((index + 1) + ": " + answer.problem().orElse("no reason given"));
+            }
+        }
+        List<String> changed = List.copyOf(formatted);
+        List<String> left = List.copyOf(skipped);
+        Platform.runLater(() -> {
+            if (disposed) {
+                return;
+            }
+            showKernelState(kernel == null ? "no kernel yet" : "ready");
+            if (changed.isEmpty() && left.isEmpty()) {
+                ide.notifications().info("Already tidy", "Every cell was already formatted.");
+            } else if (left.isEmpty()) {
+                ide.notifications().info("Formatted", "Cells " + String.join(", ", changed) + ".");
+            } else {
+                ide.notifications().warn("Formatted, with some left alone",
+                        (changed.isEmpty() ? "" : "Cells " + String.join(", ", changed) + ". ")
+                                + "Left alone - " + String.join("; ", left));
+            }
+        });
+    }
+
+    /** This project's interpreter, the one its cells run in. */
+    private Optional<Path> interpreter() {
+        Path root = workspace == null ? path.getParent() : workspace.root();
+        return Interpreters.forNotebook(path, root,
+                com.smide.plugins.python.PythonToolchain::venvInterpreter,
+                () -> new com.smide.plugins.python.PythonToolchain().locate(ide));
     }
 
     // ---------------------------------------------------------------- keys
@@ -385,6 +526,11 @@ public final class NotebookEditor implements Editor {
         if (COMPLETE.match(event)) {
             event.consume();
             complete(true);
+            return;
+        }
+        if (FORMAT.match(event)) {
+            event.consume();
+            formatAll();
             return;
         }
         if (SPLIT.match(event)) {
@@ -660,6 +806,47 @@ public final class NotebookEditor implements Editor {
             return;
         }
         pyright.update(CellContext.upTo(notebook.cells(), last, null));
+    }
+
+    /**
+     * Asks the interpreter whether each code cell is Python it would accept.
+     *
+     * <p>Beside pyright, not behind it. pyright is a download that needs Node and may be
+     * absent, starting or broken; the interpreter is always there, because a notebook with
+     * no interpreter cannot run at all. A mark under an unclosed bracket is the most basic
+     * thing a reader expects, and it should not be the thing that depends on the most
+     * elaborate part of the stack.
+     *
+     * <p>One process per code cell, after typing has settled, off the UI thread.
+     */
+    private void checkSyntax() {
+        if (notebook == null || unreadable != null) {
+            return;
+        }
+        Optional<Path> interpreter = interpreter();
+        if (interpreter.isEmpty()) {
+            return;
+        }
+        views.forEach(CellView::flush);
+        List<CellView> code = views.stream()
+                .filter(view -> view.cell().kind() == CellKind.CODE).toList();
+        Map<CellView, String> sources = new HashMap<>();
+        code.forEach(view -> sources.put(view, view.cell().source()));
+        Thread worker = new Thread(() -> {
+            for (CellView view : code) {
+                String source = sources.get(view);
+                Optional<SyntaxCheck.Problem> problem = SyntaxCheck.check(interpreter.get(), source);
+                Platform.runLater(() -> {
+                    // Dropped if the cell has been typed in since: the position would be stale.
+                    if (disposed || !view.text().equals(source)) {
+                        return;
+                    }
+                    view.setSyntaxProblem(problem.orElse(null));
+                });
+            }
+        }, "smide-notebook-syntax");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     /** Diagnostics for one cell, from pyright's thread. */

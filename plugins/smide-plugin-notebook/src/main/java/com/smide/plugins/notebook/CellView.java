@@ -220,6 +220,23 @@ final class CellView extends BorderPane {
         return area.getText();
     }
 
+    /**
+     * Replaces what is on screen, as an edit rather than a reload.
+     *
+     * <p>Deliberately not {@link #load}: formatting a cell is something the reader did, so
+     * it must mark the notebook modified and be undoable with one Ctrl+Z, exactly like
+     * typing. The caret is put back as near as it was, since the text around it has usually
+     * only shifted by a space or two.
+     */
+    void setText(String text) {
+        if (area.getText().equals(text)) {
+            return;
+        }
+        int caret = area.getCaretPosition();
+        area.replaceText(text);
+        area.moveTo(Math.min(caret, area.getLength()));
+    }
+
     /** Writes what is on screen into the model. */
     void flush() {
         cell.setSource(area.getText());
@@ -243,9 +260,43 @@ final class CellView extends BorderPane {
         showCount();
     }
 
+    private SyntaxCheck.Problem syntaxProblem;
+
     void setDiagnostics(List<Diagnostic> diagnostics) {
         this.diagnostics = diagnostics == null ? List.of() : diagnostics;
         highlight();
+    }
+
+    /**
+     * A syntax error the interpreter itself reported, shown alongside pyright's diagnostics.
+     *
+     * <p>Kept apart from {@link #setDiagnostics} rather than merged into it, because the two
+     * arrive from different places at different times: pyright republishes the whole
+     * notebook's diagnostics at once, and would wipe this out every time it did.
+     */
+    void setSyntaxProblem(SyntaxCheck.Problem problem) {
+        this.syntaxProblem = problem;
+        highlight();
+    }
+
+    /**
+     * The interpreter's own complaint as a diagnostic, so one list can be drawn.
+     *
+     * <p>Python counts lines and columns from one and smIDE counts from zero, which is the
+     * sort of difference that puts a mark one character to the left of the problem forever.
+     * The end is one character past the start: a syntax error is a point, and a point with
+     * no width draws nothing.
+     */
+    List<Diagnostic> allProblems() {
+        if (syntaxProblem == null) {
+            return diagnostics;
+        }
+        List<Diagnostic> all = new java.util.ArrayList<>(diagnostics);
+        int line = Math.max(0, syntaxProblem.line() - 1);
+        int column = Math.max(0, syntaxProblem.column() - 1);
+        all.add(0, new Diagnostic(null, line, column, line, column + 1,
+                Diagnostic.Severity.ERROR, syntaxProblem.message(), "python", null));
+        return all;
     }
 
     /** The problems on this cell, for the tooltip and for the editor to collect. */
@@ -281,7 +332,7 @@ final class CellView extends BorderPane {
                 ? highlighter.tokenize(text) : List.of();
         try {
             area.setStyleSpans(0, Spans.of(text.length(), tokens,
-                    Spans.overlays(diagnostics, text)));
+                    Spans.overlays(allProblems(), text)));
         } catch (RuntimeException e) {
             // A span set that does not add up to the text's length throws rather than
             // drawing wrong; the text is simply left uncoloured until the next edit.
