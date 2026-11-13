@@ -24,6 +24,9 @@ public final class LangGraphPlugin implements Plugin {
                 new com.smide.api.lang.ToolchainSettingsPage(context.ide(), "Languages/LangGraph", cli));
         // The graph beside the file that builds it, drawn from the calls as they are typed.
         context.registerToolWindow(new GraphToolWindow(context.ide()));
+        /* File - New Project - LangGraph. A project that makes its own environment and opens
+           a notebook you can run, rather than a folder of files and an afternoon of setup. */
+        context.registerNewProjectTemplate(new LangGraphTemplate());
 
         // langgraph.json: a graph pointing at a file that is not there, a dependency that is not.
         ManifestChecks.watch(context.ide(), LangGraphJson.SOURCE, LangGraphJson::isConfig, LangGraphJson::problemsIn);

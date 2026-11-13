@@ -117,6 +117,10 @@ public final class NewProjectDialog {
                     t.generate(ide, target, projectName, snapshot);
                     ide.window().runLater(() -> {
                         ide.workspaces().open(target);
+                        // After the project, so the file opens into a workspace that exists.
+                        t.openAfterCreating(target)
+                                .filter(Files::isRegularFile)
+                                .ifPresent(ide.editors()::open);
                         ide.notifications().info("Project created", target.toString());
                     });
                 } catch (Exception ex) {
