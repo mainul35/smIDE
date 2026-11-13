@@ -5,13 +5,14 @@ import com.smide.api.project.NewProjectTemplate;
 import com.smide.api.util.Executables;
 import com.smide.plugins.python.PythonToolchain;
 import javafx.scene.Node;
-import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -63,22 +64,62 @@ public final class LangGraphTemplate implements NewProjectTemplate {
         return "mdi2g-graph-outline";
     }
 
+    /** What the environment choice means, as it is written into the form's values. */
+    static final String NEW_ENVIRONMENT = "";
+
+    static final String NOTHING = "none";
+
+    private Ide ide;
+
+    /**
+     * Remembers the IDE so the form can look for environments.
+     *
+     * <p>{@link #form} is handed only the map it writes into, and listing what already exists
+     * needs more than that. The dialog builds a template's form after the IDE exists, so this
+     * is set once and read once.
+     */
+    public LangGraphTemplate(Ide ide) {
+        this.ide = ide;
+    }
+
     @Override
     public Node form(Map<String, String> values) {
         GridPane grid = new GridPane();
         grid.setHgap(8);
         grid.setVgap(6);
-        CheckBox venv = new CheckBox("Create .venv and install LangGraph");
-        venv.setSelected(true);
-        values.put("venv", "true");
-        venv.selectedProperty().addListener((o, was, now) -> values.put("venv", String.valueOf(now)));
-        Label note = new Label("""
-                Installing fetches langgraph, the CLI and ipykernel from PyPI, which takes a
-                minute and needs the network. Without it the project is still complete; the
-                README says what to run.""");
+
+        ComboBox<String> where = new ComboBox<>();
+        where.getItems().add("Create a new .venv and install LangGraph");
+        List<Path> reusable = ide == null ? List.of() : Environments.reusable(ide);
+        for (Path venv : reusable) {
+            where.getItems().add("Use " + Environments.describe(venv));
+        }
+        where.getItems().add("No environment - just the files");
+        where.getSelectionModel().select(0);
+        values.put("environment", NEW_ENVIRONMENT);
+        where.getSelectionModel().selectedIndexProperty().addListener((o, was, now) -> {
+            int at = now.intValue();
+            if (at <= 0) {
+                values.put("environment", NEW_ENVIRONMENT);
+            } else if (at <= reusable.size()) {
+                values.put("environment", reusable.get(at - 1).toString());
+            } else {
+                values.put("environment", NOTHING);
+            }
+        });
+
+        Label note = new Label(reusable.isEmpty() ? """
+                Installing fetches langgraph, the CLI and ipykernel from PyPI: a minute, and it
+                needs the network. Without it the project is still complete; the README says
+                what to run.""" : """
+                A new environment downloads its own copy of everything, and on Windows with
+                Smart App Control a newly downloaded binary is refused until Windows has made
+                up its mind about it - so a brand new project can be unable to run for an hour.
+                Borrowing an environment that already works avoids that entirely, at the cost
+                of sharing it: a package installed from one project appears in all of them.""");
         note.setWrapText(true);
         note.getStyleClass().add("muted");
-        grid.add(new VBox(6, venv, note), 0, 0);
+        grid.add(new VBox(6, new Label("Environment"), where, note), 0, 0);
         return grid;
     }
 
@@ -90,7 +131,12 @@ public final class LangGraphTemplate implements NewProjectTemplate {
     @Override
     public void generate(Ide ide, Path location, String name, Map<String, String> values) throws Exception {
         write(location, name);
-        if (!Boolean.parseBoolean(values.getOrDefault("venv", "true"))) {
+        String chosen = values.getOrDefault("environment", NEW_ENVIRONMENT);
+        if (NOTHING.equals(chosen)) {
+            return;
+        }
+        if (!chosen.isBlank()) {
+            borrow(ide, location, Path.of(chosen));
             return;
         }
         Optional<Path> python = basePython(ide);
@@ -101,6 +147,20 @@ public final class LangGraphTemplate implements NewProjectTemplate {
             return;
         }
         makeEnvironment(ide, location, python.get());
+    }
+
+    /** Points the new project at an environment that already exists, instead of building one. */
+    private void borrow(Ide ide, Path location, Path environment) {
+        Optional<String> wrong = Environments.link(location, environment);
+        if (wrong.isPresent()) {
+            ide.notifications().error("Could not use " + environment.getFileName(),
+                    "The project is ready, but its .venv was not linked: " + wrong.get());
+            return;
+        }
+        ide.notifications().info("LangGraph project ready",
+                "Its .venv points at " + environment + ", so it runs straight away."
+                        + " That environment is shared: anything installed from here shows up"
+                        + " in the project it belongs to as well.");
     }
 
     // ------------------------------------------------------------------ files
@@ -181,15 +241,63 @@ public final class LangGraphTemplate implements NewProjectTemplate {
             return;
         }
         if (notClearedYet(tried.said())) {
-            ide.notifications().warn("Windows has not cleared LangGraph yet",
-                    "The project and its .venv are complete, but Smart App Control is still"
-                            + " checking a newly downloaded part of LangGraph and will not let it"
-                            + " load. Nothing is wrong with the project and there is nothing to"
-                            + " reinstall - it starts working by itself, usually within the hour.");
+            offerAWayRound(ide, location);
             return;
         }
         ide.notifications().warn("LangGraph is installed but would not import",
                 "The project is ready. Running a cell will show what is wrong.");
+    }
+
+    /**
+     * Says that Windows has not cleared the new environment, and offers one that it has.
+     *
+     * <p>Waiting works, and saying only that is what this did at first. But an environment
+     * that is already cleared runs now, and the user has no way of knowing one would - so if
+     * there is one, the notification carries a button that swaps to it rather than leaving
+     * them to wait for something they did not ask for.
+     */
+    private void offerAWayRound(Ide ide, Path location) {
+        String said = "The project and its .venv are complete, but Smart App Control is still"
+                + " checking a newly downloaded part of LangGraph and will not let it load."
+                + " Nothing is wrong with the project and there is nothing to reinstall - it"
+                + " starts working by itself, usually within the hour.";
+        Optional<Path> cleared = Environments.reusable(ide).stream()
+                .filter(venv -> !venv.startsWith(location))
+                .filter(Environments::carriesLangGraph)
+                .findFirst();
+        if (cleared.isEmpty()) {
+            ide.notifications().warn("Windows has not cleared LangGraph yet", said);
+            return;
+        }
+        Path use = cleared.get();
+        ide.notifications().warn("Windows has not cleared LangGraph yet",
+                said + "\n\nOr borrow " + use + ", which already works.",
+                new com.smide.api.ui.Notifications.NotificationAction(
+                        "Use " + use.getParent().getFileName() + "'s environment",
+                        () -> swapTo(ide, location, use)));
+    }
+
+    /** Replaces the project's unusable .venv with a link to one that works. */
+    private void swapTo(Ide ide, Path location, Path environment) {
+        Path mine = location.resolve(".venv");
+        try {
+            if (Files.exists(mine)) {
+                // Deleting what was just built: it is this project's own, and it does not run.
+                try (var walk = Files.walk(mine)) {
+                    walk.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (java.io.IOException ignored) {
+                            // A file in use stays; the link below will then say so.
+                        }
+                    });
+                }
+            }
+        } catch (java.io.IOException e) {
+            ide.notifications().error("Could not remove the unusable .venv", e.getMessage());
+            return;
+        }
+        borrow(ide, location, environment);
     }
 
     /**

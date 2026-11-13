@@ -26,7 +26,7 @@ public final class LangGraphPlugin implements Plugin {
         context.registerToolWindow(new GraphToolWindow(context.ide()));
         /* File - New Project - LangGraph. A project that makes its own environment and opens
            a notebook you can run, rather than a folder of files and an afternoon of setup. */
-        context.registerNewProjectTemplate(new LangGraphTemplate());
+        context.registerNewProjectTemplate(new LangGraphTemplate(context.ide()));
 
         // langgraph.json: a graph pointing at a file that is not there, a dependency that is not.
         ManifestChecks.watch(context.ide(), LangGraphJson.SOURCE, LangGraphJson::isConfig, LangGraphJson::problemsIn);
