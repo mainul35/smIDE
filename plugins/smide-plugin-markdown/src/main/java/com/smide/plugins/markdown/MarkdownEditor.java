@@ -39,7 +39,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -114,7 +113,7 @@ public final class MarkdownEditor implements TextEditor {
 
     private Path path;
     private String lineSeparator = System.lineSeparator();
-    private FileTime loadedTime;
+    private com.smide.api.editor.FileStamp loaded = com.smide.api.editor.FileStamp.UNKNOWN;
     private List<Token> tokens = List.of();
     private List<Diagnostic> diagnostics = List.of();
     private List<Spans.Overlay> searchHits = List.of();
@@ -297,7 +296,7 @@ public final class MarkdownEditor implements TextEditor {
         try {
             byte[] bytes = Files.readAllBytes(path);
             content = new String(bytes, StandardCharsets.UTF_8);
-            loadedTime = Files.getLastModifiedTime(path);
+            loaded = com.smide.api.editor.FileStamp.of(path);
         } catch (IOException e) {
             System.err.println("smIDE markdown: cannot read " + path + ": " + e);
         }
@@ -326,14 +325,10 @@ public final class MarkdownEditor implements TextEditor {
         }
     }
 
-    /** True if the file on disk is newer than what was loaded. */
+    /** True if the file changed since this editor last read or wrote it. */
+    @Override
     public boolean isStaleOnDisk() {
-        try {
-            FileTime now = Files.getLastModifiedTime(path);
-            return loadedTime != null && now.compareTo(loadedTime) > 0;
-        } catch (IOException e) {
-            return false;
-        }
+        return loaded.differsFrom(path);
     }
 
     @Override
@@ -356,7 +351,7 @@ public final class MarkdownEditor implements TextEditor {
         try {
             Files.createDirectories(target.getParent());
             Files.writeString(target, text, StandardCharsets.UTF_8);
-            loadedTime = Files.getLastModifiedTime(target);
+            loaded = com.smide.api.editor.FileStamp.of(target);
             area.getUndoManager().mark();
             modified.set(false);
         } catch (IOException e) {

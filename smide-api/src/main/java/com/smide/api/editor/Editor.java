@@ -56,6 +56,19 @@ public interface Editor {
     /** Re-read the file from disk because it changed outside the IDE. */
     void reload();
 
+    /**
+     * Whether the file changed since this editor last read or wrote it.
+     *
+     * <p>The IDE asks before saving over a file that says yes, and re-reads one whose editor
+     * says yes and has nothing unsaved. An editor that does not answer is taken at its word
+     * and saved over, which is what every editor did before this existed - so an editor that
+     * writes a file the user cares about should answer, and {@link FileStamp} is there to
+     * make that two lines rather than a design.
+     */
+    default boolean isStaleOnDisk() {
+        return false;
+    }
+
     /** This editor as a text editor, if it is one. */
     default Optional<TextEditor> asText() {
         return this instanceof TextEditor t ? Optional.of(t) : Optional.empty();

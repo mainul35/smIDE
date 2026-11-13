@@ -517,14 +517,20 @@ public final class EditorManager implements Editors {
 
     /** Asks about unsaved changes. True means go ahead (saved or discarded). */
     public boolean confirmDiscard(Editor editor) {
-        if (!editor.isModified()) {
+        if (Conflicts.forClose(editor.isModified(), editor.isStaleOnDisk()) != Conflicts.Action.ASK) {
             return true;
         }
-        ButtonType save = new ButtonType("Save");
+        boolean stale = editor.isStaleOnDisk();
+        ButtonType save = new ButtonType(stale ? "Overwrite" : "Save");
         ButtonType discard = new ButtonType("Discard");
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                editor.path().getFileName() + " has unsaved changes.", save, discard, ButtonType.CANCEL);
-        alert.setTitle("Unsaved changes");
+        String said = stale
+                ? editor.path().getFileName() + " has unsaved changes, and the file has also"
+                        + " changed on disk since it was opened.\n\nOverwrite replaces what is on"
+                        + " disk with what is in the editor. Discard keeps the file as it is now"
+                        + " and loses the unsaved changes."
+                : editor.path().getFileName() + " has unsaved changes.";
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION, said, save, discard, ButtonType.CANCEL);
+        alert.setTitle(stale ? "Unsaved changes, and the file changed" : "Unsaved changes");
         alert.setHeaderText(null);
         com.smide.api.ui.Windows.belongsTo(alert, window.stage());
         theme.style(alert.getDialogPane().getScene().getWindow());
@@ -533,23 +539,58 @@ public final class EditorManager implements Editors {
             return false;
         }
         if (choice.get() == save) {
-            try {
-                editor.save();
-                events.publish(new Events.FileSaved(editor.path()));
-            } catch (RuntimeException e) {
-                notifications.error("Save failed", e.getMessage());
-                return false;
-            }
+            return write(editor);
         }
         return true;
     }
 
     public void save(Editor editor) {
+        if (Conflicts.forSave(editor.isStaleOnDisk()) == Conflicts.Action.ASK && !confirmOverwrite(editor)) {
+            return;
+        }
+        write(editor);
+    }
+
+    /**
+     * Asks whether to write over a file that changed since it was opened.
+     *
+     * <p>Separate from {@link #confirmDiscard} because the two are different questions asked
+     * at different moments: that one is about leaving unsaved work behind, this one is about
+     * destroying somebody else's. Saying no here leaves both versions where they are, which
+     * is the only answer that is never wrong.
+     */
+    private boolean confirmOverwrite(Editor editor) {
+        ButtonType overwrite = new ButtonType("Overwrite");
+        ButtonType reload = new ButtonType("Reload");
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                editor.path().getFileName() + " has changed on disk since it was opened.\n\n"
+                        + "Overwrite replaces it with what is in the editor. Reload throws away"
+                        + " the changes in the editor and reads the file again.",
+                overwrite, reload, ButtonType.CANCEL);
+        alert.setTitle("The file changed on disk");
+        alert.setHeaderText(null);
+        com.smide.api.ui.Windows.belongsTo(alert, window.stage());
+        theme.style(alert.getDialogPane().getScene().getWindow());
+        Optional<ButtonType> choice = alert.showAndWait();
+        if (choice.isEmpty() || choice.get() == ButtonType.CANCEL) {
+            return false;
+        }
+        if (choice.get() == reload) {
+            editor.reload();
+            return false;
+        }
+        return true;
+    }
+
+    /** Writes, reports a failure as a notification, and says whether it got there. */
+    private boolean write(Editor editor) {
         try {
             editor.save();
             events.publish(new Events.FileSaved(editor.path()));
+            return true;
         } catch (RuntimeException e) {
             notifications.error("Save failed", e.getMessage());
+            return false;
         }
     }
 
@@ -577,12 +618,42 @@ public final class EditorManager implements Editors {
     /** Re-reads editors whose file changed on disk and that have no local edits. */
     public void reloadStale(Path directory) {
         for (Editor editor : open()) {
-            if (editor.path().getParent() != null && editor.path().getParent().equals(directory)
-                    && editor instanceof CodeEditor code && !code.isModified() && code.isStaleOnDisk()) {
-                if (Files.exists(editor.path())) {
-                    code.reload();
-                }
+            Path parent = editor.path().getParent();
+            if (parent != null && parent.equals(directory)) {
+                reloadIfStale(editor);
             }
+        }
+    }
+
+    /**
+     * Re-reads every open editor whose file changed and that has nothing unsaved.
+     *
+     * <p>Called when the window comes back to the front, because that is the moment the user
+     * has most likely been editing the same file somewhere else - another editor, a script, a
+     * checkout - and it costs two numbers per open file to find out. The directory watcher
+     * cannot be relied on alone: it watches the directories the project tree has reason to
+     * watch, and a file can be open from anywhere.
+     */
+    public void reloadStaleEverywhere() {
+        for (Editor editor : open()) {
+            reloadIfStale(editor);
+        }
+    }
+
+    private void reloadIfStale(Editor editor) {
+        if (Conflicts.forExternalChange(editor.isModified(), editor.isStaleOnDisk())
+                != Conflicts.Action.RELOAD) {
+            return;
+        }
+        // A file that has been deleted is left alone: there is nothing to re-read, and
+        // emptying the editor would turn somebody else's rm into lost work.
+        if (!Files.exists(editor.path())) {
+            return;
+        }
+        try {
+            editor.reload();
+        } catch (RuntimeException e) {
+            notifications.error("Could not re-read " + editor.path().getFileName(), e.getMessage());
         }
     }
 

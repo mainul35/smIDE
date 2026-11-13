@@ -179,6 +179,15 @@ public final class MainWindow {
             e.consume();
             ide.requestExit();
         });
+        /* Coming back to the window is the likeliest moment for a file to have been changed
+           somewhere else - a checkout, a script, another editor - and finding out costs two
+           numbers per open file. An editor with nothing unsaved re-reads; one with unsaved
+           changes keeps them and says nothing until the save, which is when it matters. */
+        stage.focusedProperty().addListener((property, was, now) -> {
+            if (Boolean.TRUE.equals(now)) {
+                ide.editorManager().reloadStaleEverywhere();
+            }
+        });
         stage.show();
         // Full screen is the reader's choice; a dialog opening is not a reason to leave it.
         FullScreen.remember(stage);

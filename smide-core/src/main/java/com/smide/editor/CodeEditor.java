@@ -1,5 +1,6 @@
 package com.smide.editor;
 
+import com.smide.api.editor.FileStamp;
 import com.smide.api.editor.TextEditor;
 import com.smide.api.lang.Highlighter;
 import com.smide.api.lang.LanguageSupport;
@@ -23,7 +24,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,7 +83,7 @@ public final class CodeEditor implements TextEditor {
     private Path path;
     private GutterFactory gutter;
     private String lineSeparator = System.lineSeparator();
-    private FileTime loadedTime;
+    private FileStamp loaded = FileStamp.UNKNOWN;
     private List<Token> tokens = List.of();
     private List<Diagnostic> diagnostics = List.of();
     private List<EditorStyles.Overlay> searchHits = List.of();
@@ -178,7 +178,7 @@ public final class CodeEditor implements TextEditor {
         try {
             byte[] bytes = Files.readAllBytes(path);
             content = new String(bytes, StandardCharsets.UTF_8);
-            loadedTime = Files.getLastModifiedTime(path);
+            loaded = FileStamp.of(path);
         } catch (IOException e) {
             System.err.println("smIDE: cannot read " + path + ": " + e);
         }
@@ -203,14 +203,10 @@ public final class CodeEditor implements TextEditor {
         area.moveTo(Math.min(caret, area.getLength()));
     }
 
-    /** True if the file on disk is newer than what was loaded and the editor has no changes. */
+    /** True if the file changed since this editor last read or wrote it. */
+    @Override
     public boolean isStaleOnDisk() {
-        try {
-            FileTime now = Files.getLastModifiedTime(path);
-            return loadedTime != null && now.compareTo(loadedTime) > 0;
-        } catch (IOException e) {
-            return false;
-        }
+        return loaded.differsFrom(path);
     }
 
     @Override
@@ -229,7 +225,7 @@ public final class CodeEditor implements TextEditor {
         try {
             Files.createDirectories(target.getParent());
             Files.writeString(target, text, StandardCharsets.UTF_8);
-            loadedTime = Files.getLastModifiedTime(target);
+            loaded = FileStamp.of(target);
             area.getUndoManager().mark();
             modified.set(false);
         } catch (IOException e) {

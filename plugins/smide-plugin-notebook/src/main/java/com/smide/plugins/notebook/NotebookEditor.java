@@ -205,7 +205,17 @@ public final class NotebookEditor implements Editor {
 
     // ---------------------------------------------------------------- the file
 
+    /** What the file looked like when it was last read or written; see FileStamp. */
+    private com.smide.api.editor.FileStamp loaded = com.smide.api.editor.FileStamp.UNKNOWN;
+
+    /** True if the file changed since this editor last read or wrote it. */
+    @Override
+    public boolean isStaleOnDisk() {
+        return loaded.differsFrom(path);
+    }
+
     private void load() {
+        loaded = com.smide.api.editor.FileStamp.of(path);
         try {
             rawText = Files.exists(path)
                     ? new String(Files.readAllBytes(path), StandardCharsets.UTF_8) : "";
@@ -258,6 +268,7 @@ public final class NotebookEditor implements Editor {
         try {
             Files.createDirectories(target.getParent());
             Files.writeString(target, notebook.toJson(), StandardCharsets.UTF_8);
+            loaded = com.smide.api.editor.FileStamp.of(target);
             modified.set(false);
             return true;
         } catch (IOException e) {

@@ -770,6 +770,11 @@ public final class IdeImpl implements Ide {
         return editors;
     }
 
+    /** The editor manager itself, for the core's own use - the API sees {@link #editors()}. */
+    public EditorManager editorManager() {
+        return editors;
+    }
+
     @Override
     public Languages languages() {
         return languages;
