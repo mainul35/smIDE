@@ -148,6 +148,21 @@ class ScaffoldTest {
     }
 
     @Test
+    void theInstallGoesThroughTheInterpreterRatherThanPipsOwnLauncher() {
+        // Scripts\pip.exe is unsigned, and on Windows with Smart App Control it does not
+        // start at all - so the venv's python runs pip as a module, and the order of those
+        // four words is the one thing here that can be got wrong.
+        java.util.List<String> command = LangGraphTemplate.installCommand(
+                java.nio.file.Path.of("C:", "p", ".venv", "Scripts", "python.exe"));
+        assertTrue(command.get(0).endsWith("python.exe"), command.toString());
+        assertEquals(java.util.List.of("-m", "pip", "install"), command.subList(1, 4));
+        assertTrue(command.contains("langgraph"));
+        assertTrue(command.contains("langgraph-cli[inmem]"));
+        assertTrue(command.contains("ipykernel"), "the notebook needs a kernel to run in");
+        assertEquals(7, command.size());
+    }
+
+    @Test
     void theGitignoreKeepsTheEnvironmentAndTheSecretsOut() {
         String ignore = Scaffold.gitignore();
         assertTrue(ignore.contains(".venv/"));

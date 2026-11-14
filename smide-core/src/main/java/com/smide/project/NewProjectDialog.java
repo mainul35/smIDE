@@ -109,12 +109,13 @@ public final class NewProjectDialog {
                 return;
             }
             stage.close();
-            StatusBar.Progress progress = ide.statusBar().progress("Creating " + projectName, false);
+            StatusBar.Progress progress =
+                    ide.statusBar().progress("Creating " + projectName, t.cancellable());
             Map<String, String> snapshot = new HashMap<>(values);
             ide.window().runInBackground(() -> {
                 try {
                     Files.createDirectories(target);
-                    t.generate(ide, target, projectName, snapshot);
+                    t.generate(ide, target, projectName, snapshot, progress);
                     ide.window().runLater(() -> {
                         ide.workspaces().open(target);
                         // After the project, so the file opens into a workspace that exists.

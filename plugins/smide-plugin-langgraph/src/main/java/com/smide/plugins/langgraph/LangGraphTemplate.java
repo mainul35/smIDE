@@ -2,6 +2,7 @@ package com.smide.plugins.langgraph;
 
 import com.smide.api.Ide;
 import com.smide.api.project.NewProjectTemplate;
+import com.smide.api.ui.StatusBar;
 import com.smide.api.util.Executables;
 import com.smide.plugins.python.PythonToolchain;
 import javafx.scene.Node;
@@ -128,14 +129,33 @@ public final class LangGraphTemplate implements NewProjectTemplate {
         return Optional.of(location.resolve(NOTEBOOK));
     }
 
+    /**
+     * Stoppable, because the install is the long part and it is somebody else's program.
+     *
+     * <p>What is already written stays: the files are complete before the environment is
+     * started, so a project stopped half way is a project, just without a .venv.
+     */
+    @Override
+    public boolean cancellable() {
+        return true;
+    }
+
     @Override
     public void generate(Ide ide, Path location, String name, Map<String, String> values) throws Exception {
+        generate(ide, location, name, values, null);
+    }
+
+    @Override
+    public void generate(Ide ide, Path location, String name, Map<String, String> values,
+                         StatusBar.Progress progress) throws Exception {
+        say(progress, "Writing the project files");
         write(location, name);
         String chosen = values.getOrDefault("environment", NEW_ENVIRONMENT);
         if (NOTHING.equals(chosen)) {
             return;
         }
         if (!chosen.isBlank()) {
+            say(progress, "Pointing .venv at " + chosen);
             borrow(ide, location, Path.of(chosen));
             return;
         }
@@ -146,7 +166,18 @@ public final class LangGraphTemplate implements NewProjectTemplate {
                             + " Install Python, then run: python -m venv .venv");
             return;
         }
-        makeEnvironment(ide, location, python.get());
+        makeEnvironment(ide, location, python.get(), progress);
+    }
+
+    /** One line about what is happening now, for a reader watching the task. */
+    private void say(StatusBar.Progress progress, String what) {
+        if (progress != null) {
+            progress.update(what, -1);
+        }
+    }
+
+    private boolean stopped(StatusBar.Progress progress) {
+        return progress != null && progress.isCancelled();
     }
 
     /** Points the new project at an environment that already exists, instead of building one. */
@@ -186,8 +217,14 @@ public final class LangGraphTemplate implements NewProjectTemplate {
                 .flatMap(t -> t.locate(ide));
     }
 
-    private void makeEnvironment(Ide ide, Path location, Path python) {
-        if (!run(ide, location, "Creating .venv", python.toString(), "-m", "venv", ".venv")) {
+    private void makeEnvironment(Ide ide, Path location, Path python, StatusBar.Progress progress) {
+        say(progress, "Creating .venv with " + python);
+        if (!run(ide, location, "Creating .venv", progress, python.toString(), "-m", "venv", ".venv")) {
+            if (stopped(progress)) {
+                ide.notifications().info("Stopped", "The project is written; its .venv is not."
+                        + " To finish it: python -m venv .venv");
+                return;
+            }
             ide.notifications().error("Could not create .venv",
                     "The project is ready. To finish it: python -m venv .venv");
             return;
@@ -198,24 +235,44 @@ public final class LangGraphTemplate implements NewProjectTemplate {
                     "The project is ready, but something went wrong making the environment.");
             return;
         }
-        String[] install = new String[PACKAGES.size() + 4];
-        install[0] = venv.get().toString();
-        install[1] = "-m";
-        install[2] = "pip";
-        install[3] = "install";
-        for (int i = 0; i < PACKAGES.size(); i++) {
-            install[i + 4] = PACKAGES.get(i);
-        }
-        if (!run(ide, location, "Installing LangGraph", install)) {
+        say(progress, "Installing " + String.join(", ", PACKAGES)
+                + " from PyPI - this is the long part, a minute or two on a good line");
+        if (!run(ide, location, "Installing LangGraph", progress,
+                installCommand(venv.get()).toArray(new String[0]))) {
+            if (stopped(progress)) {
+                ide.notifications().info("Stopped",
+                        "The project and its .venv are written; LangGraph is not installed."
+                                + " To finish it, from the project: " + finishByHand());
+                return;
+            }
             ide.notifications().error("Could not install LangGraph",
                     "The project and its .venv are ready. To finish it, from the project:\n"
-                            + ".venv" + java.io.File.separator
-                            + (Executables.WINDOWS ? "Scripts" : "bin")
-                            + java.io.File.separator + "python -m pip install "
-                            + String.join(" ", PACKAGES));
+                            + finishByHand());
             return;
         }
-        checkItRuns(ide, location, venv.get());
+        say(progress, "Checking that it imports");
+        checkItRuns(ide, location, venv.get(), progress);
+    }
+
+    /**
+     * What installs the packages: the interpreter's own pip, not the launcher beside it.
+     *
+     * <p>Apart so that the one thing here with an order to get wrong can be read and tested
+     * without a network, a Python or a project.
+     */
+    static List<String> installCommand(Path venv) {
+        List<String> command = new java.util.ArrayList<>(
+                List.of(venv.toString(), "-m", "pip", "install"));
+        command.addAll(PACKAGES);
+        return List.copyOf(command);
+    }
+
+    /** The line to run by hand when the install did not happen. */
+    private static String finishByHand() {
+        return ".venv" + java.io.File.separator
+                + (Executables.WINDOWS ? "Scripts" : "bin")
+                + java.io.File.separator + "python -m pip install "
+                + String.join(" ", PACKAGES);
     }
 
     /**
@@ -232,8 +289,8 @@ public final class LangGraphTemplate implements NewProjectTemplate {
      * refused on the fifth consecutive attempt, while one built ninety minutes earlier
      * imported perfectly. There is nothing to do about it but say so.
      */
-    private void checkItRuns(Ide ide, Path location, Path venv) {
-        Outcome tried = ask(location, venv.toString(), "-c", "import langgraph.graph");
+    private void checkItRuns(Ide ide, Path location, Path venv, StatusBar.Progress progress) {
+        Outcome tried = ask(location, progress, venv.toString(), "-c", "import langgraph.graph");
         if (tried.ok()) {
             ide.notifications().info("LangGraph project ready",
                     "A .venv with " + String.join(", ", PACKAGES) + ". Open " + NOTEBOOK
@@ -320,8 +377,9 @@ public final class LangGraphTemplate implements NewProjectTemplate {
      * waiting here is what keeps the steps in order, which they must be: there is no
      * installing into an environment that is still being made.
      */
-    private boolean run(Ide ide, Path at, String what, String... command) {
-        Outcome outcome = ask(at, command);
+    private boolean run(Ide ide, Path at, String what, StatusBar.Progress progress,
+                        String... command) {
+        Outcome outcome = ask(at, progress, command);
         if (!outcome.ok()) {
             System.err.println("smIDE langgraph: " + what + " failed:\n" + outcome.said());
         }
@@ -332,19 +390,38 @@ public final class LangGraphTemplate implements NewProjectTemplate {
     record Outcome(boolean ok, String said) {
     }
 
-    private Outcome ask(Path at, String... command) {
+    private Outcome ask(Path at, StatusBar.Progress progress, String... command) {
         try {
             Process process = new ProcessBuilder(command)
                     .directory(at.toFile())
                     .redirectErrorStream(true)
                     .start();
-            String said = new String(process.getInputStream().readAllBytes(),
-                    java.nio.charset.StandardCharsets.UTF_8);
+            if (progress != null) {
+                // Stopping means killing it. pip has no gentler way of being asked, and
+                // what it has already unpacked into a .venv does no harm left where it is.
+                progress.onCancel(handle -> process.destroy());
+            }
+            StringBuilder said = new StringBuilder();
+            try (java.io.BufferedReader output = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream(),
+                            java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = output.readLine()) != null) {
+                    said.append(line).append('\n');
+                    // A line at a time rather than the lot at the end, which is the whole
+                    // point of this: "Collecting langgraph-cli" is the difference between a
+                    // task that is working and a task that has hung, and nothing in an empty
+                    // box tells the reader which one they are looking at.
+                    if (progress != null && !line.isBlank()) {
+                        progress.update(line.strip(), -1);
+                    }
+                }
+            }
             if (!process.waitFor(10, java.util.concurrent.TimeUnit.MINUTES)) {
                 process.destroyForcibly();
                 return new Outcome(false, said + "\n(it did not finish)");
             }
-            return new Outcome(process.exitValue() == 0, said);
+            return new Outcome(process.exitValue() == 0, said.toString());
         } catch (java.io.IOException e) {
             // A refusal arrives here, and its message is the only thing that names it.
             return new Outcome(false, String.valueOf(e.getMessage()));
