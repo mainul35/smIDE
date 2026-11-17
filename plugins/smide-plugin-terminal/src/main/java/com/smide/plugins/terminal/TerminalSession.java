@@ -58,6 +58,41 @@ final class TerminalSession {
         status.setText("Starting " + title + "...");
         node.getChildren().addAll(status, swingNode);
         swingNode.setVisible(false);
+        swingNode.sceneProperty().addListener((property, was, now) -> {
+            if (was == null && now != null) {
+                reattach();
+            }
+        });
+    }
+
+    /**
+     * Puts the emulator back after the node has been out of the scene.
+     *
+     * <p>A SwingNode holds its component in a frame of its own, and that frame goes when the
+     * node leaves the scene - which happens twice here without anybody closing anything.
+     * Hiding the Terminal tool window takes its content out (the core does this deliberately,
+     * so that a Swing surface does not hang over what replaces it), and a JavaFX TabPane
+     * keeps only the selected tab's content in the scene, so every switch between two
+     * terminals takes one out and puts the other back. What comes back is a node with a new
+     * frame and, often enough, a component that no longer hears the keyboard: the terminal
+     * draws its last screen, the shell is alive and reading, and nothing typed reaches it.
+     *
+     * <p>Setting the content again rebuilds that bridge. The widget, the connector and the
+     * shell are untouched - this is about the frame around them - so a terminal that comes
+     * back carries its scrollback and whatever was half typed at the prompt.
+     */
+    private void reattach() {
+        SwingUtilities.invokeLater(() -> {
+            if (widget == null || disposed.get()) {
+                return;
+            }
+            swingNode.setContent(widget);
+            Platform.runLater(() -> {
+                if (!disposed.get()) {
+                    focus();
+                }
+            });
+        });
     }
 
     Node node() {

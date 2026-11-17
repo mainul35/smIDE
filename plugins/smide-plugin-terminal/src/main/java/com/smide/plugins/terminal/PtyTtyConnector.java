@@ -60,9 +60,22 @@ final class PtyTtyConnector implements TtyConnector {
 
     @Override
     public void resize(TermSize size) {
-        if (process.isAlive()) {
-            process.setWinSize(new WinSize(size.getColumns(), size.getRows()));
+        if (process.isAlive() && size != null) {
+            process.setWinSize(winSize(size.getColumns(), size.getRows()));
         }
+    }
+
+    /**
+     * The size to tell the pty about, which is never nothing.
+     *
+     * <p>A terminal whose panel has been laid out with no room - a tool window collapsed to
+     * the divider, a tab that is not the selected one - reports zero columns, and a pty told
+     * it has zero columns is one the shell cannot write a prompt on. Linux takes the ioctl
+     * and leaves the terminal looking alive and answering nothing. One column and one row
+     * are not useful either, but they are a size, and the next real layout replaces them.
+     */
+    static WinSize winSize(int columns, int rows) {
+        return new WinSize(Math.max(1, columns), Math.max(1, rows));
     }
 
     @Override
