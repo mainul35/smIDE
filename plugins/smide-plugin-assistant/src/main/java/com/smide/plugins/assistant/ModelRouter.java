@@ -6,27 +6,37 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Sends each turn to the model that can do it.
+ * Which model answers this turn.
  *
- * <p>An endpoint that fronts a dozen models is one setting in this IDE, and that setting answered
- * everything - so a screenshot pasted into a question went to a model that reads only text, and
- * came back with nothing at all. From the outside that is indistinguishable from a broken
- * connection, which is what it was reported as.
+ * <p>Two cases, and which one it is depends on one thing: whether anybody chose.
  *
- * <p>So before a turn starts, the endpoint is asked what it has, and a small model on the same
- * endpoint is asked which of them suits the job. Only the ones that could do it at all are
- * offered to it: a question with a picture in it is shown models that read pictures and nothing
- * else, because no amount of good judgement makes a text model see.
+ * <p><b>A model named in Settings answers everything it is given.</b> It is not weighed against
+ * the rest of the list, not for a hard question and not for a long one. A gateway fronting a
+ * hosted model and a shelf of downloaded ones offers them all in one list, and which of them
+ * answers is exactly what the reader was deciding when they picked; preferring another for a job
+ * theirs could do is this overruling them for a reason they cannot see, and it reads - correctly
+ * - as the setting being ignored. The one thing a chosen model is not made to do is a job it
+ * cannot do at all: asked to look at a picture with no eyes to look with, it would answer
+ * nothing, so the turn stops instead and says so in words. See {@link ModelChoice#cannotSee}.
  *
- * <p>Off by default for nobody - {@code assistant.router} turns it off - but a model the
- * developer named explicitly is still used whenever it can do the job, because somebody who
- * chose a model meant it.
+ * <p><b>Auto - nobody chose - is this doing the choosing.</b> The endpoint is asked what it has;
+ * a turn with a picture in it narrows that to the models whose names say they read pictures,
+ * because no amount of good judgement makes a text model see; a question that looks like a job
+ * of work rather than a quick look narrows it again to the models served from somewhere else,
+ * on the grounds that somebody letting the IDE choose wants the hard thing done well more than
+ * they want it done on the machine next to them. A small model on the same endpoint picks from
+ * what is left.
+ *
+ * <p>{@code assistant.router.cloud} is how to say which models those far-away ones are, when
+ * their names do not give it away. {@code assistant.router} turns the choosing off altogether,
+ * leaving Auto with the provider's own model and nothing else.
  */
 final class ModelRouter {
 
-    /** Settings: whether to route at all, and which model is asked to do the choosing. */
+    /** Settings: whether to route at all, which model chooses, and which models are far away. */
     static final String ROUTING_KEY = "assistant.router";
     static final String CHOOSER_KEY = "assistant.router.model";
+    static final String CLOUD_KEY = "assistant.router.cloud";
 
     /** What the choosing may cost before it is not worth having. */
     private static final int CHOOSING_SECONDS = 20;
@@ -39,11 +49,28 @@ final class ModelRouter {
         this.assistant = assistant;
     }
 
-    /** What the panel says while this is happening, and what it should say afterwards. */
-    record Routed(String model, String why) {
+    /**
+     * What the panel says while this is happening, and what it should say afterwards.
+     *
+     * @param why     why this is not the model that was expected, or null when it is
+     * @param refusal why nothing was sent at all, or null when something was
+     */
+    record Routed(String model, String why, String refusal) {
+
+        Routed(String model, String why) {
+            this(model, why, null);
+        }
+
+        static Routed refused(String because) {
+            return new Routed(null, null, because);
+        }
 
         boolean changed() {
             return why != null;
+        }
+
+        boolean refused() {
+            return refusal != null;
         }
     }
 
@@ -55,32 +82,38 @@ final class ModelRouter {
      */
     Routed routeFor(String question, boolean hasPicture) {
         String chosen = assistant.config().model();
+        if (assistant.config().modelChosen()) {
+            // Somebody picked this one. It answers, or it says why it cannot.
+            return hasPicture && !ModelChoice.canSee(chosen)
+                    ? Routed.refused(ModelChoice.cannotSee(chosen))
+                    : new Routed(chosen, null);
+        }
         if (!assistant.ide().settings().getBoolean(ROUTING_KEY, true)) {
             return new Routed(chosen, null);
         }
         AiConfig.Endpoint endpoint = assistant.config().endpoint();
         List<String> offered = assistant.models(endpoint);
         if (offered.isEmpty()) {
-            // Nothing to choose between, or an endpoint that will not say: leave it alone.
-            return new Routed(chosen, null);
+            // An endpoint that will not say what it has: nothing to choose between.
+            return hasPicture && !ModelChoice.canSee(chosen)
+                    ? Routed.refused(ModelChoice.cannotSee(chosen))
+                    : new Routed(chosen, null);
         }
-        if (hasPicture && !ModelChoice.canSee(chosen)) {
-            List<String> seeing = ModelChoice.thatCanSee(offered);
-            if (seeing.isEmpty()) {
-                return new Routed(chosen, "none of the models here look like they read pictures,"
-                        + " so this went to " + chosen + " as it is");
-            }
-        } else if (hasPicture) {
-            // What is set already has eyes; nothing to decide.
-            return new Routed(chosen, null);
+        List<String> able = hasPicture ? ModelChoice.thatCanSee(offered) : offered;
+        if (able.isEmpty()) {
+            return Routed.refused("There is a picture on this question, and none of the models"
+                    + " offered by " + endpoint.host() + " look like they read pictures."
+                    + "\n\nAsk without the picture, or add a model that can see.");
         }
-        List<String> candidates = hasPicture ? ModelChoice.thatCanSee(offered) : offered;
+        List<String> marks = ModelChoice.marks(assistant.ide().settings().get(CLOUD_KEY, ""));
+        List<String> candidates = ModelChoice.preferred(able, marks,
+                ModelChoice.looksHard(question));
         if (candidates.size() == 1) {
-            return answer(chosen, candidates.get(0), hasPicture, "it is the only one that can");
+            return answer(chosen, candidates.get(0), only(hasPicture));
         }
         String remembered = decided.get(key(question, hasPicture));
         if (remembered != null && candidates.contains(remembered)) {
-            return answer(chosen, remembered, hasPicture, "chosen for this kind of question");
+            return answer(chosen, remembered, "chosen for this kind of question");
         }
         String picked = askSmallModel(endpoint, candidates, question, hasPicture);
         if (picked == null) {
@@ -88,14 +121,18 @@ final class ModelRouter {
             if (picked == null || picked.equals(chosen)) {
                 return new Routed(chosen, null);
             }
-            return answer(chosen, picked, hasPicture, "it reads pictures and " + chosen + " does not");
+            return answer(chosen, picked, "it reads pictures and " + chosen + " does not");
         }
         decided.put(key(question, hasPicture), picked);
-        return answer(chosen, picked, hasPicture,
-                hasPicture ? "it reads pictures" : "picked for this job");
+        return answer(chosen, picked, hasPicture ? "it reads pictures" : "picked for this job");
     }
 
-    private static Routed answer(String chosen, String picked, boolean hasPicture, String why) {
+    private static String only(boolean hasPicture) {
+        return hasPicture ? "it is the only one here that reads pictures"
+                : "it is the one this job wants";
+    }
+
+    private static Routed answer(String chosen, String picked, String why) {
         if (picked.equals(chosen)) {
             return new Routed(chosen, null);
         }

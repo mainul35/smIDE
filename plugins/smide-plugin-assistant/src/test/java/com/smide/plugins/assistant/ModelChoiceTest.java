@@ -40,6 +40,75 @@ class ModelChoiceTest {
     }
 
     @Test
+    void whatAModelWithoutEyesIsToldToSay() {
+        String said = ModelChoice.cannotSee("qwen3-coder:30b");
+        assertTrue(said.contains("qwen3-coder:30b"), said);
+        assertTrue(said.contains("Auto"), "the way out that needs no second guess: " + said);
+        assertTrue(said.contains("Settings"), said);
+        // Said to somebody, so it has to read as a sentence even with nothing to name.
+        assertTrue(ModelChoice.cannotSee("").startsWith("The model you chose"));
+        assertTrue(ModelChoice.cannotSee(null).startsWith("The model you chose"));
+    }
+
+    @Test
+    void theOnesPulledOntoTheMachineAreWrittenWithATag() {
+        assertTrue(ModelChoice.looksDownloaded("gemma4:31b"));
+        assertTrue(ModelChoice.looksDownloaded("qwen3-1.7b-cpu:latest"));
+        assertTrue(ModelChoice.looksDownloaded("hf.co/unsloth/GLM-4.7-Flash-GGUF:Q8_0"));
+        // A profile configured by hand to reach something served elsewhere.
+        assertFalse(ModelChoice.looksDownloaded("qwen3.6-vllm"));
+        assertFalse(ModelChoice.looksDownloaded("qwen3.6-sglang-1m"));
+        assertFalse(ModelChoice.looksDownloaded(""));
+        assertFalse(ModelChoice.looksDownloaded(null));
+    }
+
+    @Test
+    void andTheReaderCanSayWhichTheyAreWhenTheNamesDoNot() {
+        List<String> offered = List.of("gemma4:31b", "house-large", "house-small");
+        assertEquals(List.of("house-large", "house-small"),
+                ModelChoice.servedElsewhere(offered, List.of()));
+        // Told which, the guess is not consulted at all.
+        assertEquals(List.of("gemma4:31b"),
+                ModelChoice.servedElsewhere(offered, List.of("gemma4")));
+    }
+
+    @Test
+    void aSettingWrittenHoweverSomebodyFeltLikeWritingIt() {
+        assertEquals(List.of("qwen3.6-vllm", "house-large"),
+                ModelChoice.marks(" qwen3.6-vllm, house-large "));
+        assertEquals(List.of("a", "b"), ModelChoice.marks("a;b"));
+        assertEquals(List.of(), ModelChoice.marks(""));
+        assertEquals(List.of(), ModelChoice.marks(null));
+    }
+
+    @Test
+    void aJobOfWorkIsToldFromAQuickLook() {
+        assertTrue(ModelChoice.looksHard("Refactor the terminal session so it survives a detach"));
+        assertTrue(ModelChoice.looksHard("why does this deadlock?"));
+        assertTrue(ModelChoice.looksHard("x".repeat(400)), "long enough to be a job either way");
+        assertFalse(ModelChoice.looksHard("what does this file do"));
+        assertFalse(ModelChoice.looksHard(""));
+        assertFalse(ModelChoice.looksHard(null));
+    }
+
+    @Test
+    void theHardJobGoesToTheModelThatIsNotOnThisMachine() {
+        List<String> offered = List.of("gemma4:31b", "qwen3-coder:30b", "qwen3.6-vllm");
+        assertEquals(List.of("qwen3.6-vllm"),
+                ModelChoice.preferred(offered, List.of(), true));
+        // A quick question is nobody's business but the chooser's.
+        assertEquals(offered, ModelChoice.preferred(offered, List.of(), false));
+    }
+
+    @Test
+    void andStaysHereWhenThereIsNowhereElseToGo() {
+        List<String> downloaded = List.of("gemma4:31b", "qwen3-coder:30b");
+        assertEquals(downloaded, ModelChoice.preferred(downloaded, List.of(), true),
+                "a hard job with nowhere far away to go is still done");
+        assertEquals(List.of("only-one"), ModelChoice.preferred(List.of("only-one"), List.of(), true));
+    }
+
+    @Test
     void aPictureGoesToSomethingThatCanSeeIt() {
         List<String> offered = List.of("qwen3-coder-agent:latest", "deepseek-r1:14b", "llava:13b");
 

@@ -115,6 +115,24 @@ public final class AssistantConfig {
         return chosen.isBlank() ? config.endpoint(provider()).model() : chosen;
     }
 
+    /**
+     * Whether a model was named in Settings, as against Auto.
+     *
+     * <p>{@link #model()} always answers with something, because a request has to be addressed
+     * to one; this is the different question of whether the name it answered with was anybody's
+     * decision. Auto leaves the setting empty and falls back to the one in ai.properties, which
+     * is a starting point rather than a choice - and the assistant treats the two very
+     * differently, so the difference has to survive the fallback.
+     */
+    public boolean modelChosen() {
+        return !ide.settings().get(MODEL_KEY, "").isBlank();
+    }
+
+    /** What is in the setting, empty and all, for the one page that has to show Auto. */
+    public String chosenModel() {
+        return ide.settings().get(MODEL_KEY, "");
+    }
+
     public void setModel(String model) {
         ide.settings().set(MODEL_KEY, model == null ? "" : model);
     }

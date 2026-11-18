@@ -43,6 +43,18 @@ import java.util.function.Supplier;
  */
 final class AssistantSettingsPage implements SettingsPage {
 
+    /**
+     * The first entry in the model list, and what an empty setting means.
+     *
+     * <p>Not a model: the absence of a choice. Everything about how the assistant behaves turns
+     * on whether somebody picked - a model that was picked answers every question it is given,
+     * and one that was not leaves the IDE free to send a picture to something that can see it,
+     * or a long job to something far away. There was no way to say "I have not picked" before
+     * this entry, so the fallback in ai.properties was quietly doing duty as a decision nobody
+     * had made.
+     */
+    static final String AUTO = "Auto - let smIDE pick for each question";
+
     private final Ide ide;
     private final Assistant assistant;
     private final AssistantConfig config;
@@ -76,6 +88,10 @@ final class AssistantSettingsPage implements SettingsPage {
         ComboBox<String> model = new ComboBox<>();
         model.setEditable(true);
         model.setMaxWidth(Double.MAX_VALUE);
+        model.setTooltip(new javafx.scene.control.Tooltip(
+                "A model named here answers every question, and says so plainly when it cannot"
+                        + " (a picture, with no eyes to read it). Auto lets smIDE pick from"
+                        + " what this endpoint offers, question by question."));
         PasswordField key = new PasswordField();
         key.setPromptText("leave empty to keep whatever is set");
         /* Remembering it is the default, and the tick sits under the field it is about.
@@ -135,11 +151,13 @@ final class AssistantSettingsPage implements SettingsPage {
                        setting lost on the next press of OK. */
                     String chosen = model.getValue();
                     List<String> all = new java.util.ArrayList<>(names);
-                    if (chosen != null && !chosen.isBlank() && !all.contains(chosen)) {
+                    if (chosen != null && !chosen.isBlank() && !AUTO.equals(chosen)
+                            && !all.contains(chosen)) {
                         all.add(0, chosen);
                     }
+                    all.add(0, AUTO);
                     model.getItems().setAll(all);
-                    model.setValue(chosen == null || chosen.isBlank() ? names.get(0) : chosen);
+                    model.setValue(chosen == null || chosen.isBlank() ? AUTO : chosen);
                     if (loud) {
                         result.setText(names.size() + " models offered by " + endpoint.host() + ".");
                     }
@@ -153,9 +171,18 @@ final class AssistantSettingsPage implements SettingsPage {
             String name = provider.getValue();
             AiConfig.Endpoint endpoint = ai.endpoint(name == null ? "" : name);
             baseUrl.setText(endpoint.baseUrl());
-            model.getItems().setAll(endpoint.model().isBlank() ? List.of() : List.of(endpoint.model()));
-            model.setValue(name != null && name.equals(config.provider())
-                    ? config.model() : endpoint.model());
+            /* Whatever is set, plus Auto, until the arrow asks the endpoint for the rest.
+               config.chosenModel() and not config.model(): the second answers with the
+               fallback from ai.properties when nothing was chosen, and showing that in the
+               box would turn Auto into a choice the moment OK was pressed. */
+            String set = name != null && name.equals(config.provider())
+                    ? config.chosenModel() : endpoint.model();
+            List<String> known = new java.util.ArrayList<>(List.of(AUTO));
+            if (set != null && !set.isBlank()) {
+                known.add(set);
+            }
+            model.getItems().setAll(known);
+            model.setValue(set == null || set.isBlank() ? AUTO : set);
             allowHost.setSelected(ai.isAllowed(endpoint.baseUrl()));
             allowHost.setText(endpoint.host() == null
                     ? "Allow this host to receive code from this IDE"
@@ -172,8 +199,7 @@ final class AssistantSettingsPage implements SettingsPage {
            stale or missing. That looks exactly like a key that was not saved. */
         editor.staged().set(AssistantConfig.PROVIDER_KEY,
                 provider.getValue() == null ? "" : provider.getValue());
-        editor.staged().set(AssistantConfig.MODEL_KEY,
-                model.getValue() == null ? "" : model.getValue().strip());
+        editor.staged().set(AssistantConfig.MODEL_KEY, named(model.getValue()));
         provider.valueProperty().addListener((o, was, now) -> {
             if (now != null) {
                 editor.staged().set(AssistantConfig.PROVIDER_KEY, now);
@@ -181,7 +207,7 @@ final class AssistantSettingsPage implements SettingsPage {
             }
         });
         model.valueProperty().addListener((o, was, now) ->
-                editor.staged().set(AssistantConfig.MODEL_KEY, now == null ? "" : now.strip()));
+                editor.staged().set(AssistantConfig.MODEL_KEY, named(now)));
 
         /* Writes the address, the key and the host permission, and says what it did.
            Both the button and OK run it. The trap otherwise is a key typed into the field
@@ -193,8 +219,14 @@ final class AssistantSettingsPage implements SettingsPage {
                 return "";
             }
             String address = baseUrl.getText() == null ? "" : baseUrl.getText().strip();
-            String chosen = model.getValue() == null ? "" : model.getValue().strip();
             AiConfig.Endpoint stored = ai.endpoint(name);
+            String chosen = named(model.getValue());
+            if (chosen.isBlank()) {
+                /* Auto is not a model, and ai.properties has nowhere to put the absence of
+                   one. Its own entry stays as it is: that is the address the fallback uses,
+                   and blanking it would leave the provider with nothing to send to. */
+                chosen = stored.model();
+            }
             boolean ok = true;
             if (!stored.baseUrl().equals(address) || !stored.model().equals(chosen)) {
                 ok = ai.saveEndpoint(name, address, chosen);
@@ -342,5 +374,11 @@ final class AssistantSettingsPage implements SettingsPage {
                 searchSection, searchGrid, searchNote, result);
         box.setFillWidth(true);
         return box;
+    }
+
+    /** What the box is showing, as the setting stores it: Auto is no model at all. */
+    private static String named(String value) {
+        String said = value == null ? "" : value.strip();
+        return AUTO.equals(said) ? "" : said;
     }
 }

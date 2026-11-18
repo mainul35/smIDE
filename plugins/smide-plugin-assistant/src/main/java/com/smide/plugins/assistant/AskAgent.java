@@ -210,6 +210,14 @@ public final class AskAgent {
         routedModel = null;
         boolean hasPicture = images != null && !images.isEmpty();
         ModelRouter.Routed routed = router.routeFor(question, hasPicture);
+        if (routed.refused()) {
+            /* The turn cannot be done by the model it would go to - a picture in front of
+               something that does not read pictures. Nothing is sent and nothing is added to
+               the conversation: an empty answer from a model that could not look is what this
+               replaces, and it taught nobody anything. */
+            listener.failed(routed.refusal());
+            return;
+        }
         if (routed.changed()) {
             routedModel = routed.model();
             listener.doing("Asking " + routed.model() + " - " + routed.why());

@@ -35,6 +35,15 @@ final class ModelChoice {
             "phi-3.5-vision", "phi-4-multimodal", "granite-vision", "aya-vision", "mistral-small3",
             "llama3.2-vision", "llama-3.2-vision", "llama4", "step-1v", "glm-4v", "yi-vision");
 
+    /** Words that say this question is a job of work rather than a quick look. */
+    private static final List<String> HARD = List.of(
+            "refactor", "implement", "architect", "design", "debug", "diagnose", "why",
+            "migrate", "optimis", "optimiz", "performance", "concurren", "race condition",
+            "rewrite", "plan", "review", "trace", "deadlock", "memory leak");
+
+    /** And a length, past which a question is carrying a job inside it whatever it says. */
+    private static final int LONG_QUESTION = 400;
+
     /** Words that say "small and quick", for the model that does the choosing. */
     private static final List<String> SMALL = List.of(
             "mini", "small", "tiny", "nano", "micro", "lite", "flash", "haiku");
@@ -67,6 +76,117 @@ final class ModelChoice {
             }
         }
         return false;
+    }
+
+    /**
+     * What to tell somebody whose chosen model cannot look at the picture they attached.
+     *
+     * <p>They named a model, so that model answers - this is not the place to quietly send
+     * their question somewhere else. But a model without eyes does not answer a picture
+     * badly, it answers it with nothing, and silence is the one reply that teaches nobody
+     * anything. So the turn stops here and says which model, why, and the ways out.
+     */
+    static String cannotSee(String model) {
+        return (model == null || model.isBlank() ? "The model you chose" : model)
+                + " does not read pictures, going by its name, so this question was not sent:"
+                + " it would have come back empty."
+                + "\n\nEither ask without the picture, or choose a model that reads pictures"
+                + " under Settings > Tools > Assistant, or set the model there to Auto and"
+                + " smIDE will pick one that can whenever a picture is attached.";
+    }
+
+    /**
+     * Whether a name looks like a model downloaded onto the machine serving it.
+     *
+     * <p>A gateway puts everything it fronts in one list, and nothing in that list says where
+     * any of it runs. The names do, near enough: the downloaded ones are pulled by tag, so
+     * they are written {@code name:tag} or {@code hf.co/owner/repo:quant}, while a profile
+     * configured by hand to reach a hosted model is written as a plain name. It is a guess,
+     * which is why {@link #servedElsewhere} will take a list of names instead when somebody
+     * has said which is which.
+     */
+    static boolean looksDownloaded(String model) {
+        if (model == null || model.isBlank()) {
+            return false;
+        }
+        String name = model.toLowerCase(Locale.ROOT);
+        return name.startsWith("hf.co/") || name.contains(":");
+    }
+
+    /**
+     * The ones that are not running on the machine the gateway is on.
+     *
+     * @param marks what the reader said their far-away models are called, in whole or in part;
+     *              empty leaves it to {@link #looksDownloaded}
+     */
+    static List<String> servedElsewhere(List<String> offered, List<String> marks) {
+        List<String> far = new ArrayList<>();
+        for (String model : offered == null ? List.<String>of() : offered) {
+            if (marks == null || marks.isEmpty() ? !looksDownloaded(model) : matches(model, marks)) {
+                far.add(model);
+            }
+        }
+        return far;
+    }
+
+    private static boolean matches(String model, List<String> marks) {
+        String name = model.toLowerCase(Locale.ROOT);
+        for (String mark : marks) {
+            if (mark != null && !mark.isBlank() && name.contains(mark.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A setting written as a list, turned into the marks {@link #servedElsewhere} wants. */
+    static List<String> marks(String setting) {
+        List<String> marks = new ArrayList<>();
+        for (String word : (setting == null ? "" : setting).split("[,;\\s]+")) {
+            if (!word.isBlank()) {
+                marks.add(word.strip());
+            }
+        }
+        return marks;
+    }
+
+    /**
+     * Whether this is the sort of job worth the bigger, further-away model.
+     *
+     * <p>Only ever asked when nobody chose a model, so the cost of being wrong is one answer
+     * from a model that was more than the question needed - which is why it leans that way.
+     * Reading the words is the only thing available: nothing on an OpenAI-compatible endpoint
+     * says how good anything is, and the question is all there is to go on.
+     */
+    static boolean looksHard(String question) {
+        if (question == null) {
+            return false;
+        }
+        if (question.length() >= LONG_QUESTION) {
+            // Long enough to be a job rather than a question.
+            return true;
+        }
+        String words = question.toLowerCase(Locale.ROOT);
+        for (String mark : HARD) {
+            if (words.contains(mark)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The candidates worth offering, given what the job looks like.
+     *
+     * <p>A preference and not a rule: where a hard job has nowhere far away to go, it goes to
+     * whatever is here rather than not going at all.
+     */
+    static List<String> preferred(List<String> candidates, List<String> marks, boolean hard) {
+        if (!hard || candidates == null || candidates.size() < 2) {
+            return candidates;
+        }
+        List<String> far = servedElsewhere(candidates, marks);
+        return far.isEmpty() ? candidates : far;
     }
 
     /** The ones that could take a picture, in the order the endpoint gave them. */
