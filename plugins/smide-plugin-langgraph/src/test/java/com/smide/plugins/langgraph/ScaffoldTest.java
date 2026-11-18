@@ -163,6 +163,54 @@ class ScaffoldTest {
     }
 
     @Test
+    void aDebianPythonThatCannotMakeAVenvIsToldApartFromOneThatBroke() {
+        // Word for word what Ubuntu 24.04 prints, line breaks included - the message wraps
+        // in the middle of "ensurepip is not available", which is why only the word is
+        // matched. The package it names carries the version, so it is quoted, not guessed.
+        String said = """
+                The virtual environment was not created successfully because ensurepip is not
+                available.  On Debian/Ubuntu systems, you need to install the python3-venv
+                package using the following command.
+
+                    apt install python3.12-venv
+
+                You may need to use sudo with that command.  After installing the python3-venv
+                package, recreate your virtual environment.
+
+                Failing command: /home/u/langgraph_tutorial/.venv/bin/python3
+                """;
+        String advice = LangGraphTemplate.whyNoVenv(said, java.nio.file.Path.of("/usr/bin/python3"));
+        assertTrue(advice.contains("sudo apt install python3.12-venv"), advice);
+        assertTrue(advice.contains("ensurepip"), advice);
+        // Not the command that just failed, offered as the way to fix itself.
+        assertFalse(advice.startsWith("The project is ready. To finish it"), advice);
+    }
+
+    @Test
+    void andWithoutTheVersionWhenPythonDidNotSayOne() {
+        String advice = LangGraphTemplate.whyNoVenv(
+                "Error: ensurepip is not available", java.nio.file.Path.of("python3"));
+        assertTrue(advice.contains("sudo apt install python3-venv"), advice);
+    }
+
+    @Test
+    void anyOtherFailureIsPassedOnInPythonsOwnWords() {
+        java.nio.file.Path python = java.nio.file.Path.of("/usr/bin/python3");
+        String advice = LangGraphTemplate.whyNoVenv(
+                "\nPermissionError: [Errno 13] Permission denied: \"/srv/p/.venv\"\n",
+                python);
+        assertTrue(advice.contains("Permission denied"), advice);
+        // The interpreter as this machine writes it, which is not how it was typed.
+        assertTrue(advice.contains(python + " -m venv .venv"), advice);
+    }
+
+    @Test
+    void andSaysSomethingEvenWhenNothingWasPrinted() {
+        assertTrue(LangGraphTemplate.whyNoVenv("", java.nio.file.Path.of("py")).contains("-m venv"));
+        assertTrue(LangGraphTemplate.whyNoVenv(null, java.nio.file.Path.of("py")).contains("-m venv"));
+    }
+
+    @Test
     void theGitignoreKeepsTheEnvironmentAndTheSecretsOut() {
         String ignore = Scaffold.gitignore();
         assertTrue(ignore.contains(".venv/"));

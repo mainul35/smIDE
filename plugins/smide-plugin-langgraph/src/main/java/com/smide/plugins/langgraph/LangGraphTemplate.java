@@ -219,14 +219,16 @@ public final class LangGraphTemplate implements NewProjectTemplate {
 
     private void makeEnvironment(Ide ide, Path location, Path python, StatusBar.Progress progress) {
         say(progress, "Creating .venv with " + python);
-        if (!run(ide, location, "Creating .venv", progress, python.toString(), "-m", "venv", ".venv")) {
+        Outcome made = ask(location, progress, python.toString(), "-m", "venv", ".venv");
+        if (!made.ok()) {
+            // Nothing half made is left behind: see removePartial for why that matters.
+            removePartial(location.resolve(".venv"));
             if (stopped(progress)) {
                 ide.notifications().info("Stopped", "The project is written; its .venv is not."
-                        + " To finish it: python -m venv .venv");
+                        + " To finish it: " + python + " -m venv .venv");
                 return;
             }
-            ide.notifications().error("Could not create .venv",
-                    "The project is ready. To finish it: python -m venv .venv");
+            ide.notifications().error("Could not create .venv", whyNoVenv(made.said(), python));
             return;
         }
         Optional<Path> venv = PythonToolchain.venvInterpreter(location);
@@ -252,6 +254,87 @@ public final class LangGraphTemplate implements NewProjectTemplate {
         }
         say(progress, "Checking that it imports");
         checkItRuns(ide, location, venv.get(), progress);
+    }
+
+    /**
+     * Why there is no environment, in words that name the thing to do about it.
+     *
+     * <p>"To finish it: python -m venv .venv" was the whole of what this said, which is no
+     * help at all when that is the command that just failed. The common failure is not an
+     * accident either: Debian and Ubuntu ship a python whose venv module cannot finish,
+     * because ensurepip lives in a package of its own that is not installed with it. python
+     * says so itself, and names the package including the version - which this cannot work
+     * out on its own and should not guess - so that line is quoted back rather than
+     * paraphrased.
+     *
+     * <p>Anything else is passed on as it was said. A reason nobody can read beats a tidy
+     * sentence that leaves the reason out.
+     */
+    static String whyNoVenv(String said, Path python) {
+        String output = said == null ? "" : said;
+        // The word alone, not the sentence: python wraps that message at the terminal
+        // width it was given, so "ensurepip is not available" arrives with a line break
+        // in the middle of it as often as not.
+        if (output.contains("ensurepip")) {
+            String install = lineWith(output, "apt install");
+            return "This Python cannot make a virtual environment on its own: the venv module"
+                    + " is there but ensurepip, which it needs, is packaged separately."
+                    + " On Debian and Ubuntu that package is installed with:" + "\n"
+                    + (install.isBlank() ? "sudo apt install python3-venv" : "sudo " + install)
+                    + "\n" + "Then, from the project: " + python + " -m venv .venv";
+        }
+        String first = firstLine(output);
+        return "The project is ready. To finish it: " + python + " -m venv .venv"
+                + (first.isBlank() ? "" : "\n" + "\n" + first);
+    }
+
+
+    /** The first line that mentions something, stripped, or empty. */
+    private static String lineWith(String output, String what) {
+        for (String line : output.split("\\R")) {
+            if (line.contains(what)) {
+                return line.strip();
+            }
+        }
+        return "";
+    }
+
+    /** The first line with anything on it, which is where a Python error says what it is. */
+    private static String firstLine(String output) {
+        for (String line : output.split("\\R")) {
+            if (!line.isBlank()) {
+                return line.strip();
+            }
+        }
+        return "";
+    }
+
+    /**
+     * Takes away an environment that was not finished.
+     *
+     * <p>A venv that fails on ensurepip has already written its bin, its lib and its
+     * pyvenv.cfg, so what is left looks exactly like an environment to everything that goes
+     * looking for one - the Python toolchain finds an interpreter in it, the project appears
+     * equipped, and the first thing anybody asks it to do fails for a reason that has nothing
+     * to do with what they asked. Better that the project plainly has no environment.
+     *
+     * <p>Only ever the .venv this just tried to make, in a project directory made moments ago.
+     */
+    private static void removePartial(Path venv) {
+        if (!Files.isDirectory(venv)) {
+            return;
+        }
+        try (var walk = Files.walk(venv)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (java.io.IOException ignored) {
+                    // What will not go stays; the message below is what matters.
+                }
+            });
+        } catch (java.io.IOException ignored) {
+            // Same again: this is tidying, not the point.
+        }
     }
 
     /**
