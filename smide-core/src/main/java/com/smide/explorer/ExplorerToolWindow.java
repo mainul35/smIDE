@@ -3,6 +3,7 @@ package com.smide.explorer;
 import com.smide.api.Ide;
 import com.smide.api.action.Action;
 import com.smide.api.action.ActionContext;
+import com.smide.api.editor.Editor;
 import com.smide.api.ui.ToolWindowAnchor;
 import com.smide.api.ui.ToolWindowFactory;
 import com.smide.api.util.Events;
@@ -17,8 +18,12 @@ import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.DragEvent;
+import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.MouseButton;
+import javafx.scene.input.TransferMode;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import org.kordamp.ikonli.javafx.FontIcon;
@@ -126,6 +131,41 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
             }
         });
 
+        /* Drag a file (or many) to a folder row, or to another workspace's row, to move it
+           there. Started on a press-and-drag, accepted on rows that are directories, and
+           never into the file itself or anything under it. Workspaces can be nested - one
+           project inside another - so the source workspace's row is a legitimate target
+           whenever the file lives outside it. */
+        tree.setOnDragDetected(e -> {
+            List<Path> sources = selectedPaths();
+            if (sources.isEmpty() || e.getButton() != MouseButton.PRIMARY) {
+                return;
+            }
+            Dragboard db = tree.startDragAndDrop(TransferMode.MOVE);
+            ClipboardContent content = new ClipboardContent();
+            content.putFiles(sources.stream().map(Path::toFile).collect(java.util.stream.Collectors.toList()));
+            db.setContent(content);
+            e.consume();
+        });
+        tree.setOnDragOver(e -> {
+            TreeItem<Path> target = cellForDrag(e);
+            if (target != null && e.getDragboard().hasFiles()) {
+                List<Path> sources = sourcesOf(e.getDragboard());
+                if (!sources.isEmpty() && sources.stream().allMatch(s -> dropAccepts(s, target))) {
+                    e.acceptTransferModes(TransferMode.MOVE);
+                    e.consume();
+                }
+            }
+        });
+        tree.setOnDragDropped(e -> {
+            TreeItem<Path> target = cellForDrag(e);
+            if (target != null && e.getDragboard().hasFiles()) {
+                e.setDropCompleted(move(sourcesOf(e.getDragboard()), target));
+                e.consume();
+            }
+        });
+        tree.setOnDragDone(e -> e.consume());
+
         try {
             watcher = new FileWatchService(changed -> {
                 for (Path dir : changed) {
@@ -221,6 +261,120 @@ public final class ExplorerToolWindow implements ToolWindowFactory {
                 open(p.getValue());
             }
         }
+    }
+
+    /* ------------------------------------------------------------ Drag and drop */
+
+    /** The row a drag is over: a drop lands in the folder it names, or the folder a file sits in. */
+    private TreeItem<Path> cellForDrag(DragEvent e) {
+        Node node = e.getPickResult().getIntersectedNode();
+        while (node != null && !(node instanceof TreeCell)) {
+            node = node.getParent();
+        }
+        if (!(node instanceof TreeCell<?> cell) || cell.isEmpty()) {
+            return null;
+        }
+        TreeItem<?> item = cell.getTreeItem();
+        Object value = item == null ? null : item.getValue();
+        // Never a path inside a jar: those libraries are read only.
+        if (!(value instanceof Path path) || path.getFileSystem() != java.nio.file.FileSystems.getDefault()) {
+            return null;
+        }
+        @SuppressWarnings("unchecked")
+        TreeItem<Path> typed = (TreeItem<Path>) item;
+        return typed;
+    }
+
+    /** What is being dragged, as paths: the dragboard carries files, ours and the system file manager's alike. */
+    private static List<Path> sourcesOf(Dragboard db) {
+        List<Path> out = new ArrayList<>();
+        for (java.io.File f : db.getFiles()) {
+            out.add(f.toPath());
+        }
+        return out;
+    }
+
+    /** The folder a drop on this row would land in; null where a drop must not land at all. */
+    private static Path dropTargetDir(TreeItem<Path> item) {
+        Path value = item.getValue();
+        if (PathTreeItem.isArchive(value)) {
+            // A jar is browsed like a folder, but it stays what it is: a file on disk.
+            return null;
+        }
+        return item instanceof PathTreeItem p && p.isDirectory() ? value : value.getParent();
+    }
+
+    /** A move that would change nothing, or eat its own tail, is not accepted. */
+    private boolean dropAccepts(Path source, TreeItem<Path> target) {
+        Path dir = dropTargetDir(target);
+        if (dir == null || isWorkspaceRoot(source)) {
+            return false;
+        }
+        Path to = dir.resolve(source.getFileName());
+        return !to.equals(source) && !dir.startsWith(source);
+    }
+
+    private boolean isWorkspaceRoot(Path p) {
+        for (Workspace w : ide.workspaces().all()) {
+            if (w.root().equals(p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Moves the dragged files into the folder a drop landed on, the way rename does it:
+     * open editors closed first - with their unsaved-changes prompt, and a cancelled one
+     * leaves its file where it is - then the move, then refresh and reopen at the new path.
+     */
+    private boolean move(List<Path> sources, TreeItem<Path> target) {
+        Path dir = dropTargetDir(target);
+        if (dir == null) {
+            return false;
+        }
+        boolean anyMoved = false;
+        for (Path source : sources) {
+            if (!dropAccepts(source, target)) {
+                continue;
+            }
+            Path to = dir.resolve(source.getFileName());
+            List<Editor> openUnder = new ArrayList<>();
+            for (Editor ed : ide.editors().open()) {
+                if (ed.path().equals(source) || ed.path().startsWith(source)) {
+                    openUnder.add(ed);
+                }
+            }
+            boolean cancelled = false;
+            for (Editor ed : openUnder) {
+                if (!ide.editors().close(ed)) {
+                    cancelled = true;
+                }
+            }
+            if (cancelled) {
+                continue;
+            }
+            try {
+                if (Files.exists(to)) {
+                    ide.statusBar().message("Already exists: " + to.getFileName());
+                    continue;
+                }
+                Files.move(source, to);
+                refresh(source.getParent());
+                refresh(dir);
+                anyMoved = true;
+                for (Editor ed : openUnder) {
+                    Path moved = to.resolve(source.relativize(ed.path()));
+                    if (Files.isRegularFile(moved)) {
+                        ide.editors().open(moved);
+                    }
+                }
+                reveal(to, false);
+            } catch (IOException e) {
+                ide.notifications().error("Cannot move " + source.getFileName(), e.getMessage());
+            }
+        }
+        return anyMoved;
     }
 
     private void addWorkspace(Workspace workspace) {
