@@ -7,9 +7,11 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -78,5 +80,45 @@ class ExecutablesTest {
         List<String> command = List.of("java", "-version");
         assertSame(command, Executables.runnable(command));
         assertTrue(Executables.canRun("sh"));
+    }
+
+    @Test
+    void aCommandIsLookedForOnThePathItWillBeStartedWith() {
+        /* The bug this exists for, in one line. The IDE's PATH and the developer's shell's PATH
+           are different lists, and a command resolved against one and run with the other is found
+           where it is not and missing where it is. An empty PATH is the clearest possible case:
+           nothing is on it, so nothing is found on it, whatever this process happens to have. */
+        assertNull(Executables.find("java", ""));
+        assertFalse(Executables.canRun("java", ""), "nothing is on an empty PATH");
+    }
+
+    @Test
+    void aPathGivenAsNullMeansThisProcessOwn() {
+        assertEquals(Executables.canRun("java"), Executables.canRun("java", null));
+    }
+
+    @Test
+    void thePathInAnEnvironmentIsFoundWhicheverCaseItIsSpelledIn() {
+        // Windows hands it out as Path and a Unix-shaped shell as PATH. A map is neither.
+        assertEquals("/one", Executables.pathIn(Map.of("PATH", "/one")));
+        assertEquals("/two", Executables.pathIn(Map.of("Path", "/two")));
+        assertEquals("/three", Executables.pathIn(Map.of("path", "/three")));
+    }
+
+    @Test
+    void anEnvironmentWithNoPathInItFallsBackToThisProcessOwn() {
+        assertEquals(System.getenv().getOrDefault("PATH", ""), Executables.pathIn(Map.of()));
+        assertEquals(System.getenv().getOrDefault("PATH", ""), Executables.pathIn(null));
+    }
+
+    @Test
+    void aCommandThatIsOnlyOnTheOtherPathIsResolvedAgainstIt() {
+        // The shape of what the assistant now does: a PATH the IDE does not have, holding the
+        // thing the developer's profile put there.
+        String home = System.getProperty("java.home");
+        assertTrue(Executables.canRun("java", home + "/bin"), "java lives in its own home");
+        List<String> resolved = Executables.runnable(List.of("java", "-version"), home + "/bin");
+        String started = resolved.get(0).toLowerCase(java.util.Locale.ROOT);
+        assertTrue(started.endsWith("java.exe") || started.endsWith("java"), resolved.toString());
     }
 }

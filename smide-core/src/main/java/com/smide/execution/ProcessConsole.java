@@ -45,10 +45,16 @@ public final class ProcessConsole implements ConsoleHandle {
         if (spec.workingDir() != null) {
             view.appendSystem("in " + spec.workingDir());
         }
-        // "mvn" on Windows is a shell script that CreateProcess cannot start; mvn.cmd beside it
-        // is the one it can. Every process the IDE runs goes through here, so it is asked for by
-        // name once, here, and started by the path of the file that actually exists.
-        ProcessBuilder pb = new ProcessBuilder(Executables.runnable(spec.command()))
+        /* "mvn" on Windows is a shell script that CreateProcess cannot start; mvn.cmd beside it
+           is the one it can. Every process the IDE runs goes through here, so it is asked for by
+           name once, here, and started by the path of the file that actually exists.
+
+           On the spec's own PATH, where it brought one. A caller that hands over an environment
+           is saying this is the environment to run in, and looking the name up anywhere else
+           would resolve it against a PATH the process is not going to have - finding nothing
+           where the shell finds Maven, or worse, finding a different Maven. */
+        ProcessBuilder pb = new ProcessBuilder(
+                Executables.runnable(spec.command(), Executables.pathIn(spec.environment())))
                 .redirectErrorStream(true);
         if (spec.workingDir() != null) {
             pb.directory(spec.workingDir().toFile());

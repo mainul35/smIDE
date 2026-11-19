@@ -43,6 +43,11 @@ final class TerminalSettingsPage implements SettingsPage {
             } else {
                 editor.staged().set(ShellResolver.SHELL_KEY, b.strip());
             }
+            /* A different shell reads a different profile and so has a different PATH, and what
+               the old one said is remembered for the life of the IDE. The rest of the IDE runs
+               its commands in that environment now, so a stale answer here would be a developer
+               changing their shell and the assistant going on using the other one's Maven. */
+            com.smide.api.execution.Shell.forget();
         });
         HBox.setHgrow(shell, Priority.ALWAYS);
         Button browse = new Button("Browse...");

@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Finding the file that a command name means.
@@ -37,10 +38,24 @@ public final class Executables {
      * its own message rather than quietly turned into something else.
      */
     public static List<String> runnable(List<String> command) {
+        return runnable(command, ownPath());
+    }
+
+    /**
+     * The same, looking on a PATH that is not this process's own.
+     *
+     * <p>Which matters because the IDE's PATH is not the developer's. A profile read by their
+     * shell adds to theirs and not to ours, so a command about to be started with that shell's
+     * environment has to be looked up on that shell's PATH as well: resolving the name against
+     * one PATH and running it with another is how a command is found and then not found.
+     *
+     * @param path a PATH as the platform writes one, or null for this process's own
+     */
+    public static List<String> runnable(List<String> command, String path) {
         if (command == null || command.isEmpty()) {
             return command;
         }
-        Path found = find(command.get(0));
+        Path found = find(command.get(0), path);
         if (found == null) {
             return command;
         }
@@ -50,19 +65,47 @@ public final class Executables {
     }
 
     /**
+     * The PATH held in an environment, whatever case it is spelled in.
+     *
+     * <p>Windows environment names are case-insensitive and are handed out in whatever case they
+     * were set: {@code Path} from the registry, {@code PATH} from a shell that inherited it from
+     * something Unix-shaped. A map is neither, so the lookup has to be.
+     */
+    public static String pathIn(Map<String, String> environment) {
+        if (environment == null) {
+            return ownPath();
+        }
+        for (Map.Entry<String, String> each : environment.entrySet()) {
+            if ("PATH".equalsIgnoreCase(each.getKey()) && each.getValue() != null) {
+                return each.getValue();
+            }
+        }
+        return ownPath();
+    }
+
+    private static String ownPath() {
+        return System.getenv().getOrDefault("PATH", "");
+    }
+
+    /**
      * The file a bare command name resolves to on this machine, or null.
      *
      * <p>Null too for a name that needs no help - one with a slash in it, or one that already ends
      * in an extension Windows knows - because those are started as they are.
      */
     public static Path find(String command) {
+        return find(command, ownPath());
+    }
+
+    /** The same, on a PATH that is not this process's own. */
+    public static Path find(String command, String path) {
         if (command == null || command.isBlank() || !windows()) {
             return null;
         }
         if (command.contains("/") || command.contains("\\") || hasExtension(command)) {
             return null;
         }
-        for (String folder : System.getenv().getOrDefault("PATH", "").split(File.pathSeparator)) {
+        for (String folder : (path == null ? ownPath() : path).split(File.pathSeparator)) {
             if (folder.isBlank()) {
                 continue;
             }
@@ -88,6 +131,18 @@ public final class Executables {
      * only moves the failure to where it is harder to read.
      */
     public static boolean canRun(String command) {
+        return canRun(command, ownPath());
+    }
+
+    /**
+     * The same, on a PATH that is not this process's own.
+     *
+     * <p>This is the question the assistant got wrong in front of a developer: it asked whether
+     * {@code mvn} could be run, was answered from the IDE's PATH rather than from the shell's,
+     * and reported that the machine had no Maven on it while a terminal tab below printed the
+     * version. Ask about the PATH the command will actually be started with.
+     */
+    public static boolean canRun(String command, String path) {
         if (command == null || command.isBlank()) {
             return false;
         }
@@ -95,13 +150,13 @@ public final class Executables {
             return Files.isRegularFile(Path.of(command));
         }
         if (windows()) {
-            return hasExtension(command) ? onPathAs(command, "") : find(command) != null;
+            return hasExtension(command) ? onPathAs(command, "", path) : find(command, path) != null;
         }
-        return onPathAs(command, "");
+        return onPathAs(command, "", path);
     }
 
-    private static boolean onPathAs(String command, String extension) {
-        for (String folder : System.getenv().getOrDefault("PATH", "").split(File.pathSeparator)) {
+    private static boolean onPathAs(String command, String extension, String path) {
+        for (String folder : (path == null ? ownPath() : path).split(File.pathSeparator)) {
             if (folder.isBlank()) {
                 continue;
             }

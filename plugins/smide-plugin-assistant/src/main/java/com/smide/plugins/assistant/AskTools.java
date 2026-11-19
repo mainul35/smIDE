@@ -3,9 +3,11 @@ package com.smide.plugins.assistant;
 import com.smide.api.Ide;
 import com.smide.api.editor.Editor;
 import com.smide.api.execution.ConsoleHandle;
+import com.smide.api.execution.Executables;
 import com.smide.api.execution.ProcessSpec;
 import com.smide.api.execution.RunConfiguration;
 import com.smide.api.execution.RunConfigurationType;
+import com.smide.api.execution.Shell;
 import com.smide.api.problems.Diagnostic;
 import com.smide.api.project.ProjectModel;
 import com.smide.api.workspace.Workspace;
@@ -362,14 +364,17 @@ public final class AskTools {
                act on - so it tries the same thing spelled differently, and again, until the steps
                are gone. This says what is missing and what the project has instead. */
             List<String> wrapper = wrapperIn(workingDir == null ? root : workingDir);
-            return command.get(0) + " is not installed on this machine, or not on the PATH."
+            return command.get(0) + " is not installed on this machine, or not on the PATH"
+                    + " - not the IDE's and not the one the Terminal's shell has either, which"
+                    + " was asked."
                     + (wrapper.isEmpty()
                             ? " There is no wrapper in the project either; ask the developer how they build it."
                             : " This project has its own: run " + wrapper.get(0) + " instead.");
         }
         try {
             ConsoleHandle console = onWindow(() -> ide.execution().run(
-                    new ProcessSpec(title, command, workingDir == null ? root : workingDir, Map.of())), null);
+                    new ProcessSpec(title, command, workingDir == null ? root : workingDir,
+                            shellEnvironment())), null);
             if (console == null) {
                 return "Could not start " + String.join(" ", command) + ".";
             }
@@ -521,8 +526,33 @@ public final class AskTools {
      * does cannot disagree - which they did, on Windows, over the difference between the {@code
      * mvn} shell script on the PATH and the {@code mvn.cmd} next to it.
      */
-    static boolean canRun(String command) {
-        return com.smide.api.execution.Executables.canRun(command);
+    boolean canRun(String command) {
+        return Executables.canRun(command, shellPath());
+    }
+
+    /**
+     * The environment to run things in: the developer's, not the IDE's.
+     *
+     * <p>This is the fix for an afternoon the assistant spent being confidently wrong. Asked to
+     * build a project, it looked for {@code java} and {@code mvn}, found neither, and told the
+     * developer that no toolchain was reachable from this environment at all - while a terminal
+     * tab in the same window answered {@code mvn -v} with the version and the Maven home. Both
+     * were telling the truth about different environments. The IDE was started from a desktop
+     * shortcut and has whatever PATH the session was created with; the terminal starts a shell,
+     * the shell reads the profile, and the profile is where this developer's Maven comes from.
+     *
+     * <p>So the shell is asked, once, and everything the assistant starts is started in what it
+     * answered. That makes one promise worth stating plainly: what the assistant can run is what
+     * the developer can run in the Terminal below it. When the shell cannot be asked this is the
+     * IDE's own environment, which is where things stood before, so nothing is lost by trying.
+     */
+    private Map<String, String> shellEnvironment() {
+        return Shell.environment(ide.settings().get(Shell.SHELL_SETTING, ""));
+    }
+
+    /** And its PATH, which is the part that decides whether a command exists. */
+    private String shellPath() {
+        return Executables.pathIn(shellEnvironment());
     }
 
     private static boolean windows() {
@@ -666,10 +696,12 @@ public final class AskTools {
      */
     private String capture(List<String> command) {
         try {
+            Map<String, String> environment = shellEnvironment();
             ProcessBuilder builder = new ProcessBuilder(
-                    com.smide.api.execution.Executables.runnable(command))
+                    Executables.runnable(command, Executables.pathIn(environment)))
                     .directory(root.toFile())
                     .redirectErrorStream(true);
+            builder.environment().putAll(environment);
             Process process = builder.start();
             String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             if (!process.waitFor(GIT_SECONDS, TimeUnit.SECONDS)) {
